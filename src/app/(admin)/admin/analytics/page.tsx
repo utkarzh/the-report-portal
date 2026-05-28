@@ -1,6 +1,7 @@
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { Activity, DollarSign, ArrowUpRight, ArrowDownLeft, Users } from 'lucide-react'
+import { WEB_SEARCH_PRICE_PER_REQUEST } from '@/lib/claude/tokens'
+import { Activity, DollarSign, ArrowUpRight, ArrowDownLeft, Users, Search } from 'lucide-react'
 
 export default async function AnalyticsPage() {
   requireAdminHeader()
@@ -12,7 +13,7 @@ export default async function AnalyticsPage() {
   const [{ data: sessions }, { data: users }] = await Promise.all([
     supabaseAdmin
       .from('research_sessions')
-      .select('user_id, tokens_input, tokens_output, tokens_total, cost_usd')
+      .select('user_id, tokens_input, tokens_output, tokens_total, web_searches, cost_usd')
       .gte('created_at', monthStart)
       .lte('created_at', monthEnd),
     supabaseAdmin
@@ -25,10 +26,13 @@ export default async function AnalyticsPage() {
       requests: acc.requests + 1,
       inputTokens: acc.inputTokens + (s.tokens_input || 0),
       outputTokens: acc.outputTokens + (s.tokens_output || 0),
+      webSearches: acc.webSearches + (s.web_searches || 0),
       cost: acc.cost + Number(s.cost_usd || 0),
     }),
-    { requests: 0, inputTokens: 0, outputTokens: 0, cost: 0 }
+    { requests: 0, inputTokens: 0, outputTokens: 0, webSearches: 0, cost: 0 }
   )
+  const webSearchCost = totals.webSearches * WEB_SEARCH_PRICE_PER_REQUEST
+  const tokenCost = totals.cost - webSearchCost
 
   const userMap = Object.fromEntries((users || []).map(u => [u.id, u]))
 
@@ -38,6 +42,7 @@ export default async function AnalyticsPage() {
     requests: number
     inputTokens: number
     outputTokens: number
+    webSearches: number
     cost: number
   }> = {}
 
@@ -51,12 +56,14 @@ export default async function AnalyticsPage() {
         requests: 0,
         inputTokens: 0,
         outputTokens: 0,
+        webSearches: 0,
         cost: 0,
       }
     }
     perUser[key].requests += 1
     perUser[key].inputTokens += s.tokens_input || 0
     perUser[key].outputTokens += s.tokens_output || 0
+    perUser[key].webSearches += s.web_searches || 0
     perUser[key].cost += Number(s.cost_usd || 0)
   }
 
@@ -75,7 +82,7 @@ export default async function AnalyticsPage() {
         </div>
 
         {/* Summary stat cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-10">
           <StatCard
             label="Total Requests"
             value={totals.requests.toLocaleString()}
@@ -84,6 +91,7 @@ export default async function AnalyticsPage() {
           <StatCard
             label="Total Cost"
             value={`$${totals.cost.toFixed(4)}`}
+            sub={`$${tokenCost.toFixed(4)} tokens + $${webSearchCost.toFixed(4)} search`}
             icon={DollarSign}
           />
           <StatCard
@@ -97,6 +105,12 @@ export default async function AnalyticsPage() {
             value={formatTokens(totals.outputTokens)}
             sub="received from Claude"
             icon={ArrowDownLeft}
+          />
+          <StatCard
+            label="Web Searches"
+            value={totals.webSearches.toLocaleString()}
+            sub={`$${WEB_SEARCH_PRICE_PER_REQUEST.toFixed(2)} each — billed separately`}
+            icon={Search}
           />
         </div>
 
@@ -127,6 +141,7 @@ export default async function AnalyticsPage() {
                   <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Requests</th>
                   <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Input</th>
                   <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Output</th>
+                  <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Searches</th>
                   <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Cost</th>
                 </tr>
               </thead>
@@ -147,6 +162,7 @@ export default async function AnalyticsPage() {
                     <td className="px-5 py-4 text-right text-gray-600 tabular-nums">{u.requests}</td>
                     <td className="px-5 py-4 text-right text-gray-600 tabular-nums">{formatTokens(u.inputTokens)}</td>
                     <td className="px-5 py-4 text-right text-gray-600 tabular-nums">{formatTokens(u.outputTokens)}</td>
+                    <td className="px-5 py-4 text-right text-gray-600 tabular-nums">{u.webSearches}</td>
                     <td className="px-5 py-4 text-right tabular-nums">
                       <div className="flex items-center justify-end gap-3">
                         <div className="w-16 h-1 bg-gray-100 rounded-full overflow-hidden hidden sm:block">
@@ -170,6 +186,7 @@ export default async function AnalyticsPage() {
                     <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">{totals.requests}</td>
                     <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">{formatTokens(totals.inputTokens)}</td>
                     <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">{formatTokens(totals.outputTokens)}</td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">{totals.webSearches}</td>
                     <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">${totals.cost.toFixed(4)}</td>
                   </tr>
                 </tfoot>

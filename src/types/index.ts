@@ -1,7 +1,6 @@
 export type UserRole = 'admin' | 'user'
 export type UserStatus = 'active' | 'inactive'
 export type InviteStatus = 'pending' | 'accepted' | 'expired'
-export type MessageRole = 'user' | 'assistant'
 
 export interface Profile {
   id: string
@@ -63,22 +62,12 @@ export interface ResearchSession {
   tokens_input: number
   tokens_output: number
   tokens_total: number
+  web_searches: number
   cost_usd: number
   general_prompt_snapshot: string | null
   category_prompt_snapshot: string | null
   created_at: string
   updated_at: string
-}
-
-export interface Message {
-  id: string
-  session_id: string
-  role: MessageRole
-  content: string
-  tokens_input: number
-  tokens_output: number
-  cost_usd: number
-  created_at: string
 }
 
 export interface ResearchFormData {

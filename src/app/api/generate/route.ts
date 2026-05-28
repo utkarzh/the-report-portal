@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost } from '@/lib/claude/tokens'
+import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
+import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
-// POST /api/generate — streams Claude output for an existing session.
-// Session must already exist (created by POST /api/sessions).
+const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
+  type: 'web_search_20250305',
+  name: 'web_search',
+}
+
 export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -45,9 +49,8 @@ export async function POST(request: NextRequest) {
   }
 
   const systemPrompt = session.general_prompt_snapshot || ''
-  const userPrompt = `${session.category_prompt_snapshot || ''}
-
---- SUBJECT DETAILS ---
+  const categoryPrompt = session.category_prompt_snapshot || ''
+  const subjectDetails = `--- SUBJECT DETAILS ---
 Full Name: ${session.full_name}
 Title / Position: ${session.title_position}
 Company / Organization / Ministry: ${session.company_org}
@@ -55,22 +58,60 @@ Country in Focus: ${session.country_focus}
 Publication: ${session.publication}
 Media Partner Country: ${session.media_partner_country}`
 
+  // 1-hour TTL keeps the prefix hot across users for shared general/category prompts.
+  // The cache invalidates naturally when an admin saves a new prompt version (the
+  // text changes → new cache key → old entry expires unused).
+  const CACHE_1H = { type: 'ephemeral' as const, ttl: '1h' as const }
+
+  const systemBlocks = systemPrompt
+    ? [{ type: 'text' as const, text: systemPrompt, cache_control: CACHE_1H }]
+    : undefined
+
+  const userContentBlocks = [
+    {
+      type: 'text' as const,
+      text: categoryPrompt,
+      cache_control: CACHE_1H,
+    },
+    {
+      type: 'text' as const,
+      text: `\n\n${subjectDetails}`,
+    },
+  ]
+
   const anthropic = getAnthropicClient()
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
     async start(controller) {
       let fullText = ''
+      let seenToolUse = false
+      let webSearchCount = 0
 
       try {
         const claudeStream = anthropic.messages.stream({
           model: 'claude-sonnet-4-6',
           max_tokens: 8192,
-          system: systemPrompt || undefined,
-          messages: [{ role: 'user', content: userPrompt }],
+          system: systemBlocks,
+          messages: [{ role: 'user', content: userContentBlocks }],
+          tools: [WEB_SEARCH_TOOL],
         })
 
         for await (const event of claudeStream) {
+          if (event.type === 'content_block_start') {
+            if (event.content_block.type === 'tool_use') {
+              seenToolUse = true
+              if (event.content_block.name === 'web_search') webSearchCount += 1
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ status: 'web_search_start' })}\n\n`)
+              )
+            } else if (event.content_block.type === 'text' && seenToolUse) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ status: 'generating' })}\n\n`)
+              )
+            }
+          }
+
           if (
             event.type === 'content_block_delta' &&
             event.delta.type === 'text_delta'
@@ -83,18 +124,26 @@ Media Partner Country: ${session.media_partner_country}`
         }
 
         const finalMsg = await claudeStream.finalMessage()
-        const inputTokens = finalMsg.usage.input_tokens
-        const outputTokens = finalMsg.usage.output_tokens
-        const totalTokens = inputTokens + outputTokens
-        const cost = calculateCost(inputTokens, outputTokens)
+        // Prefer the server-reported web_search count when available; fall back to the
+        // count we tallied from stream events.
+        const reportedSearches =
+          (finalMsg.usage as { server_tool_use?: { web_search_requests?: number } })
+            .server_tool_use?.web_search_requests
+        const searches = reportedSearches ?? webSearchCount
+
+        const usage = parseUsage(finalMsg.usage, searches)
+        const promptTokens = totalPromptTokens(usage)
+        const totalTokens = promptTokens + usage.outputTokens
+        const cost = calculateCost(usage)
 
         await supabaseAdmin
           .from('research_sessions')
           .update({
             initial_output: fullText,
-            tokens_input: inputTokens,
-            tokens_output: outputTokens,
+            tokens_input: promptTokens,
+            tokens_output: usage.outputTokens,
             tokens_total: totalTokens,
+            web_searches: searches,
             cost_usd: cost,
           })
           .eq('id', session.id)

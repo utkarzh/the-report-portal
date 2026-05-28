@@ -1,34 +1,11 @@
 -- ============================================================
 -- Editorial Research Tool — Full Schema
 -- Run this in the Supabase SQL editor on a fresh database.
--- Safe to re-run: drops all existing objects first.
+-- If the database has prior data, run supabase/teardown.sql first.
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- ============================================================
--- CLEAN SLATE — drop everything from any prior partial run
--- ============================================================
-
-DROP TABLE IF EXISTS public.category_prompt_versions  CASCADE;
-DROP TABLE IF EXISTS public.general_prompt_versions   CASCADE;
-DROP TABLE IF EXISTS public.messages                  CASCADE;
-DROP TABLE IF EXISTS public.research_sessions         CASCADE;
-DROP TABLE IF EXISTS public.general_prompt            CASCADE;
-DROP TABLE IF EXISTS public.categories                CASCADE;
-DROP TABLE IF EXISTS public.invitations               CASCADE;
-DROP TABLE IF EXISTS public.profiles                  CASCADE;
-
-DROP FUNCTION IF EXISTS public.handle_new_user()           CASCADE;
-DROP FUNCTION IF EXISTS public.user_role()                 CASCADE;
-DROP FUNCTION IF EXISTS public.update_updated_at()         CASCADE;
-DROP FUNCTION IF EXISTS public.increment_user_tokens(UUID, INTEGER) CASCADE;
-
-DROP TYPE IF EXISTS user_role    CASCADE;
-DROP TYPE IF EXISTS user_status  CASCADE;
-DROP TYPE IF EXISTS invite_status CASCADE;
-DROP TYPE IF EXISTS message_role CASCADE;
 
 -- ============================================================
 -- ENUMS
@@ -37,7 +14,6 @@ DROP TYPE IF EXISTS message_role CASCADE;
 CREATE TYPE user_role    AS ENUM ('admin', 'user');
 CREATE TYPE user_status  AS ENUM ('active', 'inactive');
 CREATE TYPE invite_status AS ENUM ('pending', 'accepted', 'expired');
-CREATE TYPE message_role AS ENUM ('user', 'assistant');
 
 -- ============================================================
 -- PROFILES (extends auth.users 1:1)
@@ -152,6 +128,7 @@ CREATE TABLE public.research_sessions (
     tokens_input             INTEGER     DEFAULT 0,
     tokens_output            INTEGER     DEFAULT 0,
     tokens_total             INTEGER     DEFAULT 0,
+    web_searches             INTEGER     DEFAULT 0,  -- billed separately at $0.01/search
     cost_usd                 NUMERIC(10, 6) DEFAULT 0,
     general_prompt_snapshot  TEXT,
     category_prompt_snapshot TEXT,
@@ -166,23 +143,6 @@ CREATE INDEX idx_research_sessions_category_id ON public.research_sessions(categ
 CREATE TRIGGER research_sessions_updated_at
     BEFORE UPDATE ON public.research_sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
--- ============================================================
--- MESSAGES (chat refinement per session)
--- ============================================================
-
-CREATE TABLE public.messages (
-    id           UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id   UUID        NOT NULL REFERENCES public.research_sessions(id) ON DELETE CASCADE,
-    role         message_role NOT NULL,
-    content      TEXT        NOT NULL,
-    tokens_input  INTEGER    DEFAULT 0,
-    tokens_output INTEGER    DEFAULT 0,
-    cost_usd     NUMERIC(10, 6) DEFAULT 0,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_messages_session_id ON public.messages(session_id);
 
 -- ============================================================
 -- PROMPT VERSION HISTORY
@@ -218,7 +178,6 @@ ALTER TABLE public.invitations            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.general_prompt         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.research_sessions      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.messages               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.general_prompt_versions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_prompt_versions ENABLE ROW LEVEL SECURITY;
 
@@ -267,17 +226,6 @@ CREATE POLICY "Users can insert own sessions"
     ON public.research_sessions FOR INSERT WITH CHECK (user_id = auth.uid());
 CREATE POLICY "Users can update own sessions"
     ON public.research_sessions FOR UPDATE USING (user_id = auth.uid());
-
--- Messages
-CREATE POLICY "Users can manage messages in own sessions"
-    ON public.messages FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.research_sessions
-            WHERE id = messages.session_id AND user_id = auth.uid()
-        )
-    );
-CREATE POLICY "Admins can read all messages"
-    ON public.messages FOR SELECT USING (public.user_role() = 'admin');
 
 -- Prompt versions
 CREATE POLICY "Admins can manage general prompt versions"
