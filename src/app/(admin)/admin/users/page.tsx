@@ -1,10 +1,10 @@
 import { requireAdminHeader, getProfileFromHeaders } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import UserActionsMenu from '@/components/admin/UserActionsMenu'
 import UsersFilter from '@/components/admin/UsersFilter'
 import UsersPagination from '@/components/admin/UsersPagination'
+import InviteUserButton from '@/components/admin/InviteUserButton'
 import type { Profile } from '@/types'
 
 const PAGE_SIZE = 10
@@ -47,15 +47,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Search
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-base font-semibold text-gray-900">Users</h1>
-        <Link
-          href="/admin/users/invite"
-          className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 text-xs font-medium tracking-wider uppercase hover:bg-gray-900 transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          Invite User
-        </Link>
+        <InviteUserButton />
       </div>
 
       <UsersFilter search={search} role={roleFilter} />

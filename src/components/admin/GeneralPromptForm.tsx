@@ -44,31 +44,36 @@ export default function GeneralPromptForm({ initialPrompt }: { initialPrompt: st
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 text-xs text-red-700">{error}</div>
+        <div className="p-4 bg-red-50 border border-red-200 text-sm text-red-700">
+          {error}
+        </div>
       )}
       {success && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
           General prompt saved. All future research generations will use this prompt.
         </div>
       )}
 
-      <div className="bg-white border border-[#e5e3df] p-6">
-        <Textarea
-          label="General Prompt"
-          hint={`${promptText.length.toLocaleString()} characters`}
-          placeholder="Define the overall tone, structure and editorial style Claude should follow for all research..."
-          value={promptText}
-          onChange={(e) => setPromptText(e.target.value)}
-          rows={20}
-          className="font-mono text-xs"
-        />
+      <div className="bg-white border border-[#e5e3df]">
+        <div className="p-5 sm:p-6">
+          <Textarea
+            label="General Prompt"
+            placeholder="Define the overall tone, structure and editorial style Claude should follow for all research..."
+            value={promptText}
+            onChange={(e) => setPromptText(e.target.value)}
+            rows={24}
+            className="font-mono text-xs"
+          />
+        </div>
+        <div className="px-5 sm:px-6 py-4 border-t border-[#e5e3df] bg-gray-50 flex items-center justify-between gap-4">
+          <span className="text-xs text-gray-400">{promptText.length.toLocaleString()} characters</span>
+          <Button type="submit" loading={loading} arrow size="sm">
+            Save Prompt
+          </Button>
+        </div>
       </div>
-
-      <Button type="submit" loading={loading} arrow>
-        Save Prompt
-      </Button>
 
       <PromptVersionHistory
         type="general"

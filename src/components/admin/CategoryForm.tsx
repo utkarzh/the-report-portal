@@ -29,7 +29,8 @@ export default function CategoryForm({ category }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (isEdit && form.promptText === savedPromptText &&
+    if (isEdit &&
+        form.promptText === savedPromptText &&
         form.name === (category?.name || '') &&
         form.description === (category?.description || '')) {
       setSuccess(true)
@@ -73,52 +74,61 @@ export default function CategoryForm({ category }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-      <div className="bg-white border border-[#e5e3df] p-6 flex flex-col gap-5">
-        {error && (
-          <div className="p-3 bg-red-50 border border-red-200 text-xs text-red-700">{error}</div>
-        )}
-        {success && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">
-            Category saved successfully.
-          </div>
-        )}
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
 
-        <Input
-          label="Category Name *"
-          placeholder="e.g. Minister, CEO, Scientist"
-          value={form.name}
-          onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
-          required
-        />
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
+          Category saved successfully.
+        </div>
+      )}
 
-        <Input
-          label="Description"
-          placeholder="Brief description of this category"
-          value={form.description}
-          onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
-        />
+      {/* Name + Description card */}
+      <div className="bg-white border border-[#e5e3df]">
+        <div className="p-5 sm:p-6 flex flex-col gap-5">
+          <Input
+            label="Category Name *"
+            placeholder="e.g. Minister, CEO, Scientist"
+            value={form.name}
+            onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
+            required
+          />
+          <Input
+            label="Description"
+            placeholder="Brief description of this category"
+            value={form.description}
+            onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
+          />
+        </div>
       </div>
 
-      <div className="bg-white border border-[#e5e3df] p-6">
-        <Textarea
-          label="Category Prompt *"
-          hint={`${form.promptText.length.toLocaleString()} characters`}
-          placeholder="Enter the detailed prompt for this category. This can be several pages long and defines how Claude generates research for this type of interviewee."
-          value={form.promptText}
-          onChange={(e) => setForm(p => ({ ...p, promptText: e.target.value }))}
-          rows={24}
-          required
-          className="font-mono text-xs"
-        />
-        <p className="text-[10px] text-gray-400 mt-2">
-          This prompt is combined with the General Prompt and the subject details to generate research. Supports multi-page prompts.
-        </p>
+      {/* Prompt card */}
+      <div className="bg-white border border-[#e5e3df]">
+        <div className="p-5 sm:p-6">
+          <Textarea
+            label="Category Prompt *"
+            placeholder="Enter the detailed prompt for this category. This can be several pages long and defines how Claude generates research for this type of interviewee."
+            value={form.promptText}
+            onChange={(e) => setForm(p => ({ ...p, promptText: e.target.value }))}
+            rows={24}
+            required
+            className="font-mono text-xs"
+          />
+          <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+            Combined with the General Prompt and subject details to generate research. Supports multi-page prompts.
+          </p>
+        </div>
+        <div className="px-5 sm:px-6 py-4 border-t border-[#e5e3df] bg-gray-50 flex items-center justify-between gap-4">
+          <span className="text-xs text-gray-400">{form.promptText.length.toLocaleString()} characters</span>
+          <Button type="submit" loading={loading} arrow size="sm">
+            {isEdit ? 'Save Changes' : 'Create Category'}
+          </Button>
+        </div>
       </div>
-
-      <Button type="submit" loading={loading} arrow>
-        {isEdit ? 'Save Changes' : 'Create Category'}
-      </Button>
 
       {isEdit && (
         <PromptVersionHistory
@@ -136,6 +146,7 @@ export default function CategoryForm({ category }: Props) {
           }}
         />
       )}
+
     </form>
   )
 }

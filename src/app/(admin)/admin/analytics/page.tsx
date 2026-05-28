@@ -1,5 +1,6 @@
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { Activity, DollarSign, ArrowUpRight, ArrowDownLeft, Users } from 'lucide-react'
 
 export default async function AnalyticsPage() {
   requireAdminHeader()
@@ -19,7 +20,6 @@ export default async function AnalyticsPage() {
       .select('id, full_name, email'),
   ])
 
-  // Aggregate
   const totals = (sessions || []).reduce(
     (acc, s) => ({
       requests: acc.requests + 1,
@@ -33,12 +33,12 @@ export default async function AnalyticsPage() {
   const userMap = Object.fromEntries((users || []).map(u => [u.id, u]))
 
   const perUser: Record<string, {
-    fullName: string | null;
-    email: string;
-    requests: number;
-    inputTokens: number;
-    outputTokens: number;
-    cost: number;
+    fullName: string | null
+    email: string
+    requests: number
+    inputTokens: number
+    outputTokens: number
+    cost: number
   }> = {}
 
   for (const s of (sessions || [])) {
@@ -61,69 +61,144 @@ export default async function AnalyticsPage() {
   }
 
   const perUserList = Object.values(perUser).sort((a, b) => b.cost - a.cost)
-
   const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+  const maxCost = perUserList[0]?.cost || 1
 
   return (
-    <div className="p-8">
-      <h1 className="text-base font-semibold text-gray-900 mb-1">Analytics</h1>
-      <p className="text-xs text-gray-500 mb-6">{monthLabel}</p>
+    <div className="px-4 sm:px-6 lg:px-10 py-8">
+      <div className="max-w-5xl mx-auto">
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 max-w-3xl">
-        <StatCard label="Total Requests" value={totals.requests.toLocaleString()} />
-        <StatCard label="Total Cost" value={`$${totals.cost.toFixed(4)}`} />
-        <StatCard label="Input Tokens" value={formatTokens(totals.inputTokens)} />
-        <StatCard label="Output Tokens" value={formatTokens(totals.outputTokens)} />
-      </div>
-
-      {/* Per-user breakdown */}
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
-        Breakdown by User
-      </h2>
-
-      {perUserList.length === 0 ? (
-        <p className="text-sm text-gray-400">No activity this month.</p>
-      ) : (
-        <div className="bg-white border border-[#e5e3df] overflow-hidden max-w-3xl">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-[#e5e3df] bg-[#f9f8f6]">
-                <th className="text-left px-4 py-3 font-semibold uppercase tracking-widest text-gray-400">User</th>
-                <th className="text-right px-4 py-3 font-semibold uppercase tracking-widest text-gray-400">Requests</th>
-                <th className="text-right px-4 py-3 font-semibold uppercase tracking-widest text-gray-400">Tokens</th>
-                <th className="text-right px-4 py-3 font-semibold uppercase tracking-widest text-gray-400">Cost</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#e5e3df]">
-              {perUserList.map((u, i) => (
-                <tr key={i} className="hover:bg-[#f9f8f6]">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">{u.fullName || u.email}</p>
-                    {u.fullName && <p className="text-gray-400 mt-0.5">{u.email}</p>}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-600">{u.requests}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">
-                    {formatTokens(u.inputTokens + u.outputTokens)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium text-gray-900">
-                    ${u.cost.toFixed(4)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Page header */}
+        <div className="mb-8">
+          <h1 className="text-lg font-semibold text-gray-900">Analytics</h1>
+          <p className="text-sm text-gray-500 mt-1.5">{monthLabel} — current month</p>
         </div>
-      )}
+
+        {/* Summary stat cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+          <StatCard
+            label="Total Requests"
+            value={totals.requests.toLocaleString()}
+            icon={Activity}
+          />
+          <StatCard
+            label="Total Cost"
+            value={`$${totals.cost.toFixed(4)}`}
+            icon={DollarSign}
+          />
+          <StatCard
+            label="Input Tokens"
+            value={formatTokens(totals.inputTokens)}
+            sub="sent to Claude"
+            icon={ArrowUpRight}
+          />
+          <StatCard
+            label="Output Tokens"
+            value={formatTokens(totals.outputTokens)}
+            sub="received from Claude"
+            icon={ArrowDownLeft}
+          />
+        </div>
+
+        {/* Per-user breakdown */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <Users size={14} className="text-gray-400" />
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+              Breakdown by User
+            </h2>
+          </div>
+          {perUserList.length > 0 && (
+            <span className="text-xs text-gray-400">{perUserList.length} user{perUserList.length !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+
+        {perUserList.length === 0 ? (
+          <div className="bg-white border border-[#e5e3df] p-10 text-center">
+            <Activity size={24} className="text-gray-200 mx-auto mb-3" />
+            <p className="text-sm text-gray-400">No activity recorded this month.</p>
+          </div>
+        ) : (
+          <div className="bg-white border border-[#e5e3df] overflow-x-auto">
+            <table className="w-full text-xs min-w-[540px]">
+              <thead>
+                <tr className="border-b border-[#e5e3df] bg-[#f9f8f6]">
+                  <th className="text-left px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">User</th>
+                  <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Requests</th>
+                  <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Input</th>
+                  <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Output</th>
+                  <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Cost</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#e5e3df]">
+                {perUserList.map((u, i) => (
+                  <tr key={i} className="hover:bg-[#f9f8f6] transition-colors">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-[11px] font-semibold text-gray-500 flex-shrink-0">
+                          {(u.fullName || u.email)[0].toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 truncate">{u.fullName || u.email}</p>
+                          {u.fullName && <p className="text-gray-400 mt-0.5 truncate">{u.email}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-right text-gray-600 tabular-nums">{u.requests}</td>
+                    <td className="px-5 py-4 text-right text-gray-600 tabular-nums">{formatTokens(u.inputTokens)}</td>
+                    <td className="px-5 py-4 text-right text-gray-600 tabular-nums">{formatTokens(u.outputTokens)}</td>
+                    <td className="px-5 py-4 text-right tabular-nums">
+                      <div className="flex items-center justify-end gap-3">
+                        <div className="w-16 h-1 bg-gray-100 rounded-full overflow-hidden hidden sm:block">
+                          <div
+                            className="h-full bg-black rounded-full"
+                            style={{ width: `${(u.cost / maxCost) * 100}%` }}
+                          />
+                        </div>
+                        <span className="font-medium text-gray-900">${u.cost.toFixed(4)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+
+              {/* Totals footer */}
+              {perUserList.length > 1 && (
+                <tfoot>
+                  <tr className="border-t-2 border-[#e5e3df] bg-[#f9f8f6]">
+                    <td className="px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-gray-500">Total</td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">{totals.requests}</td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">{formatTokens(totals.inputTokens)}</td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">{formatTokens(totals.outputTokens)}</td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">${totals.cost.toFixed(4)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+
+      </div>
     </div>
   )
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+interface StatCardProps {
+  label: string
+  value: string
+  icon: React.ElementType
+  sub?: string
+}
+
+function StatCard({ label, value, icon: Icon, sub }: StatCardProps) {
   return (
-    <div className="bg-white border border-[#e5e3df] p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">{label}</p>
-      <p className="text-lg font-semibold text-gray-900">{value}</p>
+    <div className="bg-white border border-[#e5e3df] p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <Icon size={15} strokeWidth={1.5} className="text-gray-400 flex-shrink-0" />
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 leading-tight">{label}</p>
+      </div>
+      <p className="text-2xl font-bold text-gray-900 tabular-nums leading-none">{value}</p>
+      {sub && <p className="text-[10px] text-gray-400 mt-1.5 uppercase tracking-wide">{sub}</p>}
     </div>
   )
 }
