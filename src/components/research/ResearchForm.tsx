@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
+import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import type { Category } from '@/types'
 
@@ -26,6 +27,7 @@ export default function ResearchForm({ categories, isAtLimit }: ResearchFormProp
     publication: '',
     mediaPartnerCountry: '',
   })
+  const [additionalPrompt, setAdditionalPrompt] = useState('')
 
   function handleChange(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -58,6 +60,14 @@ export default function ResearchForm({ categories, isAtLimit }: ResearchFormProp
       }
 
       const { id: sessionId } = await res.json()
+
+      // Hand off the (ephemeral) additional prompt to the output page via
+      // sessionStorage — it gets sent to /api/generate once and is not persisted.
+      const trimmed = additionalPrompt.trim()
+      if (trimmed && typeof window !== 'undefined') {
+        sessionStorage.setItem(`research-extra:${sessionId}`, trimmed)
+      }
+
       router.push(`/research/${sessionId}?generating=true`)
     } catch {
       setError('Network error. Please try again.')
@@ -130,6 +140,15 @@ export default function ResearchForm({ categories, isAtLimit }: ResearchFormProp
         value={form.mediaPartnerCountry}
         onChange={(e) => handleChange('mediaPartnerCountry', e.target.value)}
         required
+      />
+
+      <Textarea
+        label="Additional Context"
+        hint="optional"
+        placeholder="Anything specific Claude should focus on for this research run? Not saved."
+        value={additionalPrompt}
+        onChange={(e) => setAdditionalPrompt(e.target.value)}
+        rows={3}
       />
 
       <div className="pt-2">

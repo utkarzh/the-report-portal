@@ -59,6 +59,7 @@ export interface ResearchSession {
   publication: string | null
   media_partner_country: string | null
   initial_output: string | null
+  questions_output: string | null
   tokens_input: number
   tokens_output: number
   tokens_total: number

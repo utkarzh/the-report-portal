@@ -1,6 +1,6 @@
 // Claude claude-sonnet-4-6 pricing (per 1M tokens)
-const PRICE_INPUT_PER_MILLION = 3.0
-const PRICE_OUTPUT_PER_MILLION = 15.0
+export const PRICE_INPUT_PER_MILLION = 3.0
+export const PRICE_OUTPUT_PER_MILLION = 15.0
 const PRICE_CACHE_WRITE_5M_PER_MILLION = 3.75 // 1.25x input — 5-min ephemeral cache write
 const PRICE_CACHE_WRITE_1H_PER_MILLION = 6.0  // 2.00x input — 1-hour ephemeral cache write
 const PRICE_CACHE_READ_PER_MILLION = 0.30     // 0.10x input — cache read (any TTL)

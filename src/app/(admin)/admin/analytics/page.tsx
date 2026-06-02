@@ -1,6 +1,9 @@
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { WEB_SEARCH_PRICE_PER_REQUEST } from '@/lib/claude/tokens'
+import {
+  WEB_SEARCH_PRICE_PER_REQUEST,
+  PRICE_OUTPUT_PER_MILLION,
+} from '@/lib/claude/tokens'
 import { Activity, DollarSign, ArrowUpRight, ArrowDownLeft, Users, Search } from 'lucide-react'
 
 export default async function AnalyticsPage() {
@@ -31,8 +34,12 @@ export default async function AnalyticsPage() {
     }),
     { requests: 0, inputTokens: 0, outputTokens: 0, webSearches: 0, cost: 0 }
   )
+  // Cost breakdown — total cost_usd in DB already includes input + output + cache + search.
+  // We derive output and search costs from their exact per-unit prices and treat the
+  // remainder as input cost (this absorbs the cache-tier price variations accurately).
+  const outputCost = (totals.outputTokens / 1_000_000) * PRICE_OUTPUT_PER_MILLION
   const webSearchCost = totals.webSearches * WEB_SEARCH_PRICE_PER_REQUEST
-  const tokenCost = totals.cost - webSearchCost
+  const inputCost = Math.max(0, totals.cost - outputCost - webSearchCost)
 
   const userMap = Object.fromEntries((users || []).map(u => [u.id, u]))
 
@@ -91,7 +98,7 @@ export default async function AnalyticsPage() {
           <StatCard
             label="Total Cost"
             value={`$${totals.cost.toFixed(4)}`}
-            sub={`$${tokenCost.toFixed(4)} tokens + $${webSearchCost.toFixed(4)} search`}
+            sub={`$${inputCost.toFixed(4)} in + $${outputCost.toFixed(4)} out + $${webSearchCost.toFixed(4)} search`}
             icon={DollarSign}
           />
           <StatCard

@@ -125,6 +125,7 @@ CREATE TABLE public.research_sessions (
     publication              TEXT,
     media_partner_country    TEXT,
     initial_output           TEXT,
+    questions_output         TEXT,
     tokens_input             INTEGER     DEFAULT 0,
     tokens_output            INTEGER     DEFAULT 0,
     tokens_total             INTEGER     DEFAULT 0,

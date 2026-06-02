@@ -3,12 +3,6 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
-import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
-
-const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
-  type: 'web_search_20250305',
-  name: 'web_search',
-}
 
 export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient()
@@ -39,11 +33,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
   }
 
-  const extra = (additionalPrompt || '').trim()
-
   const { data: session } = await supabaseAdmin
     .from('research_sessions')
-    .select('id, user_id, full_name, title_position, company_org, country_focus, publication, media_partner_country, general_prompt_snapshot, category_prompt_snapshot')
+    .select('id, user_id, full_name, title_position, company_org, country_focus, publication, media_partner_country, general_prompt_snapshot, category_prompt_snapshot, initial_output, questions_output')
     .eq('id', sessionId)
     .single()
 
@@ -52,6 +44,16 @@ export async function POST(request: NextRequest) {
   if (session.user_id !== user.id && profile.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+
+  if (!session.initial_output) {
+    return NextResponse.json(
+      { error: 'Research must be generated before questions' },
+      { status: 400 },
+    )
+  }
+
+  const extra = (additionalPrompt || '').trim()
+  const isRegeneration = Boolean(session.questions_output)
 
   const systemPrompt = session.general_prompt_snapshot || ''
   const categoryPrompt = session.category_prompt_snapshot || ''
@@ -63,9 +65,20 @@ Country in Focus: ${session.country_focus}
 Publication: ${session.publication}
 Media Partner Country: ${session.media_partner_country}`
 
-  // 1-hour TTL keeps the prefix hot across users for shared general/category prompts.
-  // The cache invalidates naturally when an admin saves a new prompt version (the
-  // text changes → new cache key → old entry expires unused).
+  const taskInstruction = isRegeneration
+    ? `Based on the research below, draft a fresh set of interview questions. The previous attempt is included for reference — improve on it using the user's feedback.`
+    : `Based on the research below, draft a thorough set of interview questions tailored to this subject. Group them by theme, order them from broad to specific, and make every question open-ended.`
+
+  const previousAttemptBlock = isRegeneration
+    ? `\n\n--- PREVIOUS QUESTIONS (improve on these) ---\n${session.questions_output}`
+    : ''
+
+  const feedbackBlock = extra
+    ? `\n\n--- USER FEEDBACK / ADDITIONAL CONTEXT ---\n${extra}`
+    : ''
+
+  // 1-hour TTL so the general + category prefix stays hot when the user
+  // chains research → questions in one sitting (same prefix as /api/generate).
   const CACHE_1H = { type: 'ephemeral' as const, ttl: '1h' as const }
 
   const systemBlocks = systemPrompt
@@ -80,27 +93,9 @@ Media Partner Country: ${session.media_partner_country}`
     },
     {
       type: 'text' as const,
-      text: extra
-        ? `\n\n${subjectDetails}\n\n--- ADDITIONAL CONTEXT FROM USER ---\n${extra}`
-        : `\n\n${subjectDetails}`,
+      text: `\n\n${subjectDetails}\n\n${taskInstruction}\n\n--- RESEARCH ---\n${session.initial_output}${previousAttemptBlock}${feedbackBlock}`,
     },
   ]
-
-  // ===== DEBUG: log payload + run WITHOUT web_search to see baseline cost =====
-  const systemChars = systemPrompt.length
-  const categoryChars = categoryPrompt.length
-  const subjectChars = subjectDetails.length
-  const totalChars = systemChars + categoryChars + subjectChars
-  const approxTokens = Math.ceil(totalChars / 4)
-
-  console.log('\n========== GENERATE REQUEST (web_search DISABLED) ==========')
-  console.log('sessionId:', sessionId)
-  console.log('  system prompt chars:    ', systemChars)
-  console.log('  category prompt chars:  ', categoryChars)
-  console.log('  subject details chars:  ', subjectChars)
-  console.log('  TOTAL chars:            ', totalChars)
-  console.log('  approx input tokens:    ', approxTokens)
-  console.log('=============================================================\n')
 
   const anthropic = getAnthropicClient()
   const encoder = new TextEncoder()
@@ -108,8 +103,6 @@ Media Partner Country: ${session.media_partner_country}`
   const stream = new ReadableStream({
     async start(controller) {
       let fullText = ''
-      let seenToolUse = false
-      let webSearchCount = 0
 
       try {
         const claudeStream = anthropic.messages.stream({
@@ -117,24 +110,9 @@ Media Partner Country: ${session.media_partner_country}`
           max_tokens: 8192,
           system: systemBlocks,
           messages: [{ role: 'user', content: userContentBlocks }],
-          // tools: [WEB_SEARCH_TOOL],  // disabled for baseline cost test
         })
 
         for await (const event of claudeStream) {
-          if (event.type === 'content_block_start') {
-            if (event.content_block.type === 'tool_use') {
-              seenToolUse = true
-              if (event.content_block.name === 'web_search') webSearchCount += 1
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ status: 'web_search_start' })}\n\n`)
-              )
-            } else if (event.content_block.type === 'text' && seenToolUse) {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ status: 'generating' })}\n\n`)
-              )
-            }
-          }
-
           if (
             event.type === 'content_block_delta' &&
             event.delta.type === 'text_delta'
@@ -147,36 +125,28 @@ Media Partner Country: ${session.media_partner_country}`
         }
 
         const finalMsg = await claudeStream.finalMessage()
-        // Prefer the server-reported web_search count when available; fall back to the
-        // count we tallied from stream events.
-        const reportedSearches =
-          (finalMsg.usage as { server_tool_use?: { web_search_requests?: number } })
-            .server_tool_use?.web_search_requests
-        const searches = reportedSearches ?? webSearchCount
-
-        const usage = parseUsage(finalMsg.usage, searches)
+        const usage = parseUsage(finalMsg.usage, 0)
         const promptTokens = totalPromptTokens(usage)
         const totalTokens = promptTokens + usage.outputTokens
         const cost = calculateCost(usage)
 
-        console.log('\n========== CLAUDE USAGE (web_search DISABLED) ==========')
-        console.log('  raw usage from Anthropic:', JSON.stringify(finalMsg.usage, null, 2))
-        console.log('  parsed input tokens:    ', promptTokens)
-        console.log('  output tokens:          ', usage.outputTokens)
-        console.log('  TOTAL tokens:           ', totalTokens)
-        console.log('  web searches:           ', searches)
-        console.log('  cost USD:               ', cost)
-        console.log('========================================================\n')
+        // Accumulate token + cost usage onto the same session row so the
+        // research view, history view, and analytics reflect the combined
+        // research + questions spend without extra columns.
+        const { data: current } = await supabaseAdmin
+          .from('research_sessions')
+          .select('tokens_input, tokens_output, tokens_total, cost_usd')
+          .eq('id', session!.id)
+          .single()
 
         await supabaseAdmin
           .from('research_sessions')
           .update({
-            initial_output: fullText,
-            tokens_input: promptTokens,
-            tokens_output: usage.outputTokens,
-            tokens_total: totalTokens,
-            web_searches: searches,
-            cost_usd: cost,
+            questions_output: fullText,
+            tokens_input:  (current?.tokens_input  ?? 0) + promptTokens,
+            tokens_output: (current?.tokens_output ?? 0) + usage.outputTokens,
+            tokens_total:  (current?.tokens_total  ?? 0) + totalTokens,
+            cost_usd:      Number(current?.cost_usd ?? 0) + cost,
           })
           .eq('id', session!.id)
 
@@ -187,9 +157,9 @@ Media Partner Country: ${session.media_partner_country}`
 
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
       } catch (err) {
-        console.error('Claude stream error:', err)
+        console.error('Claude (questions) stream error:', err)
         controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ error: 'Generation failed' })}\n\n`)
+          encoder.encode(`data: ${JSON.stringify({ error: 'Question generation failed' })}\n\n`)
         )
       } finally {
         controller.close()
