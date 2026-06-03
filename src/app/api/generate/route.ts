@@ -5,9 +5,13 @@ import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
+// Cap searches per generation. Each search costs $0.01 + the result tokens
+// it injects into context. 5 is a sane upper bound for an editorial research
+// run — Claude self-throttles below this for most subjects.
 const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
   type: 'web_search_20250305',
   name: 'web_search',
+  max_uses: 5,
 }
 
 export async function POST(request: NextRequest) {
@@ -72,6 +76,9 @@ Media Partner Country: ${session.media_partner_country}`
     ? [{ type: 'text' as const, text: systemPrompt, cache_control: CACHE_1H }]
     : undefined
 
+  const SEARCH_GUIDANCE = `--- WEB SEARCH GUIDANCE ---
+You have access to a web_search tool. Use it sparingly — only when freshness genuinely matters (current role, recent news in the last 12 months, very recent financial figures, ongoing events). Do not search for background information you already know with high confidence. Plan a small number of targeted queries (ideally 2–3, never more than 5) rather than many narrow ones.`
+
   const userContentBlocks = [
     {
       type: 'text' as const,
@@ -81,26 +88,10 @@ Media Partner Country: ${session.media_partner_country}`
     {
       type: 'text' as const,
       text: extra
-        ? `\n\n${subjectDetails}\n\n--- ADDITIONAL CONTEXT FROM USER ---\n${extra}`
-        : `\n\n${subjectDetails}`,
+        ? `\n\n${subjectDetails}\n\n--- ADDITIONAL CONTEXT FROM USER ---\n${extra}\n\n${SEARCH_GUIDANCE}`
+        : `\n\n${subjectDetails}\n\n${SEARCH_GUIDANCE}`,
     },
   ]
-
-  // ===== DEBUG: log payload + run WITHOUT web_search to see baseline cost =====
-  const systemChars = systemPrompt.length
-  const categoryChars = categoryPrompt.length
-  const subjectChars = subjectDetails.length
-  const totalChars = systemChars + categoryChars + subjectChars
-  const approxTokens = Math.ceil(totalChars / 4)
-
-  console.log('\n========== GENERATE REQUEST (web_search DISABLED) ==========')
-  console.log('sessionId:', sessionId)
-  console.log('  system prompt chars:    ', systemChars)
-  console.log('  category prompt chars:  ', categoryChars)
-  console.log('  subject details chars:  ', subjectChars)
-  console.log('  TOTAL chars:            ', totalChars)
-  console.log('  approx input tokens:    ', approxTokens)
-  console.log('=============================================================\n')
 
   const anthropic = getAnthropicClient()
   const encoder = new TextEncoder()
@@ -117,7 +108,7 @@ Media Partner Country: ${session.media_partner_country}`
           max_tokens: 8192,
           system: systemBlocks,
           messages: [{ role: 'user', content: userContentBlocks }],
-          // tools: [WEB_SEARCH_TOOL],  // disabled for baseline cost test
+          tools: [WEB_SEARCH_TOOL],
         })
 
         for await (const event of claudeStream) {
@@ -158,15 +149,6 @@ Media Partner Country: ${session.media_partner_country}`
         const promptTokens = totalPromptTokens(usage)
         const totalTokens = promptTokens + usage.outputTokens
         const cost = calculateCost(usage)
-
-        console.log('\n========== CLAUDE USAGE (web_search DISABLED) ==========')
-        console.log('  raw usage from Anthropic:', JSON.stringify(finalMsg.usage, null, 2))
-        console.log('  parsed input tokens:    ', promptTokens)
-        console.log('  output tokens:          ', usage.outputTokens)
-        console.log('  TOTAL tokens:           ', totalTokens)
-        console.log('  web searches:           ', searches)
-        console.log('  cost USD:               ', cost)
-        console.log('========================================================\n')
 
         await supabaseAdmin
           .from('research_sessions')
