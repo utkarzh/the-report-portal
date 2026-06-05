@@ -5,13 +5,13 @@ import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
-// Cap searches per generation. Each search costs $0.01 + the result tokens
-// it injects into context. 5 is a sane upper bound for an editorial research
-// run — Claude self-throttles below this for most subjects.
+// No cap — editorial team prioritises data freshness over cost. Claude will
+// search as many times as it deems necessary to verify all current facts.
+// Expect 8–15 searches per generation with corresponding token usage.
 const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
   type: 'web_search_20250305',
   name: 'web_search',
-  max_uses: 5,
+  max_uses: 20,
 }
 
 export async function POST(request: NextRequest) {
@@ -72,12 +72,43 @@ Media Partner Country: ${session.media_partner_country}`
   // text changes → new cache key → old entry expires unused).
   const CACHE_1H = { type: 'ephemeral' as const, ttl: '1h' as const }
 
-  const systemBlocks = systemPrompt
-    ? [{ type: 'text' as const, text: systemPrompt, cache_control: CACHE_1H }]
-    : undefined
+  // System-level search policy. Editorial team requires the absolute freshest
+  // data — search aggressively, no per-request cap on number of queries.
+  const SEARCH_POLICY = `--- WEB SEARCH POLICY (MANDATORY, EXHAUSTIVE) ---
+Your training data is OUT OF DATE. The editorial team requires the ABSOLUTE LATEST (2025–2026) information. You MUST use the web_search tool EXTENSIVELY before writing the research. Stale data is a critical failure.
 
-  const SEARCH_GUIDANCE = `--- WEB SEARCH GUIDANCE ---
-You have access to a web_search tool. Use it sparingly — only when freshness genuinely matters (current role, recent news in the last 12 months, very recent financial figures, ongoing events). Do not search for background information you already know with high confidence. Plan a small number of targeted queries (ideally 2–3, never more than 5) rather than many narrow ones.`
+REQUIRED RESEARCH COVERAGE — search for ALL of the following before writing:
+1. Current role, title, and organization (verify, do NOT assume from training data)
+2. All appointments, departures, promotions, board changes in the last 18 months
+3. Latest quarterly/annual financials, revenue, profit, market cap, share price moves
+4. M&A activity, deals, trades, partnerships, joint ventures, funding rounds (2025–2026)
+5. Recent news, press releases, announcements (last 12 months)
+6. Regulatory actions, lawsuits, investigations, controversies (active and recent)
+7. Product launches, strategic initiatives, market expansions (2025–2026)
+8. Public statements, interviews, speeches by the subject (last 12 months)
+9. Industry context — competitors' recent moves, market trends affecting the subject
+10. Country-focus context — relevant political, economic, regulatory shifts in the country
+
+SEARCH STRATEGY — be thorough, not conservative:
+- Use as many searches as needed. Run separate, targeted queries for each topic above.
+- After initial searches, run FOLLOW-UP searches to verify, cross-check, and fill gaps.
+- If a search returns weak results, REPHRASE and search again.
+- Prefer authoritative sources (Reuters, FT, Bloomberg, WSJ, official company filings, government sites) but do not exclude others if they have unique recent info.
+- Do NOT stop searching until you have current, verified data for every section of the research template.
+
+OUTPUT RULES:
+- Cite source URLs for EVERY factual claim about the subject
+- Every post-2024 claim MUST be backed by a web_search result, not training data
+- If something cannot be verified after multiple searches, write N/A — never fall back to old training-data assumptions
+- Training data is acceptable ONLY for pre-2024 historical/biographical background
+- Note publication dates of cited sources where available — prefer the most recent`
+
+  const systemBlocks = [
+    { type: 'text' as const, text: SEARCH_POLICY },
+    ...(systemPrompt
+      ? [{ type: 'text' as const, text: systemPrompt, cache_control: CACHE_1H }]
+      : []),
+  ]
 
   const userContentBlocks = [
     {
@@ -88,8 +119,8 @@ You have access to a web_search tool. Use it sparingly — only when freshness g
     {
       type: 'text' as const,
       text: extra
-        ? `\n\n${subjectDetails}\n\n--- ADDITIONAL CONTEXT FROM USER ---\n${extra}\n\n${SEARCH_GUIDANCE}`
-        : `\n\n${subjectDetails}\n\n${SEARCH_GUIDANCE}`,
+        ? `\n\n${subjectDetails}\n\n--- ADDITIONAL CONTEXT FROM USER ---\n${extra}`
+        : `\n\n${subjectDetails}`,
     },
   ]
 
