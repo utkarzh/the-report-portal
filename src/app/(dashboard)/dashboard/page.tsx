@@ -15,7 +15,7 @@ export default function DashboardPage() {
           Welcome back{profile.full_name ? `, ${profile.full_name}` : ''}
         </h1>
         <p className="text-sm text-gray-500 mb-8">
-          Generate structured research and interview questions using Claude AI.
+          Generate structured research and interview questions using AI.
         </p>
 
         <Link

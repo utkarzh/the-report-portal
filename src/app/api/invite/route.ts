@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getBaseUrl } from '@/lib/url'
 
 // GET /api/invite?token=xxx — public, used by invite page
 export async function GET(request: NextRequest) {
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { email, role, tokenLimit } = body
+  const { email, role, tokenLimit, fullName } = body
 
   if (!email || !role) {
     return NextResponse.json({ error: 'email and role are required' }, { status: 400 })
@@ -67,16 +68,43 @@ export async function POST(request: NextRequest) {
     .insert({
       email,
       role,
-      token_limit: tokenLimit || 100000,
+      // Admins are never token-limited — store NULL ("no limit"). Normal users
+      // fall back to the 2M default when no limit is supplied.
+      token_limit: role === 'admin' ? null : (tokenLimit || 2000000),
       invited_by: user.id,
     })
-    .select('token')
+    .select('id, token')
     .single()
 
   if (insertError || !invite) {
     return NextResponse.json({ error: 'Failed to create invitation' }, { status: 500 })
   }
 
-  const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${invite.token}`
-  return NextResponse.json({ inviteUrl }, { status: 201 })
+  // Admins set a password, so they go through the invite-link → signup flow.
+  if (role === 'admin') {
+    const inviteUrl = `${getBaseUrl(request)}/invite/${invite.token}`
+    return NextResponse.json({ method: 'invite', inviteUrl }, { status: 201 })
+  }
+
+  // Normal users never sign up or set a password — they log in with a one-time
+  // code. Create their (passwordless) account now; the handle_new_user trigger
+  // reads this pending invitation to set the role + token limit and marks it
+  // accepted. email_confirm lets them sign in immediately.
+  const { error: createError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    email_confirm: true,
+    user_metadata: { full_name: (fullName || '').trim() },
+  })
+
+  if (createError) {
+    // Roll back the invitation so a failed create doesn't leave a dangling row.
+    await supabaseAdmin.from('invitations').delete().eq('id', invite.id)
+    const exists = /already|registered|exists/i.test(createError.message)
+    return NextResponse.json(
+      { error: exists ? 'An account with this email already exists.' : 'Failed to create the user account.' },
+      { status: exists ? 409 : 500 },
+    )
+  }
+
+  return NextResponse.json({ method: 'created', email }, { status: 201 })
 }

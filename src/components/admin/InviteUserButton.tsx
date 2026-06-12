@@ -15,7 +15,7 @@ export default function InviteUserButton() {
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
         </svg>
-        Invite User
+        Add User
       </button>
 
       <InviteUserModal open={open} onClose={() => setOpen(false)} />

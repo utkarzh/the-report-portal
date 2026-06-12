@@ -1,6 +1,17 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Normal users are automatically signed out 10 days after they last signed in.
+// Admins have no session-age limit. `last_sign_in_at` is set by Supabase at
+// sign-in and is NOT touched by refresh-token rotation, so it reflects the
+// actual login time, not the last request.
+const USER_SESSION_MAX_AGE_MS = 10 * 24 * 60 * 60 * 1000 // 10 days
+
+function isSessionExpiredForUser(role: string, lastSignInAt: string | null | undefined) {
+  if (role === 'admin' || !lastSignInAt) return false
+  return Date.now() - new Date(lastSignInAt).getTime() > USER_SESSION_MAX_AGE_MS
+}
+
 // Deletes all Supabase session cookies on the redirect response so the browser
 // doesn't re-send them on the next request (which would restart the loop).
 function clearAuthCookies(response: NextResponse, request: NextRequest) {
@@ -47,7 +58,7 @@ export async function middleware(request: NextRequest) {
     // If inactive, clear cookies right here so we don't loop through /dashboard.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('status')
+      .select('status, role')
       .eq('id', user.id)
       .single()
 
@@ -55,6 +66,15 @@ export async function middleware(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       url.search = pathname === '/login' ? request.nextUrl.search : '?error=account_deactivated'
+      const redirect = NextResponse.redirect(url)
+      clearAuthCookies(redirect, request)
+      return redirect
+    }
+
+    if (isSessionExpiredForUser(profile.role, user.last_sign_in_at)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.search = '?error=session_expired'
       const redirect = NextResponse.redirect(url)
       clearAuthCookies(redirect, request)
       return redirect
@@ -90,6 +110,15 @@ export async function middleware(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       url.search = '?error=account_deactivated'
+      const redirect = NextResponse.redirect(url)
+      clearAuthCookies(redirect, request)
+      return redirect
+    }
+
+    if (isSessionExpiredForUser(profile.role, user.last_sign_in_at)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.search = '?error=session_expired'
       const redirect = NextResponse.redirect(url)
       clearAuthCookies(redirect, request)
       return redirect

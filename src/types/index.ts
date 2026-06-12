@@ -8,7 +8,7 @@ export interface Profile {
   full_name: string | null
   role: UserRole
   status: UserStatus
-  token_limit: number
+  token_limit: number | null // null = no limit (admins)
   tokens_used: number
   created_at: string
   updated_at: string
@@ -18,7 +18,7 @@ export interface Invitation {
   id: string
   email: string
   role: UserRole
-  token_limit: number
+  token_limit: number | null // null = no limit (admins)
   token: string
   status: InviteStatus
   invited_by: string | null

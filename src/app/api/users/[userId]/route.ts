@@ -43,8 +43,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const updates: Record<string, unknown> = {}
     if (fullName !== undefined) updates.full_name = fullName
     if (role !== undefined) updates.role = role
-    if (tokenLimit !== undefined) updates.token_limit = tokenLimit
     if (status !== undefined) updates.status = status
+    // Admins are never token-limited (NULL = no limit). For normal users, apply
+    // the supplied limit. A bare tokenLimit with no role change updates the limit.
+    if (role === 'admin') {
+      updates.token_limit = null
+    } else if (tokenLimit !== undefined && !Number.isNaN(tokenLimit)) {
+      updates.token_limit = tokenLimit
+    }
 
     const { error } = await supabaseAdmin
       .from('profiles')

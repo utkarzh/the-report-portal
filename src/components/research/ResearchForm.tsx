@@ -145,7 +145,7 @@ export default function ResearchForm({ categories, isAtLimit }: ResearchFormProp
       <Textarea
         label="Additional Context"
         hint="optional"
-        placeholder="Anything specific Claude should focus on for this research run? Not saved."
+        placeholder="Anything specific the AI should focus on for this research run? Not saved."
         value={additionalPrompt}
         onChange={(e) => setAdditionalPrompt(e.target.value)}
         rows={3}

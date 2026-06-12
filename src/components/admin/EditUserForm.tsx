@@ -17,7 +17,7 @@ export default function EditUserForm({ user, isSelf }: Props) {
   const [form, setForm] = useState({
     fullName: user.full_name || '',
     role: user.role,
-    tokenLimit: String(user.token_limit),
+    tokenLimit: user.token_limit != null ? String(user.token_limit) : '2000000',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +36,8 @@ export default function EditUserForm({ user, isSelf }: Props) {
         fullName: form.fullName,
         // Don't send role when editing self — API blocks any role change on own account
         ...(!isSelf && { role: form.role }),
-        tokenLimit: parseInt(form.tokenLimit),
+        // Admins have no token limit; only send one for normal users.
+        ...(form.role !== 'admin' && { tokenLimit: parseInt(form.tokenLimit) }),
       }),
     })
 
@@ -90,14 +91,25 @@ export default function EditUserForm({ user, isSelf }: Props) {
         <p className="text-[10px] text-gray-400 -mt-3">You cannot change your own role.</p>
       )}
 
-      <Input
-        label="Token Limit *"
-        type="number"
-        value={form.tokenLimit}
-        onChange={(e) => setForm(p => ({ ...p, tokenLimit: e.target.value }))}
-        min="1000"
-        required
-      />
+      {form.role === 'admin' ? (
+        <div>
+          <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1.5">
+            Token Limit
+          </label>
+          <p className="text-xs text-gray-500 bg-gray-50 border border-[#e5e3df] px-3 py-2.5">
+            Admins have no token limit.
+          </p>
+        </div>
+      ) : (
+        <Input
+          label="Token Limit *"
+          type="number"
+          value={form.tokenLimit}
+          onChange={(e) => setForm(p => ({ ...p, tokenLimit: e.target.value }))}
+          min="1000"
+          required
+        />
+      )}
 
       <div className="pt-2">
         <Button type="submit" loading={loading} arrow>

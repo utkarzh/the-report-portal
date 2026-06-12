@@ -104,13 +104,13 @@ export default async function AnalyticsPage() {
           <StatCard
             label="Input Tokens"
             value={formatTokens(totals.inputTokens)}
-            sub="sent to Claude"
+            sub="sent to the AI"
             icon={ArrowUpRight}
           />
           <StatCard
             label="Output Tokens"
             value={formatTokens(totals.outputTokens)}
-            sub="received from Claude"
+            sub="received from the AI"
             icon={ArrowDownLeft}
           />
           <StatCard

@@ -68,6 +68,8 @@ export default function CategoryForm({ category }: Props) {
         router.refresh()
       } else {
         router.push('/admin/categories')
+        // Invalidate the cached list so the new category appears right away.
+        router.refresh()
       }
     }
     setLoading(false)
@@ -111,7 +113,7 @@ export default function CategoryForm({ category }: Props) {
         <div className="p-5 sm:p-6">
           <Textarea
             label="Category Prompt *"
-            placeholder="Enter the detailed prompt for this category. This can be several pages long and defines how Claude generates research for this type of interviewee."
+            placeholder="Enter the detailed prompt for this category. This can be several pages long and defines how the AI generates research for this type of interviewee."
             value={form.promptText}
             onChange={(e) => setForm(p => ({ ...p, promptText: e.target.value }))}
             rows={24}

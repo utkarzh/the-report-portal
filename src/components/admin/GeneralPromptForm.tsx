@@ -60,7 +60,7 @@ export default function GeneralPromptForm({ initialPrompt }: { initialPrompt: st
         <div className="p-5 sm:p-6">
           <Textarea
             label="General Prompt"
-            placeholder="Define the overall tone, structure and editorial style Claude should follow for all research..."
+            placeholder="Define the overall tone, structure and editorial style the AI should follow for all research..."
             value={promptText}
             onChange={(e) => setPromptText(e.target.value)}
             rows={24}

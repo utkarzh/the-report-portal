@@ -85,19 +85,23 @@ export default async function UsersPage({ searchParams }: { searchParams: Search
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-black rounded-full"
-                          style={{
-                            width: `${Math.min((user.tokens_used / user.token_limit) * 100, 100)}%`,
-                          }}
-                        />
+                    {user.token_limit == null ? (
+                      <span className="text-gray-400">No limit</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-black rounded-full"
+                            style={{
+                              width: `${Math.min((user.tokens_used / user.token_limit) * 100, 100)}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="text-gray-500">
+                          {formatTokens(user.tokens_used)}/{formatTokens(user.token_limit)}
+                        </span>
                       </div>
-                      <span className="text-gray-500">
-                        {formatTokens(user.tokens_used)}/{formatTokens(user.token_limit)}
-                      </span>
-                    </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={user.status === 'active' ? 'active' : 'inactive'}>

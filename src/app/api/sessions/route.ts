@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { GENERATION_TOKEN_RESERVE } from '@/lib/claude/tokens'
 
 // POST /api/sessions — creates the research session record and returns its ID.
 // Does NOT call Claude. The client navigates to the session page, which then
@@ -20,8 +21,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Account inactive' }, { status: 403 })
   }
 
-  if (profile.role === 'user' && profile.tokens_used >= profile.token_limit) {
-    return NextResponse.json({ error: 'Token limit reached' }, { status: 402 })
+  // Headroom gate: block unless enough budget remains to cover a typical run,
+  // so a near-limit user can't start a generation that blows far past the cap.
+  if (
+    profile.role === 'user' &&
+    profile.token_limit - profile.tokens_used < GENERATION_TOKEN_RESERVE
+  ) {
+    return NextResponse.json(
+      { error: 'Not enough token budget remaining for another generation' },
+      { status: 402 },
+    )
   }
 
   const body = await request.json()

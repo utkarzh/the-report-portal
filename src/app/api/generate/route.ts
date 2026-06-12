@@ -2,16 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
+import { calculateCost, parseUsage, totalPromptTokens, GENERATION_TOKEN_RESERVE } from '@/lib/claude/tokens'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
-// No cap — editorial team prioritises data freshness over cost. Claude will
-// search as many times as it deems necessary to verify all current facts.
-// Expect 8–15 searches per generation with corresponding token usage.
+// Capped to keep per-generation token usage in check. Each web search injects
+// its full result set back into the context window, so every extra search adds
+// thousands of input tokens. 7 targeted searches keep coverage high while
+// roughly halving the token blow-out we saw with an uncapped (~10–15 search) run.
+const MAX_WEB_SEARCHES = 7
 const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
   type: 'web_search_20250305',
   name: 'web_search',
-  max_uses: 20,
+  max_uses: MAX_WEB_SEARCHES,
 }
 
 export async function POST(request: NextRequest) {
@@ -29,8 +31,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Account inactive' }, { status: 403 })
   }
 
-  if (profile.role === 'user' && profile.tokens_used >= profile.token_limit) {
-    return NextResponse.json({ error: 'Token limit reached' }, { status: 402 })
+  if (
+    profile.role === 'user' &&
+    profile.token_limit - profile.tokens_used < GENERATION_TOKEN_RESERVE
+  ) {
+    return NextResponse.json(
+      { error: 'Not enough token budget remaining for another generation' },
+      { status: 402 },
+    )
   }
 
   const body = await request.json()
@@ -73,35 +81,38 @@ Media Partner Country: ${session.media_partner_country}`
   const CACHE_1H = { type: 'ephemeral' as const, ttl: '1h' as const }
 
   // System-level search policy. Editorial team requires the absolute freshest
-  // data — search aggressively, no per-request cap on number of queries.
-  const SEARCH_POLICY = `--- WEB SEARCH POLICY (MANDATORY, EXHAUSTIVE) ---
-Your training data is OUT OF DATE. The editorial team requires the ABSOLUTE LATEST (2025–2026) information. You MUST use the web_search tool EXTENSIVELY before writing the research. Stale data is a critical failure.
+  // data, but searches are capped (see MAX_WEB_SEARCHES) to control token cost —
+  // so each query must be high-yield. Today's date is injected so the model
+  // anchors on the real current year instead of its training cut-off.
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const lastYear = currentYear - 1
+  const todayStr = now.toISOString().slice(0, 10)
+  const SEARCH_POLICY = `--- WEB SEARCH POLICY (MANDATORY) ---
+TODAY'S DATE IS ${todayStr}. The current year is ${currentYear}. Your training data is OUT OF DATE and you must assume anything you "remember" may have changed.
 
-REQUIRED RESEARCH COVERAGE — search for ALL of the following before writing:
-1. Current role, title, and organization (verify, do NOT assume from training data)
-2. All appointments, departures, promotions, board changes in the last 18 months
-3. Latest quarterly/annual financials, revenue, profit, market cap, share price moves
-4. M&A activity, deals, trades, partnerships, joint ventures, funding rounds (2025–2026)
-5. Recent news, press releases, announcements (last 12 months)
-6. Regulatory actions, lawsuits, investigations, controversies (active and recent)
-7. Product launches, strategic initiatives, market expansions (2025–2026)
-8. Public statements, interviews, speeches by the subject (last 12 months)
-9. Industry context — competitors' recent moves, market trends affecting the subject
-10. Country-focus context — relevant political, economic, regulatory shifts in the country
+RECENCY IS THE #1 PRIORITY. The editorial team needs ${currentYear} information. Data from 2024 or earlier is STALE and is a critical failure unless it is clearly historical/biographical background. Treat any unverified fact older than ${lastYear} as suspect and re-verify it with a fresh search.
 
-SEARCH STRATEGY — be thorough, not conservative:
-- Use as many searches as needed. Run separate, targeted queries for each topic above.
-- After initial searches, run FOLLOW-UP searches to verify, cross-check, and fill gaps.
-- If a search returns weak results, REPHRASE and search again.
-- Prefer authoritative sources (Reuters, FT, Bloomberg, WSJ, official company filings, government sites) but do not exclude others if they have unique recent info.
-- Do NOT stop searching until you have current, verified data for every section of the research template.
+SEARCH QUERY RULES:
+- Append a recency qualifier to EVERY query — e.g. "${currentYear}", "latest", "this year", or an explicit month/year. Never run an undated query for current facts.
+- When results look old, add "${currentYear}" (and if needed "${lastYear}") and search again. Discard sources that only describe pre-${lastYear} states unless used as labelled background.
+- Always check the publication date of a source before trusting it. Prefer the most recent. Reject ${currentYear === 2026 ? '2023/2024' : 'older'} articles as the basis for "current" claims.
+
+You have a budget of ${MAX_WEB_SEARCHES} web searches — spend them well. Prioritise, in order:
+1. Current role, title, and organization RIGHT NOW (${currentYear}) — verify, never assume
+2. Appointments, departures, promotions, board changes in the last 12 months
+3. Latest financials / results and any ${currentYear} M&A, deals, partnerships, funding
+4. Recent news, regulatory actions, lawsuits, controversies (last 12 months)
+5. Public statements, interviews, strategic initiatives by the subject (${lastYear}–${currentYear})
+6. Country-focus context — relevant ${currentYear} political/economic/regulatory shifts
+
+Batch related needs into a single well-targeted query rather than many narrow ones, since the search budget is limited. Re-run a query only when freshness or accuracy genuinely demands it.
 
 OUTPUT RULES:
-- Cite source URLs for EVERY factual claim about the subject
-- Every post-2024 claim MUST be backed by a web_search result, not training data
-- If something cannot be verified after multiple searches, write N/A — never fall back to old training-data assumptions
-- Training data is acceptable ONLY for pre-2024 historical/biographical background
-- Note publication dates of cited sources where available — prefer the most recent`
+- Cite source URLs for EVERY factual claim about the subject, with the publication date where available
+- Every claim about the subject's CURRENT situation must be backed by a ${lastYear}–${currentYear} web_search result, not training data
+- If something cannot be verified, write N/A — never fall back to old training-data assumptions
+- Training data is acceptable ONLY for clearly-labelled pre-${lastYear} historical/biographical background`
 
   const systemBlocks = [
     { type: 'text' as const, text: SEARCH_POLICY },
@@ -132,6 +143,19 @@ OUTPUT RULES:
       let fullText = ''
       let seenToolUse = false
       let webSearchCount = 0
+      // Once the client navigates away the controller is closed and enqueue()
+      // throws. We must NOT let that abort the run — the generation has to
+      // finish and persist regardless, otherwise the work is lost forever.
+      let clientConnected = true
+      const sendRaw = (data: string) => {
+        if (!clientConnected) return
+        try {
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+        } catch {
+          clientConnected = false
+        }
+      }
+      const send = (payload: unknown) => sendRaw(JSON.stringify(payload))
 
       try {
         const claudeStream = anthropic.messages.stream({
@@ -147,13 +171,9 @@ OUTPUT RULES:
             if (event.content_block.type === 'tool_use') {
               seenToolUse = true
               if (event.content_block.name === 'web_search') webSearchCount += 1
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ status: 'web_search_start' })}\n\n`)
-              )
+              send({ status: 'web_search_start' })
             } else if (event.content_block.type === 'text' && seenToolUse) {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ status: 'generating' })}\n\n`)
-              )
+              send({ status: 'generating' })
             }
           }
 
@@ -162,9 +182,7 @@ OUTPUT RULES:
             event.delta.type === 'text_delta'
           ) {
             fullText += event.delta.text
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`)
-            )
+            send({ text: event.delta.text })
           }
         }
 
@@ -181,6 +199,8 @@ OUTPUT RULES:
         const totalTokens = promptTokens + usage.outputTokens
         const cost = calculateCost(usage)
 
+        // Persist FIRST — this is the part that must never be skipped, even if
+        // the client is gone. The SSE events below are best-effort.
         await supabaseAdmin
           .from('research_sessions')
           .update({
@@ -198,14 +218,22 @@ OUTPUT RULES:
           p_tokens: totalTokens,
         })
 
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        // Push the final usage so the live sidebar can update without a reload.
+        send({
+          usage: {
+            tokens_total: totalTokens,
+            web_searches: searches,
+            cost_usd: cost,
+          },
+        })
+        sendRaw('[DONE]')
       } catch (err) {
         console.error('Claude stream error:', err)
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ error: 'Generation failed' })}\n\n`)
-        )
+        send({ error: 'Generation failed' })
       } finally {
-        controller.close()
+        try {
+          controller.close()
+        } catch {}
       }
     },
   })

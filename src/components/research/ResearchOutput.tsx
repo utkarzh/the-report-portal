@@ -26,6 +26,15 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
   const hasStartedRef = useRef(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Live usage — seeded from the server snapshot, then updated in place as each
+  // stream (research + questions) reports its final totals, so the sidebar
+  // reflects combined spend without a page reload.
+  const [usage, setUsage] = useState({
+    tokens_total: session.tokens_total || 0,
+    web_searches: session.web_searches || 0,
+    cost_usd: Number(session.cost_usd) || 0,
+  })
+
   // Questions state
   const [questions, setQuestions] = useState<string>(session.questions_output || '')
   const [questionsStreaming, setQuestionsStreaming] = useState(false)
@@ -99,6 +108,8 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
               setStreamStatus('searching')
             } else if (parsed.status === 'generating') {
               setStreamStatus('generating')
+            } else if (parsed.usage) {
+              setUsage(parsed.usage)
             } else if (parsed.text) {
               accumulated += parsed.text
               setOutput(accumulated)
@@ -159,7 +170,9 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
               setQuestionsStreaming(false)
               return
             }
-            if (parsed.text) {
+            if (parsed.usage) {
+              setUsage(parsed.usage)
+            } else if (parsed.text) {
               accumulated += parsed.text
               setQuestions(accumulated)
             }
@@ -201,16 +214,16 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
             <InfoRow label="Partner Country" value={session.media_partner_country} />
           </div>
 
-          {session.tokens_total > 0 && (
+          {usage.tokens_total > 0 && (
             <div className="mt-5 pt-4 border-t border-[#e5e3df]">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">
                 Usage
               </p>
-              <p className="text-xs text-gray-500">{formatTokens(session.tokens_total)} tokens</p>
-              {session.web_searches > 0 && (
-                <p className="text-xs text-gray-500">{session.web_searches} web search{session.web_searches === 1 ? '' : 'es'}</p>
+              <p className="text-xs text-gray-500">{formatTokens(usage.tokens_total)} tokens</p>
+              {usage.web_searches > 0 && (
+                <p className="text-xs text-gray-500">{usage.web_searches} web search{usage.web_searches === 1 ? '' : 'es'}</p>
               )}
-              <p className="text-xs text-gray-400">${Number(session.cost_usd).toFixed(4)}</p>
+              <p className="text-xs text-gray-400">${usage.cost_usd.toFixed(4)}</p>
             </div>
           )}
         </div>
@@ -238,7 +251,7 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
                 ? 'Drafting interview questions…'
                 : streamStatus === 'searching'
                   ? 'Searching the web for latest information…'
-                  : 'Claude is generating…'}
+                  : 'Generating…'}
             </span>
           </div>
         )}
@@ -248,7 +261,7 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
 
             {!output && !isProcessing && (
               <div className="flex flex-col items-center py-20 gap-4">
-                <ClaudeAvatar size="lg" />
+                <AssistantAvatar size="lg" />
                 <p className="text-sm text-gray-500">
                   Ready to research <span className="font-medium text-gray-800">{session.full_name}</span>
                 </p>
@@ -263,7 +276,7 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
 
             {(output || isProcessing) && (
               <div className="flex gap-4 items-start">
-                <ClaudeAvatar />
+                <AssistantAvatar />
                 <div className="flex-1 min-w-0 pt-0.5">
                   {output ? (
                     <>
@@ -315,7 +328,7 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
               <div className="mt-10 pt-8 border-t border-[#e5e3df]">
                 {hasQuestions ? (
                   <div className="flex gap-4 items-start">
-                    <ClaudeAvatar />
+                    <AssistantAvatar />
                     <div className="flex-1 min-w-0 pt-0.5">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
@@ -334,7 +347,7 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
                   </div>
                 ) : questionsStreaming ? (
                   <div className="flex gap-4 items-start">
-                    <ClaudeAvatar />
+                    <AssistantAvatar />
                     <div className="flex items-center gap-2 text-sm text-gray-400 pt-1.5">
                       <span>Drafting questions…</span>
                       <span className="cursor-blink select-none">▋</span>
@@ -418,13 +431,13 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
   )
 }
 
-function ClaudeAvatar({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
+function AssistantAvatar({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
   const cls = size === 'lg'
-    ? 'w-10 h-10 text-sm'
-    : 'w-7 h-7 text-xs'
+    ? 'w-10 h-10 text-xs'
+    : 'w-7 h-7 text-[10px]'
   return (
     <div className={`${cls} rounded-full bg-[#c8973f] flex-shrink-0 flex items-center justify-center text-white font-semibold`}>
-      C
+      AI
     </div>
   )
 }

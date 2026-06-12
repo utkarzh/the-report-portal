@@ -25,7 +25,12 @@ CREATE TABLE public.profiles (
     full_name   TEXT,
     role        user_role   NOT NULL DEFAULT 'user',
     status      user_status NOT NULL DEFAULT 'active',
-    token_limit INTEGER     NOT NULL DEFAULT 100000,
+    -- A single research run can cost ~150k tokens (research) and ~2x with
+    -- follow-up questions; the default must comfortably exceed one run so the
+    -- headroom gate (GENERATION_TOKEN_RESERVE) leaves room to generate.
+    -- NULL means "no limit" — admins are never token-limited; normal users
+    -- default to 2M.
+    token_limit INTEGER     DEFAULT 2000000,
     tokens_used INTEGER     NOT NULL DEFAULT 0,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -55,7 +60,8 @@ CREATE TABLE public.invitations (
     id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
     email       TEXT        NOT NULL,
     role        user_role   NOT NULL DEFAULT 'user',
-    token_limit INTEGER     NOT NULL DEFAULT 100000,
+    -- NULL means "no limit" (used for admin invites). Normal users default to 2M.
+    token_limit INTEGER     DEFAULT 2000000,
     token       TEXT        NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
     status      invite_status NOT NULL DEFAULT 'pending',
     invited_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -257,7 +263,9 @@ BEGIN
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
         COALESCE(v_invite.role, 'user'),
-        COALESCE(v_invite.token_limit, 100000),
+        -- Admins get no limit (NULL); normal users fall back to the 2M default.
+        CASE WHEN COALESCE(v_invite.role, 'user') = 'admin' THEN NULL
+             ELSE COALESCE(v_invite.token_limit, 2000000) END,
         'active'
     );
 

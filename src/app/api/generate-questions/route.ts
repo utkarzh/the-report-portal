@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
+import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE } from '@/lib/claude/tokens'
 
 export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient()
@@ -19,8 +19,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Account inactive' }, { status: 403 })
   }
 
-  if (profile.role === 'user' && profile.tokens_used >= profile.token_limit) {
-    return NextResponse.json({ error: 'Token limit reached' }, { status: 402 })
+  if (
+    profile.role === 'user' &&
+    profile.token_limit - profile.tokens_used < QUESTIONS_TOKEN_RESERVE
+  ) {
+    return NextResponse.json(
+      { error: 'Not enough token budget remaining to generate questions' },
+      { status: 402 },
+    )
   }
 
   const body = await request.json()
@@ -103,6 +109,18 @@ Media Partner Country: ${session.media_partner_country}`
   const stream = new ReadableStream({
     async start(controller) {
       let fullText = ''
+      // See /api/generate: keep running and persisting even if the client
+      // navigates away mid-stream, otherwise the generated questions are lost.
+      let clientConnected = true
+      const sendRaw = (data: string) => {
+        if (!clientConnected) return
+        try {
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+        } catch {
+          clientConnected = false
+        }
+      }
+      const send = (payload: unknown) => sendRaw(JSON.stringify(payload))
 
       try {
         const claudeStream = anthropic.messages.stream({
@@ -118,9 +136,7 @@ Media Partner Country: ${session.media_partner_country}`
             event.delta.type === 'text_delta'
           ) {
             fullText += event.delta.text
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`)
-            )
+            send({ text: event.delta.text })
           }
         }
 
@@ -135,9 +151,12 @@ Media Partner Country: ${session.media_partner_country}`
         // research + questions spend without extra columns.
         const { data: current } = await supabaseAdmin
           .from('research_sessions')
-          .select('tokens_input, tokens_output, tokens_total, cost_usd')
+          .select('tokens_input, tokens_output, tokens_total, web_searches, cost_usd')
           .eq('id', session!.id)
           .single()
+
+        const newTotalTokens = (current?.tokens_total ?? 0) + totalTokens
+        const newCost = Number(current?.cost_usd ?? 0) + cost
 
         await supabaseAdmin
           .from('research_sessions')
@@ -145,8 +164,8 @@ Media Partner Country: ${session.media_partner_country}`
             questions_output: fullText,
             tokens_input:  (current?.tokens_input  ?? 0) + promptTokens,
             tokens_output: (current?.tokens_output ?? 0) + usage.outputTokens,
-            tokens_total:  (current?.tokens_total  ?? 0) + totalTokens,
-            cost_usd:      Number(current?.cost_usd ?? 0) + cost,
+            tokens_total:  newTotalTokens,
+            cost_usd:      newCost,
           })
           .eq('id', session!.id)
 
@@ -155,14 +174,23 @@ Media Partner Country: ${session.media_partner_country}`
           p_tokens: totalTokens,
         })
 
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        // Push the combined session usage so the live sidebar reflects the
+        // added questions spend without needing a page reload.
+        send({
+          usage: {
+            tokens_total: newTotalTokens,
+            web_searches: current?.web_searches ?? 0,
+            cost_usd: newCost,
+          },
+        })
+        sendRaw('[DONE]')
       } catch (err) {
         console.error('Claude (questions) stream error:', err)
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ error: 'Question generation failed' })}\n\n`)
-        )
+        send({ error: 'Question generation failed' })
       } finally {
-        controller.close()
+        try {
+          controller.close()
+        } catch {}
       }
     },
   })

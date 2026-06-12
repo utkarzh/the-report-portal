@@ -9,6 +9,18 @@ const PRICE_CACHE_READ_PER_MILLION = 0.30     // 0.10x input — cache read (any
 // Source: https://docs.anthropic.com/en/docs/build-with-claude/tool-use/web-search-tool
 export const WEB_SEARCH_PRICE_PER_REQUEST = 0.01  // $10 per 1,000 searches
 
+// Headroom reserve for the pre-flight token-limit gate. A single research run
+// (with up to 7 web searches, each injecting its results back into context)
+// costs roughly this much, and research+questions combined can be ~2x. We block
+// a new generation unless the user has at least this much budget remaining, so
+// they can't slip under the wire at 1 token left and then blow ~150k past it.
+// Tune this if typical generation size changes.
+export const GENERATION_TOKEN_RESERVE = 150_000
+
+// Follow-up question generation does no web search and reuses the (mostly
+// cached) research context, so it costs far less than a full research run.
+export const QUESTIONS_TOKEN_RESERVE = 60_000
+
 export interface UsageBreakdown {
   inputTokens: number                // uncached input (billed at full input price)
   outputTokens: number

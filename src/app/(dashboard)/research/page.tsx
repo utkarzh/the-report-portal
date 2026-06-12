@@ -26,7 +26,7 @@ export default async function ResearchPage() {
         <div className="p-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-1">New Interview</h2>
           <p className="text-xs text-gray-500 mb-6">
-            Fill in the details below. Claude will research the interviewee and generate interview questions.
+            Fill in the details below. The AI will research the interviewee and generate interview questions.
           </p>
 
           {isAtLimit ? (
@@ -57,14 +57,14 @@ export default async function ResearchPage() {
             Interview Research &amp; Questions
           </h2>
           <p className="text-xs text-gray-500 leading-relaxed mb-8">
-            Fill in the interviewee details, click <strong className="font-semibold text-gray-700">Start Research</strong> and Claude
+            Fill in the interviewee details, click <strong className="font-semibold text-gray-700">Start Research</strong> and the AI
             will generate structured background research followed by tailored interview questions.
           </p>
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-0">
             <Step icon={<ClipboardList size={14} />} label="Fill in details" sub="Name, role, category" />
             <ChevronSep />
-            <Step icon={<Sparkles size={14} />} label="Generate" sub="Claude researches & drafts" />
+            <Step icon={<Sparkles size={14} />} label="Generate" sub="AI researches & drafts" />
             <ChevronSep />
             <Step icon={<MessageSquare size={14} />} label="Refine" sub="Chat to perfect questions" />
           </div>

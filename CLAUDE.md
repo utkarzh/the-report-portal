@@ -142,7 +142,27 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 ANTHROPIC_API_KEY=
+
+# SMTP — sends normal-user login codes to the editorial inbox (see Login flow below)
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=                                      # From address (defaults to SMTP_USER)
+OTP_DELIVERY_EMAIL=utkarsh.parihar.435@gmail.com     # inbox that receives login codes
 ```
+
+### Login flow (two paths)
+- **Admins** sign in with email + password.
+- **Normal users** enter their email and click Sign In. The server mints a one-time
+  code and emails it to `OTP_DELIVERY_EMAIL` (editorial@the-report.com) — NOT to the
+  user. A gatekeeper relays the code to the user, who enters it to finish signing in.
+  This is a manual approval gate: users cannot self-serve login.
+
+  Single smart form (`/login`): email → `/api/auth/login-init` detects the role and
+  returns `password` (admin) or `otp` (user). The OTP is a Supabase code from
+  `admin.generateLink({type:'magiclink'})`, emailed via `src/lib/email/smtp.ts`, and
+  verified client-side with `verifyOtp`.
 
 **Database setup:** Run `supabase/migrations/001_schema.sql` in the Supabase SQL editor on a fresh database. That's the single migration file — no migration runner needed.
 
