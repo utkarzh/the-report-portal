@@ -7,6 +7,7 @@ import {
   FileText,
   Headphones,
   Mic,
+  Play,
   Plus,
   Sparkles,
   Upload,
