@@ -19,10 +19,10 @@ export default function DashboardPage() {
         </p>
 
         <Link
-          href="/research"
+          href="/transcriptions"
           className="inline-flex items-center justify-between w-full max-w-sm bg-black text-white px-5 py-3 text-xs font-medium tracking-wider uppercase hover:bg-gray-900 transition-colors mb-8"
         >
-          <span>New Interview</span>
+          <span>Open Transcriptions Demo</span>
           <svg className="w-4 h-4 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
           </svg>

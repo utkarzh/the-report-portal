@@ -6,12 +6,10 @@ import { useState, useEffect } from 'react'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import {
-  PlusSquare,
-  Clock,
+  MessagesSquare,
+  AudioLines,
   Users,
-  Tag,
-  FileText,
-  BarChart2,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -34,15 +32,8 @@ interface NavItem {
 }
 
 const toolNavItems: NavItem[] = [
-  { label: 'New Interview', href: '/research', icon: PlusSquare },
-  { label: 'History', href: '/history', icon: Clock },
-]
-
-const managementNavItems: NavItem[] = [
-  { label: 'Users', href: '/admin/users', icon: Users },
-  { label: 'Categories', href: '/admin/categories', icon: Tag },
-  { label: 'Prompts', href: '/admin/prompts', icon: FileText },
-  { label: 'Analytics', href: '/admin/analytics', icon: BarChart2 },
+  { label: 'Interview Tool', href: '/interview', icon: MessagesSquare },
+  { label: 'Transcriptions', href: '/transcriptions', icon: AudioLines },
 ]
 
 function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: boolean; pathname: string }) {
@@ -130,12 +121,11 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, mobileO
           <>
             <div className="mt-4 pt-4 border-t border-gray-800 mb-2">
               <p className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 ${collapsed ? 'lg:hidden' : ''}`}>
-                Management
+                Admin
               </p>
             </div>
-            {managementNavItems.map((item) => (
-              <NavLink key={item.href} item={item} collapsed={collapsed} pathname={pathname} />
-            ))}
+            <NavLink item={{ label: 'Users', href: '/admin/users', icon: Users }} collapsed={collapsed} pathname={pathname} />
+            <NavLink item={{ label: 'Analytics', href: '/admin/analytics', icon: BarChart3 }} collapsed={collapsed} pathname={pathname} />
           </>
         )}
       </nav>
