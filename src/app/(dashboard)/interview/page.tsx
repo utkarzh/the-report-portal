@@ -74,18 +74,18 @@ export default async function InterviewToolPage() {
       </div>
 
       {profile.role === 'admin' && (
-        <div className="mb-6 rounded-xl border border-[#e5e3df] bg-white p-4 shadow-sm">
+        <div className="mb-6 rounded-xl border border-[#db3030]/30 bg-[#fdf6f5] p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Admin tools</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#db3030]">Admin tools</p>
               <p className="text-sm text-gray-600 mt-1">Manage interview categories and prompts from here.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href="/admin/categories" className="inline-flex items-center gap-2 rounded-md border border-[#e5e3df] px-3 py-2 text-sm text-gray-700 hover:border-gray-400">
+              <Link href="/admin/categories" className="inline-flex items-center gap-2 rounded-md border border-[#db3030]/30 bg-white px-3 py-2 text-sm text-gray-700 hover:border-[#db3030]/60 hover:text-[#db3030] transition-colors">
                 <Tag size={14} />
                 <span>Categories</span>
               </Link>
-              <Link href="/admin/prompts" className="inline-flex items-center gap-2 rounded-md border border-[#e5e3df] px-3 py-2 text-sm text-gray-700 hover:border-gray-400">
+              <Link href="/admin/prompts" className="inline-flex items-center gap-2 rounded-md border border-[#db3030]/30 bg-white px-3 py-2 text-sm text-gray-700 hover:border-[#db3030]/60 hover:text-[#db3030] transition-colors">
                 <FileText size={14} />
                 <span>Prompts</span>
               </Link>

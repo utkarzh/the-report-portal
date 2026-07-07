@@ -6,13 +6,21 @@ import { X, UserPlus, Copy, Check } from 'lucide-react'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
+import ModuleCheckbox from '@/components/admin/ModuleCheckbox'
 
 interface Props {
   open: boolean
   onClose: () => void
 }
 
-const defaultForm = { email: '', fullName: '', role: 'user', tokenLimit: '2000000' }
+const defaultForm = {
+  email: '',
+  fullName: '',
+  role: 'user',
+  tokenLimit: '2000000',
+  canAccessInterview: true,
+  canAccessTranscriptions: false,
+}
 
 // Admins get an invite link (they set a password on signup). Normal users have
 // their account created immediately and sign in with a one-time code.
@@ -63,8 +71,13 @@ export default function InviteUserModal({ open, onClose }: Props) {
         email: form.email,
         fullName: form.fullName,
         role: form.role,
-        // Admins have no token limit; only send one for normal users.
-        ...(form.role !== 'admin' && { tokenLimit: parseInt(form.tokenLimit) }),
+        // Admins have no token limit or per-module gating; only send these for
+        // normal users.
+        ...(form.role !== 'admin' && {
+          tokenLimit: parseInt(form.tokenLimit),
+          canAccessInterview: form.canAccessInterview,
+          canAccessTranscriptions: form.canAccessTranscriptions,
+        }),
       }),
     })
 
@@ -107,7 +120,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -199,9 +212,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
               <div className="p-4 bg-emerald-50 border border-emerald-200">
                 <p className="text-sm font-medium text-emerald-800 mb-1">User added</p>
                 <p className="text-xs text-emerald-700 leading-relaxed">
-                  <span className="font-medium">{result.email}</span> can now sign in. They enter their
-                  email at the login page and a one-time code is sent to the editorial inbox — relay that
-                  code to them to complete sign-in. No password or signup needed.
+                  <span className="font-medium">{result.email}</span> is added to the platform — they can now enter their email and a one-time code is sent to their mail to log in.
                 </p>
               </div>
 
@@ -277,6 +288,26 @@ export default function InviteUserModal({ open, onClose }: Props) {
                   min="1000"
                   required
                 />
+              )}
+
+              {form.role !== 'admin' && (
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-2">
+                    Module Access
+                  </label>
+                  <div className="flex flex-col gap-2">
+                    <ModuleCheckbox
+                      label="Interview Tool"
+                      checked={form.canAccessInterview}
+                      onChange={(v) => setForm(p => ({ ...p, canAccessInterview: v }))}
+                    />
+                    <ModuleCheckbox
+                      label="Transcriptions"
+                      checked={form.canAccessTranscriptions}
+                      onChange={(v) => setForm(p => ({ ...p, canAccessTranscriptions: v }))}
+                    />
+                  </div>
+                </div>
               )}
 
               <div className="flex items-center gap-3 pt-1">

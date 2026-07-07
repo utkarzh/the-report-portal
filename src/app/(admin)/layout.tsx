@@ -13,6 +13,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       tokenUsed={profile.tokens_used}
       tokenLimit={profile.token_limit}
       userName={profile.full_name}
+      canAccessInterview={profile.can_access_interview}
+      canAccessTranscriptions={profile.can_access_transcriptions}
     >
       {children}
     </AppShell>

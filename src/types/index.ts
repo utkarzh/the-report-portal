@@ -10,6 +10,10 @@ export interface Profile {
   status: UserStatus
   token_limit: number | null // null = no limit (admins)
   tokens_used: number
+  // Per-module access for normal users. Admins always have full access and
+  // ignore these flags.
+  can_access_interview: boolean
+  can_access_transcriptions: boolean
   created_at: string
   updated_at: string
 }
@@ -19,6 +23,8 @@ export interface Invitation {
   email: string
   role: UserRole
   token_limit: number | null // null = no limit (admins)
+  can_access_interview: boolean
+  can_access_transcriptions: boolean
   token: string
   status: InviteStatus
   invited_by: string | null
@@ -95,6 +101,20 @@ export interface CategoryPromptVersion {
   prompt_text: string
   saved_by: string | null
   saved_by_email?: string | null
+  created_at: string
+}
+
+export interface LoginAuditLog {
+  id: string
+  user_id: string | null
+  email: string
+  full_name: string | null
+  user_role: UserRole | null
+  ip_address: string | null
+  location: string | null
+  country: string | null
+  user_agent: string | null
+  login_method: 'password' | 'otp' | null
   created_at: string
 }
 

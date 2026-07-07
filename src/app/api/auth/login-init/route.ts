@@ -5,9 +5,8 @@ import { sendLoginCodeEmail } from '@/lib/email/smtp'
 // POST /api/auth/login-init — first step of the smart login form.
 // Given an email, decides how the user signs in:
 //   - admin        → { method: 'password' }  (client reveals the password field)
-//   - normal user  → mints a one-time code, emails it to the editorial inbox,
-//                     and returns { method: 'otp' }. The code is relayed to the
-//                     user manually; it is never sent to the user's own address.
+//   - normal user  → mints a one-time code, emails it directly to the user's own
+//                     address, and returns { method: 'otp' }.
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const rawEmail = (body?.email || '') as string
@@ -42,9 +41,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ method: 'password' })
   }
 
-  // Normal users: generate a Supabase one-time code and email it to the central
-  // editorial inbox for manual relay. generateLink mints the code WITHOUT
-  // sending any email itself, which is exactly what we want here.
+  // Normal users: generate a Supabase one-time code and email it straight to the
+  // user. generateLink mints the code WITHOUT sending any email itself, so we
+  // deliver it ourselves via SMTP.
   const { data: link, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
     type: 'magiclink',
     email,

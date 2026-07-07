@@ -32,6 +32,17 @@ CREATE TABLE public.profiles (
     -- default to 2M.
     token_limit INTEGER     DEFAULT 2000000,
     tokens_used INTEGER     NOT NULL DEFAULT 0,
+    -- Per-module access for normal users. Admins always have full access and
+    -- ignore these flags (enforced in app code). Interview is on by default;
+    -- the transcriptions module is off until an admin enables it.
+    can_access_interview      BOOLEAN NOT NULL DEFAULT TRUE,
+    can_access_transcriptions BOOLEAN NOT NULL DEFAULT FALSE,
+    -- One-device-one-login: the id of the currently-authorised device session.
+    -- Set to a fresh UUID on every successful sign-in; the browser stores the
+    -- same value in the `device_session` cookie. Middleware signs out any device
+    -- whose cookie doesn't match this column ("newest login wins"). NULL means
+    -- no device has registered yet (enforcement is skipped until first login).
+    active_session_id UUID,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -62,6 +73,9 @@ CREATE TABLE public.invitations (
     role        user_role   NOT NULL DEFAULT 'user',
     -- NULL means "no limit" (used for admin invites). Normal users default to 2M.
     token_limit INTEGER     DEFAULT 2000000,
+    -- Module access carried onto the profile by handle_new_user (see below).
+    can_access_interview      BOOLEAN NOT NULL DEFAULT TRUE,
+    can_access_transcriptions BOOLEAN NOT NULL DEFAULT FALSE,
     token       TEXT        NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
     status      invite_status NOT NULL DEFAULT 'pending',
     invited_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -177,6 +191,31 @@ CREATE INDEX idx_category_prompt_versions_category
     ON public.category_prompt_versions(category_id, created_at DESC);
 
 -- ============================================================
+-- LOGIN AUDIT LOGS (admin-only)
+-- ============================================================
+-- One row per successful sign-in. Written server-side by
+-- /api/auth/session-register using the service role. Only admins can read it.
+-- user_id is nullable / SET NULL on delete so the trail survives user deletion;
+-- email / full_name / user_role are denormalised so deleted users stay legible.
+
+CREATE TABLE public.login_audit_logs (
+    id           UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id      UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    email        TEXT        NOT NULL,
+    full_name    TEXT,
+    user_role    public.user_role,
+    ip_address   TEXT,
+    location     TEXT,        -- human-readable "City, Region, Country" (best-effort)
+    country      TEXT,        -- ISO country name, when resolvable
+    user_agent   TEXT,        -- raw User-Agent header
+    login_method TEXT,        -- 'password' | 'otp' | NULL
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_login_audit_logs_created_at ON public.login_audit_logs(created_at DESC);
+CREATE INDEX idx_login_audit_logs_user_id    ON public.login_audit_logs(user_id);
+
+-- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
 
@@ -187,6 +226,7 @@ ALTER TABLE public.general_prompt         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.research_sessions      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.general_prompt_versions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_prompt_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.login_audit_logs         ENABLE ROW LEVEL SECURITY;
 
 -- Helper: returns the current user's role (used in RLS policies)
 CREATE OR REPLACE FUNCTION public.user_role()
@@ -240,6 +280,10 @@ CREATE POLICY "Admins can manage general prompt versions"
 CREATE POLICY "Admins can manage category prompt versions"
     ON public.category_prompt_versions FOR ALL USING (public.user_role() = 'admin');
 
+-- Login audit logs — admins read only. Inserts come from the service role.
+CREATE POLICY "Admins can read login audit logs"
+    ON public.login_audit_logs FOR SELECT USING (public.user_role() = 'admin');
+
 -- ============================================================
 -- FUNCTION: auto-create profile when a new auth user signs up
 -- ============================================================
@@ -248,6 +292,10 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
     v_invite public.invitations%ROWTYPE;
+    -- Schema-qualified: this SECURITY DEFINER trigger is fired by the auth
+    -- system under a search_path that excludes `public`, so a bare `user_role`
+    -- type name would fail to resolve at runtime.
+    v_role   public.user_role;
 BEGIN
     SELECT * INTO v_invite
     FROM public.invitations
@@ -257,16 +305,26 @@ BEGIN
     ORDER BY created_at DESC
     LIMIT 1;
 
-    INSERT INTO public.profiles (id, email, full_name, role, token_limit, status)
+    v_role := COALESCE(v_invite.role, 'user');
+
+    INSERT INTO public.profiles (
+        id, email, full_name, role, token_limit, status,
+        can_access_interview, can_access_transcriptions
+    )
     VALUES (
         NEW.id,
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-        COALESCE(v_invite.role, 'user'),
+        v_role,
         -- Admins get no limit (NULL); normal users fall back to the 2M default.
-        CASE WHEN COALESCE(v_invite.role, 'user') = 'admin' THEN NULL
+        CASE WHEN v_role = 'admin' THEN NULL
              ELSE COALESCE(v_invite.token_limit, 2000000) END,
-        'active'
+        'active',
+        -- Admins always have full access; normal users inherit the invite flags.
+        CASE WHEN v_role = 'admin' THEN TRUE
+             ELSE COALESCE(v_invite.can_access_interview, TRUE) END,
+        CASE WHEN v_role = 'admin' THEN TRUE
+             ELSE COALESCE(v_invite.can_access_transcriptions, FALSE) END
     );
 
     IF v_invite.id IS NOT NULL THEN

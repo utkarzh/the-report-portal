@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
+import AuthCard from '@/components/layout/AuthCard'
 
 type Stage = 'email' | 'password' | 'otp'
 
@@ -23,7 +24,7 @@ function LoginForm() {
   const errorParam = searchParams.get('error')
 
   // After any successful sign-in, block deactivated accounts before navigating.
-  async function finishSignIn(userId: string) {
+  async function finishSignIn(userId: string, method: 'password' | 'otp') {
     const supabase = getSupabaseBrowserClient()
     const { data: profile } = await supabase
       .from('profiles')
@@ -34,6 +35,22 @@ function LoginForm() {
     if (profile?.status === 'inactive') {
       await supabase.auth.signOut()
       setError('Your account has been deactivated. Please contact an administrator.')
+      setLoading(false)
+      return
+    }
+
+    // Claim this account's single active-device slot. This rewrites the account's
+    // active session id and mirrors it into an httpOnly cookie, signing out any
+    // other device on its next request ("newest login wins"). If it fails we
+    // don't proceed, otherwise the middleware would sign this device out too.
+    const registerRes = await fetch('/api/auth/session-register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method }),
+    })
+    if (!registerRes.ok) {
+      await supabase.auth.signOut()
+      setError('Could not complete sign-in on this device. Please try again.')
       setLoading(false)
       return
     }
@@ -67,7 +84,7 @@ function LoginForm() {
         setStage('password')
       } else {
         setStage('otp')
-        setNotice('A login code has been sent to the editorial team. Enter the code you were given to finish signing in.')
+        setNotice('A login code has been sent to your email. Enter it below to finish signing in.')
       }
     } catch {
       setError('Network error. Please try again.')
@@ -91,7 +108,7 @@ function LoginForm() {
       return
     }
 
-    await finishSignIn(data.user.id)
+    await finishSignIn(data.user.id, 'password')
   }
 
   // Step 2b — normal user OTP sign-in (code relayed manually by editorial team).
@@ -117,7 +134,7 @@ function LoginForm() {
       return
     }
 
-    await finishSignIn(result.data.user.id)
+    await finishSignIn(result.data.user.id, 'otp')
   }
 
   // Resend / regenerate the OTP for the same email.
@@ -135,7 +152,7 @@ function LoginForm() {
       if (!res.ok) {
         setError(data.error || 'Could not resend the code.')
       } else {
-        setNotice('A new login code has been sent to the editorial team.')
+        setNotice('A new login code has been sent to your email.')
       }
     } catch {
       setError('Network error. Please try again.')
@@ -153,17 +170,7 @@ function LoginForm() {
   }
 
   return (
-    <div className="w-full max-w-sm">
-      <div className="bg-white border border-[#e5e3df] p-8">
-        <h1 className="text-sm font-semibold uppercase tracking-widest text-gray-900 mb-1">
-          Sign In
-        </h1>
-        <p className="text-xs text-gray-500 mb-7">
-          {stage === 'email' && 'Enter your email to access the platform.'}
-          {stage === 'password' && 'Enter your password to continue.'}
-          {stage === 'otp' && 'Enter the login code provided by the editorial team.'}
-        </p>
-
+    <AuthCard>
         {errorParam === 'account_deactivated' && (
           <div className="mb-5 p-3 bg-red-50 border border-red-200 text-xs text-red-700">
             Your account has been deactivated. Please contact an administrator.
@@ -173,6 +180,12 @@ function LoginForm() {
         {errorParam === 'session_expired' && (
           <div className="mb-5 p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800">
             Your session has expired. Please sign in again.
+          </div>
+        )}
+
+        {errorParam === 'signed_in_elsewhere' && (
+          <div className="mb-5 p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800">
+            You&apos;ve been signed out because your account was signed in on another device.
           </div>
         )}
 
@@ -279,14 +292,13 @@ function LoginForm() {
             </div>
           </form>
         )}
-      </div>
-    </div>
+    </AuthCard>
   )
 }
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="w-full max-w-sm"><div className="bg-white border border-[#e5e3df] p-8"><p className="text-sm text-gray-400">Loading...</p></div></div>}>
+    <Suspense fallback={<AuthCard><p className="text-sm text-gray-400">Loading...</p></AuthCard>}>
       <LoginForm />
     </Suspense>
   )

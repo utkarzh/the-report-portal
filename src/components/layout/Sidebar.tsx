@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
@@ -10,6 +11,7 @@ import {
   AudioLines,
   Users,
   BarChart3,
+  ScrollText,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -21,6 +23,8 @@ interface SidebarProps {
   tokenUsed: number
   tokenLimit: number
   userName: string | null
+  canAccessInterview: boolean
+  canAccessTranscriptions: boolean
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
@@ -30,11 +34,6 @@ interface NavItem {
   href: string
   icon: React.ElementType
 }
-
-const toolNavItems: NavItem[] = [
-  { label: 'Interview Tool', href: '/interview', icon: MessagesSquare },
-  { label: 'Transcriptions', href: '/transcriptions', icon: AudioLines },
-]
 
 function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: boolean; pathname: string }) {
   const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
@@ -57,10 +56,16 @@ function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: bool
   )
 }
 
-export default function Sidebar({ role, tokenUsed, tokenLimit, userName, mobileOpen = false }: SidebarProps) {
+export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, mobileOpen = false }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
+
+  // Only show modules this user can access (admins have all).
+  const toolNavItems: NavItem[] = [
+    ...(canAccessInterview ? [{ label: 'Interview Tool', href: '/interview', icon: MessagesSquare }] : []),
+    ...(canAccessTranscriptions ? [{ label: 'Transcriptions', href: '/transcriptions', icon: AudioLines }] : []),
+  ]
 
   useEffect(() => {
     const stored = localStorage.getItem('sidebar-collapsed')
@@ -98,19 +103,27 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, mobileO
         collapsed ? 'lg:w-16' : 'lg:w-64',
       ].join(' ')}
     >
-      {/* Collapse toggle — desktop only */}
-      <div className={`hidden lg:flex items-center ${collapsed ? 'justify-center px-3' : 'justify-end px-4'} pt-4 pb-2`}>
+      {/* Logo + collapse toggle */}
+      <div className={`flex items-center h-16 border-b border-gray-800 ${collapsed ? 'lg:justify-center lg:px-2' : 'justify-between pl-4 pr-2'}`}>
+        {!collapsed && (
+          <Image
+            src="/logo.png"
+            alt="The Report Company"
+            height={44}
+            width={222}
+            priority
+            unoptimized
+            className="h-auto w-32 flex-shrink-0"
+          />
+        )}
         <button
           onClick={toggleCollapsed}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="p-1.5 rounded text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
+          className="hidden lg:block p-1.5 rounded text-gray-600 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
-
-      {/* Mobile top padding to match the hidden toggle row height */}
-      <div className="lg:hidden pt-4 pb-2" />
 
       <nav className="flex-1 px-3 overflow-y-auto">
         {toolNavItems.map((item) => (
@@ -126,6 +139,7 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, mobileO
             </div>
             <NavLink item={{ label: 'Users', href: '/admin/users', icon: Users }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Analytics', href: '/admin/analytics', icon: BarChart3 }} collapsed={collapsed} pathname={pathname} />
+            <NavLink item={{ label: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }} collapsed={collapsed} pathname={pathname} />
           </>
         )}
       </nav>

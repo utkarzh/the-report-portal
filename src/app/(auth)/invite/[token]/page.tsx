@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
+import AuthCard from '@/components/layout/AuthCard'
 
 interface InviteData {
   email: string
@@ -75,75 +76,69 @@ export default function InvitePage() {
 
   if (status === 'loading') {
     return (
-      <div className="w-full max-w-sm">
-        <div className="bg-white border border-[#e5e3df] p-8 text-center">
-          <p className="text-sm text-gray-500">Validating invite link...</p>
-        </div>
-      </div>
+      <AuthCard className="text-center">
+        <p className="text-sm text-gray-500">Validating invite link...</p>
+      </AuthCard>
     )
   }
 
   if (status === 'invalid' || status === 'expired') {
     return (
-      <div className="w-full max-w-sm">
-        <div className="bg-white border border-[#e5e3df] p-8 text-center">
-          <p className="text-sm font-medium text-gray-900 mb-2">Link unavailable</p>
-          <p className="text-xs text-gray-500">
-            This invite link has expired or has already been used.
-          </p>
-        </div>
-      </div>
+      <AuthCard className="text-center">
+        <p className="text-sm font-medium text-gray-900 mb-2">Link unavailable</p>
+        <p className="text-xs text-gray-500">
+          This invite link has expired or has already been used.
+        </p>
+      </AuthCard>
     )
   }
 
   return (
-    <div className="w-full max-w-sm">
-      <div className="bg-white border border-[#e5e3df] p-8">
-        <h1 className="text-sm font-semibold uppercase tracking-widest text-gray-900 mb-1">
-          Create Account
-        </h1>
-        <p className="text-xs text-gray-500 mb-7">
-          You&apos;ve been invited to The Report Editorial.
-        </p>
+    <AuthCard>
+      <h1 className="text-sm font-semibold uppercase tracking-widest text-gray-900 mb-1">
+        Create Account
+      </h1>
+      <p className="text-xs text-gray-500 mb-7">
+        You&apos;ve been invited to The Report Editorial.
+      </p>
 
-        {error && (
-          <div className="mb-5 p-3 bg-red-50 border border-red-200 text-xs text-red-700">
-            {error}
-          </div>
-        )}
+      {error && (
+        <div className="mb-5 p-3 bg-red-50 border border-red-200 text-xs text-red-700">
+          {error}
+        </div>
+      )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <Input
-            label="Email Address"
-            type="email"
-            value={invite?.email || ''}
-            readOnly
-            className="text-gray-400 cursor-not-allowed"
-          />
-          <Input
-            label="Full Name"
-            type="text"
-            placeholder="Your full name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
-          />
-          <Input
-            label="Password"
-            type="password"
-            placeholder="Create a password (min. 8 characters)"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-          />
-          <div className="pt-2">
-            <Button type="submit" loading={loading} arrow>
-              Create Account
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <Input
+          label="Email Address"
+          type="email"
+          value={invite?.email || ''}
+          readOnly
+          className="text-gray-400 cursor-not-allowed"
+        />
+        <Input
+          label="Full Name"
+          type="text"
+          placeholder="Your full name"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          required
+        />
+        <Input
+          label="Password"
+          type="password"
+          placeholder="Create a password (min. 8 characters)"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          minLength={8}
+        />
+        <div className="pt-2">
+          <Button type="submit" loading={loading} arrow>
+            Create Account
+          </Button>
+        </div>
+      </form>
+    </AuthCard>
   )
 }

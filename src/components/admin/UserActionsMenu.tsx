@@ -3,11 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Modal from '@/components/ui/Modal'
+import EditUserModal from '@/components/admin/EditUserModal'
 import type { Profile } from '@/types'
 
 export default function UserActionsMenu({ user, currentAdminId }: { user: Profile; currentAdminId: string }) {
   const isSelf = user.id === currentAdminId
   const router = useRouter()
+  const [showEditModal, setShowEditModal] = useState(false)
   const [showDeactivateModal, setShowDeactivateModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -72,7 +74,7 @@ export default function UserActionsMenu({ user, currentAdminId }: { user: Profil
             <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
             <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#e5e3df] shadow-lg z-50">
               <button
-                onClick={() => { setMenuOpen(false); router.push(`/admin/users/${user.id}`) }}
+                onClick={() => { setMenuOpen(false); setShowEditModal(true) }}
                 className="flex items-center w-full px-3 py-2.5 text-xs text-gray-700 hover:bg-gray-50"
               >
                 Edit details
@@ -97,6 +99,13 @@ export default function UserActionsMenu({ user, currentAdminId }: { user: Profil
           </>
         )}
       </div>
+
+      <EditUserModal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        user={user}
+        isSelf={isSelf}
+      />
 
       <Modal
         open={showDeactivateModal}

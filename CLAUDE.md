@@ -149,22 +149,31 @@ SMTP_PORT=587
 SMTP_USER=
 SMTP_PASS=
 SMTP_FROM=                                      # From address (defaults to SMTP_USER)
-OTP_DELIVERY_EMAIL=utkarsh.parihar.435@gmail.com     # inbox that receives login codes
 ```
 
 ### Login flow (two paths)
 - **Admins** sign in with email + password.
 - **Normal users** enter their email and click Sign In. The server mints a one-time
-  code and emails it to `OTP_DELIVERY_EMAIL` (editorial@the-report.com) — NOT to the
-  user. A gatekeeper relays the code to the user, who enters it to finish signing in.
-  This is a manual approval gate: users cannot self-serve login.
+  code and emails it directly to that user's own address. They enter the code to
+  finish signing in.
 
   Single smart form (`/login`): email → `/api/auth/login-init` detects the role and
   returns `password` (admin) or `otp` (user). The OTP is a Supabase code from
   `admin.generateLink({type:'magiclink'})`, emailed via `src/lib/email/smtp.ts`, and
   verified client-side with `verifyOtp`.
 
-**Database setup:** Run `supabase/migrations/001_schema.sql` in the Supabase SQL editor on a fresh database. That's the single migration file — no migration runner needed.
+### One-device-one-login (all roles)
+Every account may be signed in on only one device at a time; the newest login wins.
+- On any successful sign-in, the client calls `/api/auth/session-register`, which
+  writes a fresh `active_session_id` to the user's `profiles` row and mirrors it into
+  an httpOnly `device_session` cookie.
+- Middleware compares the cookie against `profiles.active_session_id` on every request.
+  A mismatch (the account was signed in elsewhere) clears the cookies and redirects to
+  `/login?error=signed_in_elsewhere`.
+- Enforcement is skipped while `active_session_id` is NULL, so sessions predating this
+  feature stay valid until their next sign-in.
+
+**Database setup:** Run `supabase/migrations/001_schema.sql` in the Supabase SQL editor on a fresh database. For a database that already ran `001` before the one-device feature, also run `supabase/migrations/002_active_session.sql` to add the `active_session_id` column.
 
 ---
 

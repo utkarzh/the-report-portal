@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()
-    const { fullName, role, tokenLimit, status } = body
+    const { fullName, role, tokenLimit, status, canAccessInterview, canAccessTranscriptions } = body
 
     if (user.id === params.userId && (role !== undefined || status !== undefined)) {
       return NextResponse.json({ error: 'You cannot change your own role or status.' }, { status: 403 })
@@ -50,6 +50,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       updates.token_limit = null
     } else if (tokenLimit !== undefined && !Number.isNaN(tokenLimit)) {
       updates.token_limit = tokenLimit
+    }
+    // Module access. Admins always have full access; normal users get exactly
+    // what was submitted. Only touch these columns when values were provided.
+    if (role === 'admin') {
+      updates.can_access_interview = true
+      updates.can_access_transcriptions = true
+    } else {
+      if (canAccessInterview !== undefined) updates.can_access_interview = canAccessInterview === true
+      if (canAccessTranscriptions !== undefined) updates.can_access_transcriptions = canAccessTranscriptions === true
     }
 
     const { error } = await supabaseAdmin

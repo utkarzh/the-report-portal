@@ -45,6 +45,9 @@ export function getProfileFromHeaders() {
     status: 'active' as const,
     tokens_used: Number(h.get('x-user-tokens-used') ?? '0'),
     token_limit: Number(h.get('x-user-token-limit') ?? '0'),
+    // Effective module access (admins are always true). Set by middleware.
+    can_access_interview: h.get('x-user-can-interview') === 'true',
+    can_access_transcriptions: h.get('x-user-can-transcriptions') === 'true',
   }
 }
 

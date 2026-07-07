@@ -12,6 +12,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       tokenUsed={profile.tokens_used}
       tokenLimit={profile.token_limit}
       userName={profile.full_name}
+      canAccessInterview={profile.can_access_interview}
+      canAccessTranscriptions={profile.can_access_transcriptions}
     >
       {children}
     </AppShell>

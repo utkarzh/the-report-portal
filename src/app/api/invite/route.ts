@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { email, role, tokenLimit, fullName } = body
+  const { email, role, tokenLimit, fullName, canAccessInterview, canAccessTranscriptions } = body
 
   if (!email || !role) {
     return NextResponse.json({ error: 'email and role are required' }, { status: 400 })
@@ -71,6 +71,10 @@ export async function POST(request: NextRequest) {
       // Admins are never token-limited — store NULL ("no limit"). Normal users
       // fall back to the 2M default when no limit is supplied.
       token_limit: role === 'admin' ? null : (tokenLimit || 2000000),
+      // Admins always have full module access; normal users get exactly what
+      // the admin selected (interview defaults on, transcriptions off).
+      can_access_interview: role === 'admin' ? true : canAccessInterview !== false,
+      can_access_transcriptions: role === 'admin' ? true : canAccessTranscriptions === true,
       invited_by: user.id,
     })
     .select('id, token')
