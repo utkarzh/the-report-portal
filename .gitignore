@@ -33,3 +33,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ffmpeg.wasm core — regenerated on install by scripts/copy-ffmpeg-core.mjs
+/public/ffmpeg/

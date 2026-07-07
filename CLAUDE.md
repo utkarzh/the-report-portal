@@ -142,6 +142,7 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 ANTHROPIC_API_KEY=
+OPENAI_API_KEY=                                 # audio transcription (gpt-4o-transcribe) for the transcription module
 
 # SMTP — sends normal-user login codes to the editorial inbox (see Login flow below)
 SMTP_HOST=
@@ -173,7 +174,14 @@ Every account may be signed in on only one device at a time; the newest login wi
 - Enforcement is skipped while `active_session_id` is NULL, so sessions predating this
   feature stay valid until their next sign-in.
 
-**Database setup:** Run `supabase/migrations/001_schema.sql` in the Supabase SQL editor on a fresh database. For a database that already ran `001` before the one-device feature, also run `supabase/migrations/002_active_session.sql` to add the `active_session_id` column.
+**Database setup:** Run `supabase/migrations/001_schema.sql` in the Supabase SQL editor on a fresh database. For a database that already ran `001` before the one-device feature, also run `supabase/migrations/002_active_session.sql` to add the `active_session_id` column. For a database that predates the transcription module, run `supabase/migrations/005_transcriptions.sql` (idempotent, safe to re-run) — it adds the `transcript_prompt`, `transcript_prompt_versions`, and `transcriptions` tables plus the private `transcription-audio` storage bucket and its RLS. On a database that already ran `005`, also run `supabase/migrations/006_transcript_prompt_verbatim.sql` (idempotent) — it rewrites the default refining prompt to a verbatim, no-speaker-labelling version (gpt-4o-transcribe cannot diarize, so the old prompt made Claude guess speakers); it only touches the singleton if it's still the untouched default. These are already merged into `001` for fresh installs.
+
+### Transcription module
+- **Flow:** upload audio → **in-browser transcode + split** (ffmpeg.wasm) → per-chunk streaming transcription (OpenAI `gpt-4o-transcribe`, SSE) → raw transcript → optional AI refine (Claude, using the admin-managed **refining prompt**, streamed) → refined transcript. Original audio, chunk audio, raw transcript, and refined transcript are all persisted (`transcriptions` row + private storage bucket).
+- **Why chunking (serverless):** the app runs on serverless (Vercel), which has a hard request-time limit, and OpenAI caps transcription at 25 MB / ~25 min per request. So the browser uses **ffmpeg.wasm** ([src/lib/ffmpeg-client.ts](src/lib/ffmpeg-client.ts)) to downsample to 16kHz mono MP3 and split into 10-min chunks. Each chunk is transcribed in its **own short serverless request**, orchestrated sequentially by the client ([TranscriptionWorkspace](src/components/transcriptions/TranscriptionWorkspace.tsx)). This removes both the size and the timeout ceilings, so hour-long recordings work. ffmpeg core is self-hosted under `/public/ffmpeg` (copied on `postinstall` by [scripts/copy-ffmpeg-core.mjs](scripts/copy-ffmpeg-core.mjs); gitignored).
+- **Upload path:** the browser uploads the original file (for playback) **and** each chunk *directly* to the private `transcription-audio` bucket (RLS-scoped to the user's own `<uid>/` folder), then `POST /api/transcriptions` records the row with `chunk_paths[]`. Keeps large audio off the API request body. `transcribe/route.ts` transcribes one `chunkIndex` per call and joins per-chunk text into `raw_transcript` when the last chunk lands (resumable — the workspace restarts from the first pending chunk).
+- **Refining prompt** mirrors the interview general prompt exactly: singleton `transcript_prompt` + `transcript_prompt_versions`, versioned with snapshot-on-save and rollback, managed at `/admin/transcript-prompt` via `/api/transcript-prompt`. The shared `PromptVersionHistory` component handles all three prompt types (`general` | `category` | `transcript`).
+- **Cost/limits:** the Claude refine step counts against the user's token limit (gated pre-flight like research). OpenAI transcription is billed separately and is not counted in token usage.
 
 ---
 

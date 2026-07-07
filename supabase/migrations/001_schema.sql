@@ -358,3 +358,132 @@ BEGIN
     WHERE id = p_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ============================================================
+-- TRANSCRIPTIONS MODULE
+-- ============================================================
+-- Also shipped as standalone migration 005_transcriptions.sql for databases
+-- that predate this feature. Kept here so a fresh DB from 001 is complete.
+
+-- Refining prompt (singleton, mirrors general_prompt)
+CREATE TABLE IF NOT EXISTS public.transcript_prompt (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    prompt_text TEXT        NOT NULL DEFAULT '',
+    updated_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_prompt_singleton
+    ON public.transcript_prompt((TRUE));
+
+INSERT INTO public.transcript_prompt (prompt_text)
+SELECT $seed$You are an expert editorial transcript editor for The Report Company. You are given the RAW machine transcript of a recorded interview. Produce a clean, readable, publication-ready version of it.
+
+Rules:
+- Transcribe word-for-word, exactly as spoken. Preserve the speaker's meaning and all key facts exactly. Never invent or add content that is not in the transcript.
+- Fix punctuation and capitalisation, and correct obvious speech-to-text errors — but do not otherwise reword, paraphrase, or trim what was said.
+- Do NOT label or guess speakers. The audio does not identify who is speaking, so never add "Speaker 1", names, or any speaker attribution.
+- Break the text into readable paragraphs where there are natural pauses or topic shifts.
+- Keep a professional, faithful editorial tone. Do not summarise or omit substance — this is a verbatim cleaned transcript, not a summary.$seed$
+WHERE NOT EXISTS (SELECT 1 FROM public.transcript_prompt);
+
+-- Refining prompt version history (mirrors general_prompt_versions)
+CREATE TABLE IF NOT EXISTS public.transcript_prompt_versions (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    prompt_text TEXT        NOT NULL,
+    saved_by    UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transcript_prompt_versions_created_at
+    ON public.transcript_prompt_versions(created_at DESC);
+
+-- Transcriptions (mirrors research_sessions; user_id nullable + SET NULL keeps history)
+CREATE TABLE IF NOT EXISTS public.transcriptions (
+    id                        UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id                   UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    title                     TEXT        NOT NULL DEFAULT 'Untitled transcript',
+    audio_path                TEXT        NOT NULL,
+    -- Ordered 16kHz-mono chunk paths (ffmpeg.wasm split); NULL = transcribe audio_path directly.
+    chunk_paths               TEXT[],
+    chunk_transcripts         TEXT[],
+    audio_filename            TEXT,
+    audio_mime                TEXT,
+    audio_size_bytes          BIGINT,
+    duration_seconds          NUMERIC,
+    status                    TEXT        NOT NULL DEFAULT 'uploaded'
+        CHECK (status IN ('uploaded','transcribing','transcribed','refining','refined','failed')),
+    raw_transcript            TEXT,
+    refined_transcript        TEXT,
+    refining_prompt_snapshot  TEXT,
+    transcribe_model          TEXT,
+    tokens_input              INTEGER     DEFAULT 0,
+    tokens_output             INTEGER     DEFAULT 0,
+    tokens_total              INTEGER     DEFAULT 0,
+    cost_usd                  NUMERIC(10, 6) DEFAULT 0,
+    error                     TEXT,
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transcriptions_user_id   ON public.transcriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transcriptions_created_at ON public.transcriptions(created_at DESC);
+
+DROP TRIGGER IF EXISTS transcriptions_updated_at ON public.transcriptions;
+CREATE TRIGGER transcriptions_updated_at
+    BEFORE UPDATE ON public.transcriptions
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- RLS
+ALTER TABLE public.transcript_prompt          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transcript_prompt_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transcriptions             ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can read transcript prompt" ON public.transcript_prompt;
+CREATE POLICY "Authenticated users can read transcript prompt"
+    ON public.transcript_prompt FOR SELECT TO authenticated USING (TRUE);
+DROP POLICY IF EXISTS "Admins can update transcript prompt" ON public.transcript_prompt;
+CREATE POLICY "Admins can update transcript prompt"
+    ON public.transcript_prompt FOR UPDATE USING (public.user_role() = 'admin');
+
+DROP POLICY IF EXISTS "Admins can manage transcript prompt versions" ON public.transcript_prompt_versions;
+CREATE POLICY "Admins can manage transcript prompt versions"
+    ON public.transcript_prompt_versions FOR ALL USING (public.user_role() = 'admin');
+
+DROP POLICY IF EXISTS "Users can read own transcriptions" ON public.transcriptions;
+CREATE POLICY "Users can read own transcriptions"
+    ON public.transcriptions FOR SELECT USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Admins can read all transcriptions" ON public.transcriptions;
+CREATE POLICY "Admins can read all transcriptions"
+    ON public.transcriptions FOR SELECT USING (public.user_role() = 'admin');
+DROP POLICY IF EXISTS "Users can insert own transcriptions" ON public.transcriptions;
+CREATE POLICY "Users can insert own transcriptions"
+    ON public.transcriptions FOR INSERT WITH CHECK (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users can update own transcriptions" ON public.transcriptions;
+CREATE POLICY "Users can update own transcriptions"
+    ON public.transcriptions FOR UPDATE USING (user_id = auth.uid());
+
+-- Storage — private audio bucket + RLS
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('transcription-audio', 'transcription-audio', FALSE)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Users manage own transcription audio" ON storage.objects;
+CREATE POLICY "Users manage own transcription audio"
+    ON storage.objects FOR ALL TO authenticated
+    USING (
+        bucket_id = 'transcription-audio'
+        AND (storage.foldername(name))[1] = auth.uid()::text
+    )
+    WITH CHECK (
+        bucket_id = 'transcription-audio'
+        AND (storage.foldername(name))[1] = auth.uid()::text
+    );
+
+DROP POLICY IF EXISTS "Admins read all transcription audio" ON storage.objects;
+CREATE POLICY "Admins read all transcription audio"
+    ON storage.objects FOR SELECT TO authenticated
+    USING (
+        bucket_id = 'transcription-audio'
+        AND public.user_role() = 'admin'
+    );

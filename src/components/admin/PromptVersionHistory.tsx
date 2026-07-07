@@ -6,7 +6,7 @@ import type { PromptVersion, CategoryPromptVersion } from '@/types'
 type Version = PromptVersion | CategoryPromptVersion
 
 interface Props {
-  type: 'general' | 'category'
+  type: 'general' | 'category' | 'transcript'
   categoryId?: string
   currentPromptText?: string
   refreshKey?: number
@@ -35,7 +35,9 @@ export default function PromptVersionHistory({ type, categoryId, currentPromptTe
     setError(null)
     const url = type === 'general'
       ? '/api/prompts/versions'
-      : `/api/categories/${categoryId}/versions`
+      : type === 'transcript'
+        ? '/api/transcript-prompt/versions'
+        : `/api/categories/${categoryId}/versions`
     const res = await fetch(url)
     const data = await res.json()
     if (!res.ok) {
@@ -66,7 +68,9 @@ export default function PromptVersionHistory({ type, categoryId, currentPromptTe
 
     const url = type === 'general'
       ? `/api/prompts/versions/${selected.id}`
-      : `/api/categories/${categoryId}/versions/${selected.id}`
+      : type === 'transcript'
+        ? `/api/transcript-prompt/versions/${selected.id}`
+        : `/api/categories/${categoryId}/versions/${selected.id}`
 
     const res = await fetch(url, { method: 'POST' })
     const data = await res.json()
@@ -86,7 +90,9 @@ export default function PromptVersionHistory({ type, categoryId, currentPromptTe
     setError(null)
     const url = type === 'general'
       ? `/api/prompts/versions/${id}`
-      : `/api/categories/${categoryId}/versions/${id}`
+      : type === 'transcript'
+        ? `/api/transcript-prompt/versions/${id}`
+        : `/api/categories/${categoryId}/versions/${id}`
     const res = await fetch(url, { method: 'DELETE' })
     const data = await res.json()
     if (!res.ok) {

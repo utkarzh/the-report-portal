@@ -87,6 +87,46 @@ export interface ResearchFormData {
   mediaPartnerCountry: string
 }
 
+export interface TranscriptPrompt {
+  id: string
+  prompt_text: string
+  updated_by: string | null
+  updated_at: string
+}
+
+export type TranscriptionStatus =
+  | 'uploaded'
+  | 'transcribing'
+  | 'transcribed'
+  | 'refining'
+  | 'refined'
+  | 'failed'
+
+export interface Transcription {
+  id: string
+  user_id: string | null
+  title: string
+  audio_path: string
+  chunk_paths: string[] | null
+  chunk_transcripts: (string | null)[] | null
+  audio_filename: string | null
+  audio_mime: string | null
+  audio_size_bytes: number | null
+  duration_seconds: number | null
+  status: TranscriptionStatus
+  raw_transcript: string | null
+  refined_transcript: string | null
+  refining_prompt_snapshot: string | null
+  transcribe_model: string | null
+  tokens_input: number
+  tokens_output: number
+  tokens_total: number
+  cost_usd: number
+  error: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface PromptVersion {
   id: string
   prompt_text: string

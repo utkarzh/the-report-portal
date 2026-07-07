@@ -4,6 +4,7 @@ import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import DeleteCategoryButton from '@/components/admin/DeleteCategoryButton'
+import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import type { Category } from '@/types'
 
 export default async function CategoriesPage() {
@@ -17,6 +18,13 @@ export default async function CategoriesPage() {
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
       <div className="max-w-5xl mx-auto">
+
+        <Breadcrumbs
+          items={[
+            { label: 'Interview Tool', href: '/interview' },
+            { label: 'Categories' },
+          ]}
+        />
 
         <div className="flex items-start justify-between mb-8 gap-4">
           <div>

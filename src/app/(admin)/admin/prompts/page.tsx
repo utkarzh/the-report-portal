@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import GeneralPromptForm from '@/components/admin/GeneralPromptForm'
+import Breadcrumbs from '@/components/layout/Breadcrumbs'
 
 export default async function PromptsPage() {
   requireAdminHeader()
@@ -12,6 +13,12 @@ export default async function PromptsPage() {
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
       <div className="max-w-5xl mx-auto">
+        <Breadcrumbs
+          items={[
+            { label: 'Interview Tool', href: '/interview' },
+            { label: 'General Prompt' },
+          ]}
+        />
         <div className="mb-8">
           <h1 className="text-lg font-semibold text-gray-900">General Prompt</h1>
           <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">
