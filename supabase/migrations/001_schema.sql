@@ -377,13 +377,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_prompt_singleton
     ON public.transcript_prompt((TRUE));
 
 INSERT INTO public.transcript_prompt (prompt_text)
-SELECT $seed$You are an expert editorial transcript editor for The Report Company. You are given the RAW machine transcript of a recorded interview. Produce a clean, readable, publication-ready version of it.
+SELECT $seed$You are an expert editorial transcript editor for The Report Company. You are given the RAW machine transcript of a recorded interview. It has already been diarized: each turn is prefixed with a speaker label such as "Speaker A:" / "Speaker B:". Produce a clean, readable, publication-ready version of it.
 
 Rules:
-- Transcribe word-for-word, exactly as spoken. Preserve the speaker's meaning and all key facts exactly. Never invent or add content that is not in the transcript.
+- Transcribe word-for-word, exactly as spoken. Preserve each speaker's meaning and all key facts exactly. Never invent or add content that is not in the transcript.
 - Fix punctuation and capitalisation, and correct obvious speech-to-text errors — but do not otherwise reword, paraphrase, or trim what was said.
-- Do NOT label or guess speakers. The audio does not identify who is speaking, so never add "Speaker 1", names, or any speaker attribution.
-- Break the text into readable paragraphs where there are natural pauses or topic shifts.
+- PRESERVE the speaker labels exactly as given (keep "Speaker A", "Speaker B", etc.), and keep every turn attributed to the same speaker. Do not merge, drop, rename, or guess speakers, and do not invent names. If a passage has no label in the raw transcript, leave it unlabelled.
+- Start each speaker turn on its own line in the form "Speaker A: ...". Break long turns into readable paragraphs at natural pauses or topic shifts.
 - Keep a professional, faithful editorial tone. Do not summarise or omit substance — this is a verbatim cleaned transcript, not a summary.$seed$
 WHERE NOT EXISTS (SELECT 1 FROM public.transcript_prompt);
 
@@ -416,7 +416,13 @@ CREATE TABLE IF NOT EXISTS public.transcriptions (
     raw_transcript            TEXT,
     refined_transcript        TEXT,
     refining_prompt_snapshot  TEXT,
+    -- Single translation slot (one of: English, German, Spanish, Italian, Russian).
+    -- Independent of refining; re-translating overwrites it.
+    translated_transcript     TEXT,
+    translation_language      TEXT,
     transcribe_model          TEXT,
+    -- Provider job id for async transcription (AssemblyAI). NULL for the OpenAI path.
+    transcribe_job_id         TEXT,
     tokens_input              INTEGER     DEFAULT 0,
     tokens_output             INTEGER     DEFAULT 0,
     tokens_total              INTEGER     DEFAULT 0,

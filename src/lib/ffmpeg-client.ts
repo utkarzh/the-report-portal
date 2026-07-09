@@ -44,6 +44,61 @@ function parseDurationFromLog(line: string, current: number | null): number | nu
   return Number(h) * 3600 + Number(mm) * 60 + Number(ss)
 }
 
+export interface Mp3Result {
+  blob: Blob
+  durationSeconds: number | null
+}
+
+// Transcode a whole file to a single compact 16kHz mono MP3 (no splitting).
+// Used for the AssemblyAI path: diarization needs the whole recording as one
+// file, and compressing in-browser keeps large source files (e.g. a 157 MB WAV)
+// from ever reaching storage — the uploaded MP3 is typically ~10x smaller. 48
+// kbps mono at 16 kHz is comfortably enough for speech + speaker separation.
+export async function transcodeToMp3(
+  file: File,
+  opts: { onProgress?: (ratio: number) => void; onStage?: (stage: string) => void } = {},
+): Promise<Mp3Result> {
+  let duration: number | null = null
+  const ffmpeg = await getFFmpeg((line) => {
+    duration = parseDurationFromLog(line, duration)
+  })
+
+  if (opts.onProgress) {
+    ffmpeg.on('progress', ({ progress }) => {
+      opts.onProgress!(Math.max(0, Math.min(1, progress)))
+    })
+  }
+
+  opts.onStage?.('transcoding')
+
+  const inputName = 'input_' + (file.name.split('.').pop() || 'audio').toLowerCase()
+  const outputName = 'output.mp3'
+  await ffmpeg.writeFile(inputName, await fetchFile(file))
+
+  await ffmpeg.exec([
+    '-i', inputName,
+    '-vn',
+    '-ar', '16000',
+    '-ac', '1',
+    '-c:a', 'libmp3lame',
+    '-b:a', '48k',
+    outputName,
+  ])
+
+  const data = (await ffmpeg.readFile(outputName)) as Uint8Array
+  if (!data || data.byteLength === 0) {
+    throw new Error('Transcoding produced no audio. The file may be corrupt or unsupported.')
+  }
+  const buf = new Uint8Array(data.byteLength)
+  buf.set(data)
+  const blob = new Blob([buf], { type: 'audio/mpeg' })
+
+  await ffmpeg.deleteFile(outputName).catch(() => {})
+  await ffmpeg.deleteFile(inputName).catch(() => {})
+
+  return { blob, durationSeconds: duration }
+}
+
 export async function transcodeAndSegment(
   file: File,
   opts: { onProgress?: (ratio: number) => void; onStage?: (stage: string) => void } = {},

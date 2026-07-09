@@ -18,65 +18,39 @@ export function getClientIp(headers: Headers): string | null {
   return headers.get('x-real-ip') || null
 }
 
-// A private / loopback / link-local address won't geolocate — skip the lookup
-// for those (common in local dev) rather than waste a round-trip.
-function isPrivateIp(ip: string): boolean {
-  if (ip === '::1' || ip.startsWith('127.') || ip === 'localhost') return true
-  if (ip.startsWith('10.') || ip.startsWith('192.168.')) return true
-  if (ip.startsWith('172.')) {
-    const second = Number(ip.split('.')[1])
-    if (second >= 16 && second <= 31) return true
-  }
-  // IPv6 unique-local / link-local
-  if (ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80')) return true
-  return false
-}
-
-interface GeoResult {
-  ip: string | null
-  location: string | null
-  country: string | null
-}
-
-// Resolve a location for the sign-in, best-effort. Uses ipapi.co's free no-key
-// endpoint over HTTPS with a short timeout; any failure yields nulls so the
-// audit row still records device even when geo is unavailable.
-//
-// When the client IP is loopback/private (local dev, or a request that didn't
-// pass through a proxy that sets x-forwarded-for) there's nothing real to
-// geolocate, so we fall back to ipapi.co's self-lookup (no IP in the path),
-// which resolves THIS machine's public IP + location. We then store that public
-// IP instead of the useless "::1". In production behind a proxy the real client
-// IP is present, so this fallback doesn't trigger.
-async function geolocate(clientIp: string | null): Promise<GeoResult> {
-  const useSelfLookup = !clientIp || isPrivateIp(clientIp)
-  const url = useSelfLookup
-    ? 'https://ipapi.co/json/'
-    : `https://ipapi.co/${encodeURIComponent(clientIp)}/json/`
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 2000)
+function decode(v: string | null): string | null {
+  if (!v) return null
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'editorial-tool-audit' },
-    })
-    if (!res.ok) return { ip: clientIp, location: null, country: null }
-    const data = await res.json()
-    if (data?.error) return { ip: clientIp, location: null, country: null }
-
-    const parts = [data.city, data.region, data.country_name].filter(Boolean)
-    return {
-      // On a self-lookup, prefer the resolved public IP over the loopback one.
-      ip: useSelfLookup ? (data.ip || clientIp) : clientIp,
-      location: parts.length ? parts.join(', ') : null,
-      country: data.country_name || null,
-    }
+    return decodeURIComponent(v)
   } catch {
-    return { ip: clientIp, location: null, country: null }
-  } finally {
-    clearTimeout(timeout)
+    return v
   }
+}
+
+// ISO country code ("US") → display name ("United States"). Falls back to the
+// code itself if the runtime can't resolve it.
+function countryName(code: string | null): string | null {
+  if (!code) return null
+  try {
+    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(code.toUpperCase())
+    return name || code
+  } catch {
+    return code
+  }
+}
+
+// Resolve the sign-in location from Vercel's edge geolocation headers. These are
+// set by Vercel's network on every incoming request at ZERO latency — no
+// external API call, so nothing is added to the login path and it can't be
+// rate-limited or blocked (the ipapi.co lookup this replaced was both slow on
+// Vercel and blocked from its datacenter IPs, which is why location came back
+// "Unknown"). In local dev these headers are absent, so location is simply null.
+function resolveGeo(headers: Headers): { location: string | null; country: string | null } {
+  const city = decode(headers.get('x-vercel-ip-city'))
+  const region = decode(headers.get('x-vercel-ip-country-region'))
+  const country = countryName(headers.get('x-vercel-ip-country'))
+  const parts = [city, region, country].filter(Boolean)
+  return { location: parts.length ? parts.join(', ') : null, country }
 }
 
 interface RecordLoginArgs {
@@ -100,14 +74,14 @@ export async function recordLoginAudit({
   try {
     const clientIp = getClientIp(headers)
     const userAgent = headers.get('user-agent')
-    const geo = await geolocate(clientIp)
+    const geo = resolveGeo(headers)
 
     const { error } = await supabaseAdmin.from('login_audit_logs').insert({
       user_id: userId,
       email,
       full_name: fullName,
       user_role: role,
-      ip_address: geo.ip,
+      ip_address: clientIp,
       location: geo.location,
       country: geo.country,
       user_agent: userAgent,

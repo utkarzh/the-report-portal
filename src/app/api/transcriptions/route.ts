@@ -40,10 +40,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'audioPath is required' }, { status: 400 })
   }
 
+  // Chunks are only used by the OpenAI path. The AssemblyAI path transcribes the
+  // whole original file (audio_path) as one diarized job, so chunkPaths is empty.
   const chunks = Array.isArray(chunkPaths) ? chunkPaths.filter((p) => typeof p === 'string') : []
-  if (chunks.length === 0) {
-    return NextResponse.json({ error: 'chunkPaths is required' }, { status: 400 })
-  }
 
   // Every object path (original + chunks) must live inside the caller's own
   // folder ("<uid>/…"). Mirrors the storage RLS and stops a user registering

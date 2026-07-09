@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { marked } from 'marked'
 import { Download } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
+import DeleteInterviewButton from '@/components/research/DeleteInterviewButton'
 import type { ResearchSession } from '@/types'
 
 marked.use({ gfm: true, breaks: true })
@@ -15,9 +16,10 @@ type StreamStatus = 'idle' | 'generating' | 'searching'
 interface Props {
   session: ResearchSession
   isGenerating: boolean
+  isAdmin?: boolean
 }
 
-export default function ResearchOutput({ session, isGenerating }: Props) {
+export default function ResearchOutput({ session, isGenerating, isAdmin = false }: Props) {
   const router = useRouter()
 
   const [output, setOutput] = useState<string>(session.initial_output || '')
@@ -228,7 +230,7 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
           )}
         </div>
 
-        <div className="p-5 border-t border-[#e5e3df]">
+        <div className="p-5 border-t border-[#e5e3df] space-y-4">
           <Link
             href="/research"
             className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors"
@@ -238,6 +240,14 @@ export default function ResearchOutput({ session, isGenerating }: Props) {
             </svg>
             New research
           </Link>
+
+          {isAdmin && (
+            <DeleteInterviewButton
+              sessionId={session.id}
+              interviewTitle={session.full_name}
+              redirectTo="/interview"
+            />
+          )}
         </div>
       </div>
 

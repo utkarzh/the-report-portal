@@ -2,9 +2,10 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, UserRound, ArrowRight, AudioLines, WandSparkles, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, UserRound, ArrowRight, AudioLines, WandSparkles, CheckCircle2, Loader2, AlertCircle, CalendarDays } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import DeleteTranscriptionButton from '@/components/transcriptions/DeleteTranscriptionButton'
 import type { TranscriptionStatus } from '@/types'
 
 export default async function TranscriptionsPage() {
@@ -100,41 +101,56 @@ export default async function TranscriptionsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((t) => (
-            <Link
-              key={t.id}
-              href={`/transcriptions/${t.id}`}
-              className="group rounded-xl border border-[#e5e3df] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+            <div key={t.id} className="group relative">
+              {/* Delete (admin-only) floats over the card corner, revealed on
+                  hover. Sits outside the <Link> so its click never navigates. */}
+              {profile.role === 'admin' && (
+                <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <DeleteTranscriptionButton
+                    transcriptionId={t.id}
+                    transcriptionTitle={t.title}
+                    variant="icon"
+                  />
+                </div>
+              )}
+
+              <Link
+                href={`/transcriptions/${t.id}`}
+                className="block rounded-xl border border-[#e5e3df] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-sm"
+              >
+                <div className="min-w-0 pr-8">
                   <p className="text-sm font-semibold text-gray-900 truncate">{t.title}</p>
                   <p className="text-xs text-gray-500 mt-1 truncate">{t.audio_filename || 'audio'}</p>
                 </div>
-                <div className="rounded-full bg-[#f7f6f3] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-500">
-                  {new Date(t.created_at).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </div>
-              </div>
 
-              <div className="mt-4 space-y-2 text-[11px] text-gray-500">
-                {profile.role === 'admin' && t.creatorName ? (
-                  <div className="flex items-center gap-2 rounded-md bg-stone-50 px-2.5 py-2 text-stone-700">
-                    <UserRound size={12} className="text-stone-500" />
-                    <span>Created by {t.creatorName}</span>
+                <div className="mt-4 space-y-2 text-[11px] text-gray-500">
+                  <div className="flex items-center gap-2 text-gray-400">
+                    <CalendarDays size={12} />
+                    <span>
+                      {new Date(t.created_at).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </span>
                   </div>
-                ) : null}
 
-                <StatusBadge status={t.status as TranscriptionStatus} />
-              </div>
+                  {profile.role === 'admin' && t.creatorName ? (
+                    <div className="flex items-center gap-2 rounded-md bg-stone-50 px-2.5 py-2 text-stone-700">
+                      <UserRound size={12} className="text-stone-500" />
+                      <span>Created by {t.creatorName}</span>
+                    </div>
+                  ) : null}
 
-              <div className="mt-5 flex items-center justify-between text-sm font-medium text-gray-700">
-                <span>View transcript</span>
-                <ArrowRight size={16} className="text-gray-400 transition-transform group-hover:translate-x-1" />
-              </div>
-            </Link>
+                  <StatusBadge status={t.status as TranscriptionStatus} />
+                </div>
+
+                <div className="mt-5 flex items-center justify-between text-sm font-medium text-gray-700">
+                  <span>View transcript</span>
+                  <ArrowRight size={16} className="text-gray-400 transition-transform group-hover:translate-x-1" />
+                </div>
+              </Link>
+            </div>
           ))}
         </div>
       )}

@@ -33,6 +33,7 @@ export default async function ResearchSessionPage({ params, searchParams }: Prop
     <ResearchOutput
       session={session as ResearchSession}
       isGenerating={isGenerating}
+      isAdmin={profile.role === 'admin'}
     />
   )
 }

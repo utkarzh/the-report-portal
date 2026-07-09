@@ -45,14 +45,16 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Record the login in the admin-only audit trail. Fire-and-forget: the geo
-  // lookup + insert must NOT block the sign-in response (they'd add latency to
-  // every login), so we don't await it. recordLoginAudit never throws.
+  // Record the login in the admin-only audit trail. Geolocation now comes from
+  // Vercel's edge headers (no external call), so this is just one fast insert —
+  // we AWAIT it so the row is guaranteed written before the response returns.
+  // (Fire-and-forget was unreliable on serverless: the function could freeze
+  // after responding and drop the pending write.) recordLoginAudit never throws.
   const body = await request.json().catch(() => ({} as { method?: string }))
   const method: LoginMethod | null =
     body?.method === 'password' || body?.method === 'otp' ? body.method : null
 
-  void recordLoginAudit({
+  await recordLoginAudit({
     userId: user.id,
     email: profile?.email ?? user.email ?? '',
     fullName: profile?.full_name ?? null,

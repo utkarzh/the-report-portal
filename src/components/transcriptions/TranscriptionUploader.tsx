@@ -4,12 +4,13 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, FileAudio, X, Loader2 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
-import { TRANSCRIPTION_AUDIO_BUCKET } from '@/lib/transcriptions'
+import { TRANSCRIPTION_AUDIO_BUCKET, TRANSCRIPTION_PROVIDER } from '@/lib/transcriptions'
 
 type Phase = 'idle' | 'preparing' | 'transcoding' | 'uploading' | 'creating' | 'error'
 
-// Original-file cap for playback storage. Chunks sent to OpenAI are always small
-// (16kHz mono), so the 25 MB per-request transcription limit never applies here.
+// Hard cap on the SOURCE file the user selects. The file is always compressed in
+// the browser before upload (to a small 16kHz mono MP3), so what reaches storage
+// is tiny — this cap just bounds what ffmpeg.wasm has to chew through in memory.
 const MAX_BYTES = 500 * 1024 * 1024 // 500 MB
 
 export default function TranscriptionUploader({ userId }: { userId: string }) {
@@ -49,38 +50,69 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
       const supabase = getSupabaseBrowserClient()
       const groupId = crypto.randomUUID()
       const ext = (file.name.split('.').pop() || 'mp3').toLowerCase()
-
-      // 1. Split + downsample in the browser (ffmpeg.wasm). Dynamic import keeps
-      //    the ffmpeg packages out of the initial bundle and off the server.
-      setPhase('transcoding')
-      const { transcodeAndSegment } = await import('@/lib/ffmpeg-client')
-      const { chunks, durationSeconds } = await transcodeAndSegment(file, {
-        onProgress: (r) => setProgress(r),
-        onStage: (s) => { if (s === 'transcoding') setPhase('transcoding') },
-      })
-
-      // 2. Upload the original (for playback) + every chunk (for transcription).
-      setPhase('uploading')
-      setUploadInfo({ done: 0, total: chunks.length + 1 })
-
       const originalPath = `${userId}/${groupId}/original.${ext}`
-      const { error: origErr } = await supabase
-        .storage
-        .from(TRANSCRIPTION_AUDIO_BUCKET)
-        .upload(originalPath, file, { contentType: file.type || undefined, upsert: false })
-      if (origErr) throw new Error('Upload failed. Please try again.')
-      setUploadInfo({ done: 1, total: chunks.length + 1 })
 
-      const chunkPaths: string[] = []
-      for (let i = 0; i < chunks.length; i++) {
-        const chunkPath = `${userId}/${groupId}/chunks/${chunks[i].name}`
-        const { error: chErr } = await supabase
+      // The audio object we actually store + transcribe. For AssemblyAI this is a
+      // compressed MP3 (set below); for OpenAI it's the original file.
+      let audioPath = originalPath
+      let chunkPaths: string[] = []
+      let durationSeconds: number | null | undefined
+
+      if (TRANSCRIPTION_PROVIDER === 'assemblyai') {
+        // Compress the whole file to a compact 16kHz mono MP3 in the browser BEFORE
+        // uploading. This keeps big source files (e.g. a 157 MB WAV) off Supabase
+        // entirely — the stored MP3 is ~10x smaller, well under storage limits and
+        // far cheaper — while remaining fine for AssemblyAI transcription +
+        // diarization. This single MP3 is used for both the job and playback.
+        setPhase('transcoding')
+        const { transcodeToMp3 } = await import('@/lib/ffmpeg-client')
+        const { blob, durationSeconds: dur } = await transcodeToMp3(file, {
+          onProgress: (r) => setProgress(r),
+          onStage: (s) => { if (s === 'transcoding') setPhase('transcoding') },
+        })
+        durationSeconds = dur
+
+        audioPath = `${userId}/${groupId}/audio.mp3`
+        setPhase('uploading')
+        setUploadInfo({ done: 0, total: 1 })
+        const { error: upErr } = await supabase
           .storage
           .from(TRANSCRIPTION_AUDIO_BUCKET)
-          .upload(chunkPath, chunks[i].blob, { contentType: 'audio/mpeg', upsert: false })
-        if (chErr) throw new Error('Upload failed. Please try again.')
-        chunkPaths.push(chunkPath)
-        setUploadInfo({ done: i + 2, total: chunks.length + 1 })
+          .upload(audioPath, blob, { contentType: 'audio/mpeg', upsert: false })
+        if (upErr) throw new Error('Upload failed. Please try again.')
+        setUploadInfo({ done: 1, total: 1 })
+      } else {
+        // OpenAI path: split + downsample in the browser (ffmpeg.wasm). Dynamic
+        // import keeps the ffmpeg packages out of the initial bundle.
+        setPhase('transcoding')
+        const { transcodeAndSegment } = await import('@/lib/ffmpeg-client')
+        const seg = await transcodeAndSegment(file, {
+          onProgress: (r) => setProgress(r),
+          onStage: (s) => { if (s === 'transcoding') setPhase('transcoding') },
+        })
+        durationSeconds = seg.durationSeconds
+
+        // Upload the original (for playback) + every chunk (for transcription).
+        setPhase('uploading')
+        setUploadInfo({ done: 0, total: seg.chunks.length + 1 })
+
+        const { error: origErr } = await supabase
+          .storage
+          .from(TRANSCRIPTION_AUDIO_BUCKET)
+          .upload(originalPath, file, { contentType: file.type || undefined, upsert: false })
+        if (origErr) throw new Error('Upload failed. Please try again.')
+        setUploadInfo({ done: 1, total: seg.chunks.length + 1 })
+
+        for (let i = 0; i < seg.chunks.length; i++) {
+          const chunkPath = `${userId}/${groupId}/chunks/${seg.chunks[i].name}`
+          const { error: chErr } = await supabase
+            .storage
+            .from(TRANSCRIPTION_AUDIO_BUCKET)
+            .upload(chunkPath, seg.chunks[i].blob, { contentType: 'audio/mpeg', upsert: false })
+          if (chErr) throw new Error('Upload failed. Please try again.')
+          chunkPaths.push(chunkPath)
+          setUploadInfo({ done: i + 2, total: seg.chunks.length + 1 })
+        }
       }
 
       // 3. Record the row. The workspace auto-starts the chunk-by-chunk transcription.
@@ -89,7 +121,7 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          audioPath: originalPath,
+          audioPath,
           chunkPaths,
           filename: file.name,
           mime: file.type,

@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, UserRound, ArrowRight, MessagesSquare, Tag, FileText } from 'lucide-react'
+import { Plus, UserRound, ArrowRight, MessagesSquare, Tag, FileText, CalendarDays } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import DeleteInterviewButton from '@/components/research/DeleteInterviewButton'
 
 export default async function InterviewToolPage() {
   const profile = getProfileFromHeaders()
@@ -104,13 +105,24 @@ export default async function InterviewToolPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {sessionsWithCreators.map((s) => (
-            <Link
-              key={s.id}
-              href={`/research/${s.id}`}
-              className="group rounded-xl border border-[#e5e3df] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+            <div key={s.id} className="group relative">
+              {/* Delete (admin-only) floats over the card corner, revealed on
+                  hover. Sits outside the <Link> so its click never navigates. */}
+              {profile.role === 'admin' && (
+                <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <DeleteInterviewButton
+                    sessionId={s.id}
+                    interviewTitle={s.full_name}
+                    variant="icon"
+                  />
+                </div>
+              )}
+
+              <Link
+                href={`/research/${s.id}`}
+                className="block rounded-xl border border-[#e5e3df] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-sm"
+              >
+                <div className="min-w-0 pr-8">
                   <p className="text-sm font-semibold text-gray-900 truncate">{s.full_name}</p>
                   <p className="text-xs text-gray-500 mt-1 truncate">
                     {s.category_name}
@@ -118,36 +130,40 @@ export default async function InterviewToolPage() {
                     {s.company_org ? ` · ${s.company_org}` : ''}
                   </p>
                 </div>
-                <div className="rounded-full bg-[#f7f6f3] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-500">
-                  {new Date(s.created_at).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
+
+                <div className="mt-4 space-y-2 text-[11px] text-gray-500">
+                  <div className="flex items-center gap-2 text-gray-400">
+                    <CalendarDays size={12} />
+                    <span>
+                      {new Date(s.created_at).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </span>
+                  </div>
+
+                  {profile.role === 'admin' && s.creatorName ? (
+                    <div className="flex items-center gap-2 rounded-md bg-stone-50 px-2.5 py-2 text-stone-700">
+                      <UserRound size={12} className="text-stone-500" />
+                      <span>Created by {s.creatorName}</span>
+                    </div>
+                  ) : null}
+
+                  {s.tokens_total > 0 ? (
+                    <div className="flex items-center gap-2 rounded-md bg-amber-50 px-2.5 py-2 text-amber-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      <span>{formatTokens(s.tokens_total)} tokens</span>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
 
-              <div className="mt-4 space-y-2 text-[11px] text-gray-500">
-                {profile.role === 'admin' && s.creatorName ? (
-                  <div className="flex items-center gap-2 rounded-md bg-stone-50 px-2.5 py-2 text-stone-700">
-                    <UserRound size={12} className="text-stone-500" />
-                    <span>Created by {s.creatorName}</span>
-                  </div>
-                ) : null}
-
-                {s.tokens_total > 0 ? (
-                  <div className="flex items-center gap-2 rounded-md bg-amber-50 px-2.5 py-2 text-amber-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                    <span>{formatTokens(s.tokens_total)} tokens</span>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-5 flex items-center justify-between text-sm font-medium text-gray-700">
-                <span>View interview</span>
-                <ArrowRight size={16} className="text-gray-400 transition-transform group-hover:translate-x-1" />
-              </div>
-            </Link>
+                <div className="mt-5 flex items-center justify-between text-sm font-medium text-gray-700">
+                  <span>View interview</span>
+                  <ArrowRight size={16} className="text-gray-400 transition-transform group-hover:translate-x-1" />
+                </div>
+              </Link>
+            </div>
           ))}
         </div>
       )}

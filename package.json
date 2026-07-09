@@ -17,6 +17,7 @@
     "@hookform/resolvers": "^3.9.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
+    "docx": "^9.7.1",
     "lucide-react": "^0.474.0",
     "marked": "^18.0.4",
     "next": "^14.2.29",

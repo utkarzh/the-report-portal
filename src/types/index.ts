@@ -117,7 +117,12 @@ export interface Transcription {
   raw_transcript: string | null
   refined_transcript: string | null
   refining_prompt_snapshot: string | null
+  // Single translation slot (one of the TRANSLATION_LANGUAGES); overwritten on re-translate.
+  translated_transcript: string | null
+  translation_language: string | null
   transcribe_model: string | null
+  // Provider job id for async transcription (AssemblyAI). NULL for the OpenAI path.
+  transcribe_job_id: string | null
   tokens_input: number
   tokens_output: number
   tokens_total: number
