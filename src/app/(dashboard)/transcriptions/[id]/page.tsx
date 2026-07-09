@@ -5,6 +5,7 @@ import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { TRANSCRIPTION_AUDIO_BUCKET } from '@/lib/transcriptions'
+import { reconcilePendingTranscriptions } from '@/lib/assemblyai/reconcile'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import TranscriptionWorkspace from '@/components/transcriptions/TranscriptionWorkspace'
 import DeleteTranscriptionButton from '@/components/transcriptions/DeleteTranscriptionButton'
@@ -13,6 +14,10 @@ import type { Transcription } from '@/types'
 export default async function TranscriptionDetailPage({ params }: { params: { id: string } }) {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
+
+  // If this transcript finished on AssemblyAI while no tab was polling, persist
+  // it now so the workspace loads the completed transcript instead of spinning.
+  await reconcilePendingTranscriptions({ id: params.id })
 
   // RLS: a user only sees their own row; an admin sees all.
   const supabase = createSupabaseServerClient()

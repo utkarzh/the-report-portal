@@ -5,12 +5,19 @@ import Link from 'next/link'
 import { Plus, UserRound, ArrowRight, AudioLines, WandSparkles, CheckCircle2, Loader2, AlertCircle, CalendarDays } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { reconcilePendingTranscriptions } from '@/lib/assemblyai/reconcile'
 import DeleteTranscriptionButton from '@/components/transcriptions/DeleteTranscriptionButton'
 import type { TranscriptionStatus } from '@/types'
 
 export default async function TranscriptionsPage() {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
+
+  // Heal any transcripts that finished on AssemblyAI while no tab was polling,
+  // so they don't sit stuck at 'transcribing' in the list below.
+  await reconcilePendingTranscriptions(
+    profile.role === 'user' ? { userId: profile.id } : {},
+  )
 
   const supabase = createSupabaseServerClient()
   let query = supabase
