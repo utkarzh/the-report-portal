@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { marked } from 'marked'
-import { Download } from 'lucide-react'
+import { Download, MessagesSquare, FileText, ListChecks, Sparkles, WandSparkles, Copy, Check, ArrowLeft } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
 import DeleteInterviewButton from '@/components/research/DeleteInterviewButton'
 import type { ResearchSession } from '@/types'
@@ -25,7 +25,11 @@ export default function ResearchOutput({ session, isGenerating, isAdmin = false 
   const [output, setOutput] = useState<string>(session.initial_output || '')
   const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle')
   const [error, setError] = useState<string | null>(null)
+  // True when this client is watching a generation that was started elsewhere
+  // (the user navigated away and came back) — we poll instead of streaming.
+  const [reconnecting, setReconnecting] = useState(false)
   const hasStartedRef = useRef(false)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Live usage — seeded from the server snapshot, then updated in place as each
@@ -37,6 +41,10 @@ export default function ResearchOutput({ session, isGenerating, isAdmin = false 
     cost_usd: Number(session.cost_usd) || 0,
   })
 
+  // Research regenerate state (mirror of the questions flow)
+  const [researchExtra, setResearchExtra] = useState('')
+  const [showResearchForm, setShowResearchForm] = useState(false)
+
   // Questions state
   const [questions, setQuestions] = useState<string>(session.questions_output || '')
   const [questionsStreaming, setQuestionsStreaming] = useState(false)
@@ -45,9 +53,19 @@ export default function ResearchOutput({ session, isGenerating, isAdmin = false 
   const [showQuestionsForm, setShowQuestionsForm] = useState(false)
 
   useEffect(() => {
-    if (isGenerating && !session.initial_output && !hasStartedRef.current) {
+    if (hasStartedRef.current) return
+    if (isGenerating && !session.initial_output) {
+      // This client initiated the run → stream it.
       hasStartedRef.current = true
       startGeneration()
+    } else if (!isGenerating && session.status === 'generating') {
+      // A run is in progress but was started elsewhere (user came back) → we
+      // can't re-attach to that stream, so poll the row until it settles.
+      hasStartedRef.current = true
+      startReconnect()
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -56,15 +74,17 @@ export default function ResearchOutput({ session, isGenerating, isAdmin = false 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [output, questions])
 
-  async function startGeneration() {
+  // extraOverride is passed when the user regenerates with "what to improve"
+  // guidance; otherwise we use the one-time context stashed by the research form.
+  async function startGeneration(extraOverride?: string) {
     setError(null)
     setStreamStatus('generating')
     setOutput('')
+    setShowResearchForm(false)
+    setResearchExtra('')
 
-    // Pull and clear the ephemeral additional context that the research form
-    // stashed in sessionStorage — used once, never stored server-side.
-    let additionalPrompt = ''
-    if (typeof window !== 'undefined') {
+    let additionalPrompt = (extraOverride || '').trim()
+    if (!additionalPrompt && typeof window !== 'undefined') {
       additionalPrompt = sessionStorage.getItem(`research-extra:${session.id}`) || ''
       if (additionalPrompt) sessionStorage.removeItem(`research-extra:${session.id}`)
     }
@@ -126,6 +146,46 @@ export default function ResearchOutput({ session, isGenerating, isAdmin = false 
     } finally {
       setStreamStatus('idle')
     }
+  }
+
+  // Watch a generation running in the background (started in another tab/visit).
+  // No live token stream is available to a late-joining client, so we poll the
+  // session row every few seconds and load the result once it lands.
+  function startReconnect() {
+    setReconnecting(true)
+    setStreamStatus('generating')
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/sessions/${session.id}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.usage) setUsage(data.usage)
+
+        if (data.status === 'complete') {
+          if (data.initial_output) setOutput(data.initial_output)
+          if (data.questions_output) setQuestions(data.questions_output)
+          stopReconnect()
+        } else if (data.status === 'failed') {
+          setError('Generation failed. Please try again.')
+          stopReconnect()
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    }
+
+    poll()
+    pollRef.current = setInterval(poll, 3000)
+  }
+
+  function stopReconnect() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+    setReconnecting(false)
+    setStreamStatus('idle')
   }
 
   async function generateQuestions() {
@@ -195,21 +255,36 @@ export default function ResearchOutput({ session, isGenerating, isAdmin = false 
   const researchDone = Boolean(output) && !isProcessing
   const hasQuestions = Boolean(questions)
 
-  return (
-    <div className="flex h-full bg-white">
-      {/* Left sidebar */}
-      <div className="w-60 border-r border-[#e5e3df] flex-shrink-0 flex flex-col bg-[#faf9f7]">
-        <div className="p-5 flex-1 overflow-y-auto">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">
-            Interview Subject
-          </p>
-          <h2 className="text-sm font-semibold text-gray-900 leading-snug mb-4">
-            {session.full_name}
-          </h2>
+  const streamingLabel = reconnecting
+    ? 'Generating…'
+    : streamStatus === 'searching'
+    ? 'Searching…'
+    : 'Generating…'
 
-          <div className="space-y-3">
-            <InfoRow label="Type" value={session.category_name} />
-            <InfoRow label="Title" value={session.title_position} />
+  return (
+    <div className="flex h-full bg-[#f0efec]">
+      {/* Subject side panel */}
+      <aside className="flex w-64 flex-shrink-0 flex-col border-r border-[#e5e3df] bg-white">
+        <div className="flex-1 overflow-y-auto p-5">
+          <Link
+            href="/interview"
+            className="inline-flex items-center gap-1.5 text-xs text-gray-400 transition-colors hover:text-gray-700"
+          >
+            <ArrowLeft size={13} />
+            <span>Interviews</span>
+          </Link>
+
+          <div className="mt-5 flex items-center gap-2.5">
+            <div className="flex-shrink-0 rounded-lg bg-black p-2 text-white">
+              <MessagesSquare size={15} />
+            </div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Interview subject</p>
+          </div>
+          <h1 className="mt-3 text-sm font-semibold leading-snug text-gray-900">{session.full_name}</h1>
+
+          <div className="mt-5 space-y-3.5">
+            <InfoRow label="Category" value={session.category_name} />
+            <InfoRow label="Title / Position" value={session.title_position} />
             <InfoRow label="Organisation" value={session.company_org} />
             <InfoRow label="Country" value={session.country_focus} />
             <InfoRow label="Publication" value={session.publication} />
@@ -217,258 +292,322 @@ export default function ResearchOutput({ session, isGenerating, isAdmin = false 
           </div>
 
           {usage.tokens_total > 0 && (
-            <div className="mt-5 pt-4 border-t border-[#e5e3df]">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">
-                Usage
-              </p>
-              <p className="text-xs text-gray-500">{formatTokens(usage.tokens_total)} tokens</p>
-              {usage.web_searches > 0 && (
-                <p className="text-xs text-gray-500">{usage.web_searches} web search{usage.web_searches === 1 ? '' : 'es'}</p>
-              )}
-              <p className="text-xs text-gray-400">${usage.cost_usd.toFixed(4)}</p>
+            <div className="mt-6 border-t border-[#e5e3df] pt-4">
+              <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Usage</p>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400">Tokens</span>
+                  <span className="font-medium tabular-nums text-gray-700">{formatTokens(usage.tokens_total)}</span>
+                </div>
+                {usage.web_searches > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">Searches</span>
+                    <span className="font-medium tabular-nums text-gray-700">{usage.web_searches}</span>
+                  </div>
+                )}
+                {/* Cost is billing info — admins only. */}
+                {isAdmin && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">Cost</span>
+                    <span className="font-medium tabular-nums text-gray-700">${usage.cost_usd.toFixed(4)}</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        <div className="p-5 border-t border-[#e5e3df] space-y-4">
-          <Link
-            href="/research"
-            className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M7.5 1.5L3 6l4.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            New research
-          </Link>
-
-          {isAdmin && (
+        {isAdmin && (
+          <div className="border-t border-[#e5e3df] p-5">
             <DeleteInterviewButton
               sessionId={session.id}
               interviewTitle={session.full_name}
               redirectTo="/interview"
             />
-          )}
-        </div>
-      </div>
-
-      {/* Main output area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {(isProcessing || questionsStreaming) && (
-          <div className="flex items-center gap-2 px-6 py-2 border-b border-[#e5e3df] bg-white flex-shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#c8973f] animate-pulse" />
-            <span className="text-xs text-gray-500">
-              {questionsStreaming
-                ? 'Drafting interview questions…'
-                : streamStatus === 'searching'
-                  ? 'Searching the web for latest information…'
-                  : 'Generating…'}
-            </span>
           </div>
         )}
+      </aside>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-6 py-8">
+      {/* Output — scrolls independently */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
 
-            {!output && !isProcessing && (
-              <div className="flex flex-col items-center py-20 gap-4">
-                <AssistantAvatar size="lg" />
+        {/* Research card */}
+        <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex-shrink-0 rounded-lg border border-[#e5e3df] bg-[#f7f6f3] p-2 text-gray-700">
+                <FileText size={15} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold leading-tight text-gray-900">Background Research</h2>
+                <p className="mt-0.5 text-[11px] leading-tight text-gray-400">AI-generated profile &amp; context</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              {isProcessing ? (
+                <span className="flex items-center gap-2 pr-2 text-xs text-gray-500">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+                  {streamingLabel}
+                </span>
+              ) : output ? (
+                <>
+                  <CopyButton text={output} />
+                  <a
+                    href={`/api/sessions/${session.id}/download?type=research`}
+                    download
+                    title="Download research (.docx)"
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                  >
+                    <Download size={13} />
+                    <span>Download</span>
+                  </a>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            {output ? (
+              <>
+                <div
+                  className="prose-research text-sm text-gray-800"
+                  dangerouslySetInnerHTML={{ __html: marked.parse(output) as string }}
+                />
+                {isProcessing && <span className="cursor-blink select-none text-gray-300">▋</span>}
+              </>
+            ) : isProcessing ? (
+              <div className="flex items-center gap-2 py-6 text-sm text-gray-400">
+                {reconnecting ? (
+                  <span>This research is generating in the background — it will appear here automatically…</span>
+                ) : streamStatus === 'searching' ? (
+                  <span>Searching the web for the latest information…</span>
+                ) : (
+                  <span>Researching the interviewee…</span>
+                )}
+                <span className="cursor-blink select-none">▋</span>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-4 py-10 text-center">
+                <div className="rounded-full bg-[#f7f6f3] p-3 text-gray-400">
+                  <Sparkles size={20} />
+                </div>
                 <p className="text-sm text-gray-500">
                   Ready to research <span className="font-medium text-gray-800">{session.full_name}</span>
                 </p>
                 <button
-                  onClick={startGeneration}
-                  className="mt-2 bg-black text-white text-sm font-medium px-6 py-2.5 hover:bg-gray-900 transition-colors"
+                  onClick={() => startGeneration()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
                 >
+                  <Sparkles size={15} />
                   Generate Research
                 </button>
               </div>
             )}
 
-            {(output || isProcessing) && (
-              <div className="flex gap-4 items-start">
-                <AssistantAvatar />
-                <div className="flex-1 min-w-0 pt-0.5">
-                  {output ? (
-                    <>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Research</p>
-                        {!isProcessing && (
-                          <DownloadButton sessionId={session.id} type="research" />
-                        )}
-                      </div>
-                      <div
-                        className="prose-research text-sm text-gray-800"
-                        dangerouslySetInnerHTML={{ __html: marked.parse(output) as string }}
-                      />
-                      {isProcessing && <span className="cursor-blink text-gray-300 text-sm select-none">▋</span>}
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2 text-sm text-gray-400">
-                      {streamStatus === 'searching'
-                        ? <span>Searching the web…</span>
-                        : <span>Thinking…</span>}
-                      <span className="cursor-blink select-none">▋</span>
+            {/* Regenerate research with optional "what to improve" guidance */}
+            {researchDone && (
+              <div className="mt-6 border-t border-[#e5e3df] pt-5">
+                {!showResearchForm ? (
+                  <button
+                    onClick={() => setShowResearchForm(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                  >
+                    <WandSparkles size={15} />
+                    Regenerate research
+                  </button>
+                ) : (
+                  <div className="rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-5">
+                    <Textarea
+                      label="What to improve"
+                      hint="optional"
+                      placeholder="e.g. Focus more on recent financials. Add their regulatory history. Double-check their current role."
+                      value={researchExtra}
+                      onChange={(e) => setResearchExtra(e.target.value)}
+                      rows={3}
+                    />
+                    <div className="mt-4 flex gap-3">
+                      <button
+                        onClick={() => startGeneration(researchExtra)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-900"
+                      >
+                        <WandSparkles size={15} />
+                        Regenerate
+                      </button>
+                      <button
+                        onClick={() => { setShowResearchForm(false); setResearchExtra('') }}
+                        className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:text-gray-900"
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
             {error && (
-              <div className="flex gap-3 items-start mt-8">
-                <div className="w-7 h-7 rounded-full bg-red-100 flex-shrink-0 flex items-center justify-center mt-0.5">
-                  <span className="text-red-500 text-xs font-bold">!</span>
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <span>{error}</span>
+                {!output && (
+                  <button
+                    onClick={() => { setError(null); startGeneration() }}
+                    className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
+                  >
+                    Try again
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Interview questions card — after research is done */}
+        {researchDone && (
+          <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex-shrink-0 rounded-lg border border-[#e5e3df] bg-[#f7f6f3] p-2 text-gray-700">
+                  <ListChecks size={15} />
                 </div>
                 <div>
-                  <p className="text-sm text-red-600">{error}</p>
-                  {!output && (
-                    <button
-                      onClick={() => { setError(null); startGeneration() }}
-                      className="mt-2 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors underline underline-offset-2"
-                    >
-                      Try again
-                    </button>
-                  )}
+                  <h2 className="text-sm font-semibold leading-tight text-gray-900">Interview Questions</h2>
+                  <p className="mt-0.5 text-[11px] leading-tight text-gray-400">Tailored to the research above</p>
                 </div>
               </div>
-            )}
-
-            {/* Questions block — shown only after research is done */}
-            {researchDone && (
-              <div className="mt-10 pt-8 border-t border-[#e5e3df]">
-                {hasQuestions ? (
-                  <div className="flex gap-4 items-start">
-                    <AssistantAvatar />
-                    <div className="flex-1 min-w-0 pt-0.5">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-                          Interview Questions
-                        </p>
-                        {!questionsStreaming && (
-                          <DownloadButton sessionId={session.id} type="questions" />
-                        )}
-                      </div>
-                      <div
-                        className="prose-research text-sm text-gray-800"
-                        dangerouslySetInnerHTML={{ __html: marked.parse(questions) as string }}
-                      />
-                      {questionsStreaming && <span className="cursor-blink text-gray-300 text-sm select-none">▋</span>}
-                    </div>
-                  </div>
-                ) : questionsStreaming ? (
-                  <div className="flex gap-4 items-start">
-                    <AssistantAvatar />
-                    <div className="flex items-center gap-2 text-sm text-gray-400 pt-1.5">
-                      <span>Drafting questions…</span>
-                      <span className="cursor-blink select-none">▋</span>
-                    </div>
-                  </div>
+              <div className="flex items-center gap-1">
+                {questionsStreaming ? (
+                  <span className="flex items-center gap-2 pr-2 text-xs text-gray-500">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+                    Drafting…
+                  </span>
+                ) : hasQuestions ? (
+                  <>
+                    <CopyButton text={questions} />
+                    <a
+                      href={`/api/sessions/${session.id}/download?type=questions`}
+                      download
+                      title="Download questions (.docx)"
+                      className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                    >
+                      <Download size={13} />
+                      <span>Download</span>
+                    </a>
+                  </>
                 ) : null}
-
-                {/* Action area below questions */}
-                {!questionsStreaming && (
-                  <div className="mt-8">
-                    {!showQuestionsForm ? (
-                      <div className="flex flex-wrap gap-3">
-                        {!hasQuestions ? (
-                          <button
-                            onClick={() => setShowQuestionsForm(true)}
-                            className="bg-black text-white text-xs font-medium uppercase tracking-wider px-5 py-2.5 hover:bg-gray-900 transition-colors"
-                          >
-                            Generate Questions
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setShowQuestionsForm(true)}
-                            className="bg-white border border-[#e5e3df] text-gray-700 text-xs font-medium uppercase tracking-wider px-5 py-2.5 hover:bg-gray-50 transition-colors"
-                          >
-                            Regenerate Questions
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="bg-[#faf9f7] border border-[#e5e3df] p-5">
-                        <Textarea
-                          label={hasQuestions ? 'What to improve' : 'Additional context'}
-                          hint="optional"
-                          placeholder={
-                            hasQuestions
-                              ? 'e.g. Make the questions sharper. Focus more on financials. Avoid yes/no questions.'
-                              : 'e.g. Focus on policy positions. Ask about recent M&A activity.'
-                          }
-                          value={questionsExtra}
-                          onChange={(e) => setQuestionsExtra(e.target.value)}
-                          rows={3}
-                        />
-                        <div className="flex gap-3 mt-4">
-                          <button
-                            onClick={generateQuestions}
-                            className="bg-black text-white text-xs font-medium uppercase tracking-wider px-5 py-2.5 hover:bg-gray-900 transition-colors"
-                          >
-                            {hasQuestions ? 'Regenerate' : 'Generate'}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowQuestionsForm(false)
-                              setQuestionsExtra('')
-                            }}
-                            className="text-xs font-medium uppercase tracking-wider text-gray-500 hover:text-gray-900 px-3 py-2.5 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {questionsError && (
-                  <div className="flex gap-3 items-start mt-6">
-                    <div className="w-7 h-7 rounded-full bg-red-100 flex-shrink-0 flex items-center justify-center mt-0.5">
-                      <span className="text-red-500 text-xs font-bold">!</span>
-                    </div>
-                    <p className="text-sm text-red-600">{questionsError}</p>
-                  </div>
-                )}
               </div>
-            )}
+            </div>
 
-            <div ref={bottomRef} />
+            <div className="mt-4">
+              {hasQuestions ? (
+                <>
+                  <div
+                    className="prose-research text-sm text-gray-800"
+                    dangerouslySetInnerHTML={{ __html: marked.parse(questions) as string }}
+                  />
+                  {questionsStreaming && <span className="cursor-blink select-none text-gray-300">▋</span>}
+                </>
+              ) : questionsStreaming ? (
+                <div className="flex items-center gap-2 py-6 text-sm text-gray-400">
+                  <span>Drafting interview questions…</span>
+                  <span className="cursor-blink select-none">▋</span>
+                </div>
+              ) : null}
+
+              {!questionsStreaming && (
+                <div className={hasQuestions ? 'mt-6 border-t border-[#e5e3df] pt-5' : ''}>
+                  {!showQuestionsForm ? (
+                    <button
+                      onClick={() => setShowQuestionsForm(true)}
+                      className={
+                        hasQuestions
+                          ? 'inline-flex items-center gap-2 rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200'
+                          : 'inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md'
+                      }
+                    >
+                      <WandSparkles size={15} />
+                      {hasQuestions ? 'Regenerate questions' : 'Generate questions'}
+                    </button>
+                  ) : (
+                    <div className="rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-5">
+                      <Textarea
+                        label={hasQuestions ? 'What to improve' : 'Additional context'}
+                        hint="optional"
+                        placeholder={
+                          hasQuestions
+                            ? 'e.g. Make the questions sharper. Focus more on financials. Avoid yes/no questions.'
+                            : 'e.g. Focus on policy positions. Ask about recent M&A activity.'
+                        }
+                        value={questionsExtra}
+                        onChange={(e) => setQuestionsExtra(e.target.value)}
+                        rows={3}
+                      />
+                      <div className="mt-4 flex gap-3">
+                        <button
+                          onClick={generateQuestions}
+                          className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-900"
+                        >
+                          <WandSparkles size={15} />
+                          {hasQuestions ? 'Regenerate' : 'Generate'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowQuestionsForm(false)
+                            setQuestionsExtra('')
+                          }}
+                          className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:text-gray-900"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {questionsError && (
+                <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <span>{questionsError}</span>
+                  <button
+                    onClick={generateQuestions}
+                    className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
+        )}
+
+        <div ref={bottomRef} />
         </div>
       </div>
     </div>
   )
 }
 
-function AssistantAvatar({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
-  const cls = size === 'lg'
-    ? 'w-10 h-10 text-xs'
-    : 'w-7 h-7 text-[10px]'
+// Copies text with brief "Copied" feedback — mirrors the transcription workspace.
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
   return (
-    <div className={`${cls} rounded-full bg-[#c8973f] flex-shrink-0 flex items-center justify-center text-white font-semibold`}>
-      AI
-    </div>
-  )
-}
-
-function DownloadButton({
-  sessionId,
-  type,
-}: {
-  sessionId: string
-  type: 'research' | 'questions'
-}) {
-  const href = `/api/sessions/${sessionId}/download?type=${type}`
-  return (
-    <a
-      href={href}
-      download
-      className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors"
+    <button
+      onClick={copy}
+      title="Copy to clipboard"
+      className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
     >
-      <Download size={11} strokeWidth={2} />
-      Download
-    </a>
+      {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+      <span>{copied ? 'Copied' : 'Copy'}</span>
+    </button>
   )
 }
 
@@ -477,7 +616,7 @@ function InfoRow({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{label}</p>
-      <p className="text-xs text-gray-700 mt-0.5">{value}</p>
+      <p className="mt-0.5 text-[13px] leading-snug text-gray-700">{value}</p>
     </div>
   )
 }

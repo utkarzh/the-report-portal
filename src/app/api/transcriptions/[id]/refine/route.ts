@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE } from '@/lib/claude/tokens'
+import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE, HAIKU_PRICING } from '@/lib/claude/tokens'
+import { logUsageEvent } from '@/lib/claude/usage'
+
+// Refine is mechanical cleanup (fix punctuation, keep speaker labels) — Haiku is
+// ~3x cheaper on output than Sonnet and handles it well.
+const REFINE_MODEL = 'claude-haiku-4-5'
 
 // POST /api/transcriptions/[id]/refine — streams a cleaned, publication-ready
 // version of the raw transcript from Claude, using the admin-managed refining
@@ -100,7 +105,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           .eq('id', row.id)
 
         const claudeStream = anthropic.messages.stream({
-          model: 'claude-sonnet-4-6',
+          model: REFINE_MODEL,
           max_tokens: 16000,
           system: systemBlocks,
           messages: [{ role: 'user', content: userContentBlocks }],
@@ -120,7 +125,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         const usage = parseUsage(finalMsg.usage, 0)
         const promptTokens = totalPromptTokens(usage)
         const opTokens = promptTokens + usage.outputTokens
-        const opCost = calculateCost(usage)
+        const opCost = calculateCost(usage, HAIKU_PRICING)
 
         // Accumulate onto the transcript's running Claude totals (refine and
         // translate both count). Persist FIRST — must never be skipped even if
@@ -143,6 +148,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         await supabaseAdmin.rpc('increment_user_tokens', {
           p_user_id: user.id,
           p_tokens: opTokens,
+        })
+
+        // Ledger event for THIS refine op — captures Claude transcription spend
+        // in analytics (previously invisible). Cost is this operation's cost,
+        // not the transcript's running total.
+        await logUsageEvent({
+          userId: user.id,
+          workflow: 'transcript_refine',
+          sourceId: row.id,
+          model: REFINE_MODEL,
+          tokensInput: promptTokens,
+          tokensOutput: usage.outputTokens,
+          tokensTotal: opTokens,
+          costUsd: opCost,
         })
 
         send({ usage: { tokens_total: totalTokens, cost_usd: totalCost } })

@@ -3,6 +3,9 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, GENERATION_TOKEN_RESERVE } from '@/lib/claude/tokens'
+import { logUsageEvent } from '@/lib/claude/usage'
+
+const CLAUDE_MODEL = 'claude-sonnet-4-6'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
 // Capped to keep per-generation token usage in check. Each web search injects
@@ -158,8 +161,14 @@ OUTPUT RULES:
       const send = (payload: unknown) => sendRaw(JSON.stringify(payload))
 
       try {
+        // Mark as generating so a user who returns mid-run sees "Generating…".
+        await supabaseAdmin
+          .from('research_sessions')
+          .update({ status: 'generating' })
+          .eq('id', session!.id)
+
         const claudeStream = anthropic.messages.stream({
-          model: 'claude-sonnet-4-6',
+          model: CLAUDE_MODEL,
           max_tokens: 8192,
           system: systemBlocks,
           messages: [{ role: 'user', content: userContentBlocks }],
@@ -210,12 +219,28 @@ OUTPUT RULES:
             tokens_total: totalTokens,
             web_searches: searches,
             cost_usd: cost,
+            status: 'complete',
           })
           .eq('id', session!.id)
 
         await supabaseAdmin.rpc('increment_user_tokens', {
           p_user_id: user!.id,
           p_tokens: totalTokens,
+        })
+
+        // Append to the usage ledger — the source of truth for analytics. Unlike
+        // the session row (overwritten on each regenerate), this is immutable, so
+        // every regeneration is counted.
+        await logUsageEvent({
+          userId: user!.id,
+          workflow: 'research',
+          sourceId: session!.id,
+          model: CLAUDE_MODEL,
+          tokensInput: promptTokens,
+          tokensOutput: usage.outputTokens,
+          tokensTotal: totalTokens,
+          webSearches: searches,
+          costUsd: cost,
         })
 
         // Push the final usage so the live sidebar can update without a reload.
@@ -229,6 +254,18 @@ OUTPUT RULES:
         sendRaw('[DONE]')
       } catch (err) {
         console.error('Claude stream error:', err)
+        await supabaseAdmin
+          .from('research_sessions')
+          .update({ status: 'failed' })
+          .eq('id', session!.id)
+        await logUsageEvent({
+          userId: user!.id,
+          workflow: 'research',
+          sourceId: session!.id,
+          model: CLAUDE_MODEL,
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Generation failed',
+        })
         send({ error: 'Generation failed' })
       } finally {
         try {

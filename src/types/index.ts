@@ -73,8 +73,34 @@ export interface ResearchSession {
   cost_usd: number
   general_prompt_snapshot: string | null
   category_prompt_snapshot: string | null
+  status: ResearchStatus
   created_at: string
   updated_at: string
+}
+
+export type ResearchStatus = 'pending' | 'generating' | 'complete' | 'failed'
+
+// The distinct Claude-billed operations we log to the usage_events ledger.
+export type UsageWorkflow =
+  | 'research'
+  | 'research_questions'
+  | 'transcript_refine'
+  | 'transcript_translate'
+
+export interface UsageEvent {
+  id: string
+  user_id: string | null
+  workflow: UsageWorkflow
+  source_id: string | null
+  model: string | null
+  tokens_input: number
+  tokens_output: number
+  tokens_total: number
+  web_searches: number
+  cost_usd: number
+  status: 'success' | 'error'
+  error: string | null
+  created_at: string
 }
 
 export interface ResearchFormData {

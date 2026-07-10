@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       media_partner_country: mediaPartnerCountry,
       general_prompt_snapshot: generalPromptData?.prompt_text || '',
       category_prompt_snapshot: category.prompt_text,
+      status: 'pending',
     })
     .select('id')
     .single()

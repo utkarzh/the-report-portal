@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE } from '@/lib/claude/tokens'
+import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE, HAIKU_PRICING } from '@/lib/claude/tokens'
+
+const TRANSLATE_MODEL = 'claude-haiku-4-5'
 import { isTranslationLanguage } from '@/lib/transcriptions'
+import { logUsageEvent } from '@/lib/claude/usage'
 
 // POST /api/transcriptions/[id]/translate — streams a translation of the RAW
 // transcript into the requested language and stores it in the single
@@ -90,7 +93,7 @@ Rules:
 
       try {
         const claudeStream = anthropic.messages.stream({
-          model: 'claude-sonnet-4-6',
+          model: TRANSLATE_MODEL,
           max_tokens: 16000,
           system: systemBlocks,
           messages: [{ role: 'user', content: userContentBlocks }],
@@ -107,7 +110,7 @@ Rules:
         const usage = parseUsage(finalMsg.usage, 0)
         const promptTokens = totalPromptTokens(usage)
         const opTokens = promptTokens + usage.outputTokens
-        const opCost = calculateCost(usage)
+        const opCost = calculateCost(usage, HAIKU_PRICING)
 
         // Accumulate onto the transcription's running Claude totals (translation
         // and refine both count toward this transcript's spend). Persist FIRST —
@@ -130,6 +133,19 @@ Rules:
         await supabaseAdmin.rpc('increment_user_tokens', {
           p_user_id: user.id,
           p_tokens: opTokens,
+        })
+
+        // Ledger event for THIS translation op — captures Claude spend in
+        // analytics. Cost is this operation's cost, not the running total.
+        await logUsageEvent({
+          userId: user.id,
+          workflow: 'transcript_translate',
+          sourceId: row.id,
+          model: TRANSLATE_MODEL,
+          tokensInput: promptTokens,
+          tokensOutput: usage.outputTokens,
+          tokensTotal: opTokens,
+          costUsd: opCost,
         })
 
         send({ usage: { tokens_total: totalTokens, cost_usd: totalCost } })

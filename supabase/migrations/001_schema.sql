@@ -153,6 +153,9 @@ CREATE TABLE public.research_sessions (
     cost_usd                 NUMERIC(10, 6) DEFAULT 0,
     general_prompt_snapshot  TEXT,
     category_prompt_snapshot TEXT,
+    -- Generation lifecycle (migration 010): 'pending' | 'generating' | 'complete' | 'failed'.
+    -- Lets a user returning mid-run see "Generating…" and reconnect.
+    status                   TEXT        NOT NULL DEFAULT 'complete',
     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -216,6 +219,35 @@ CREATE INDEX idx_login_audit_logs_created_at ON public.login_audit_logs(created_
 CREATE INDEX idx_login_audit_logs_user_id    ON public.login_audit_logs(user_id);
 
 -- ============================================================
+-- USAGE EVENTS LEDGER (admin-only) — migration 010
+-- ============================================================
+-- Append-only, one immutable row per Claude call (research, questions,
+-- transcript refine/translate). The single source of truth for analytics:
+-- counts every regeneration and includes transcription spend. source_id has NO
+-- FK so the ledger survives deletion of the underlying item; user_id SET NULL
+-- keeps history for deleted users (grouped under "Deleted user").
+
+CREATE TABLE public.usage_events (
+    id            UUID          PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id       UUID          REFERENCES public.profiles(id) ON DELETE SET NULL,
+    workflow      TEXT          NOT NULL,   -- 'research' | 'research_questions' | 'transcript_refine' | 'transcript_translate'
+    source_id     UUID,                      -- research_sessions.id or transcriptions.id (no FK by design)
+    model         TEXT,
+    tokens_input  INTEGER       NOT NULL DEFAULT 0,
+    tokens_output INTEGER       NOT NULL DEFAULT 0,
+    tokens_total  INTEGER       NOT NULL DEFAULT 0,
+    web_searches  INTEGER       NOT NULL DEFAULT 0,
+    cost_usd      NUMERIC(10, 6) NOT NULL DEFAULT 0,
+    status        TEXT          NOT NULL DEFAULT 'success',  -- 'success' | 'error'
+    error         TEXT,
+    created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_usage_events_created_at ON public.usage_events(created_at DESC);
+CREATE INDEX idx_usage_events_user_id    ON public.usage_events(user_id);
+CREATE INDEX idx_usage_events_workflow   ON public.usage_events(workflow);
+
+-- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
 
@@ -227,6 +259,7 @@ ALTER TABLE public.research_sessions      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.general_prompt_versions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.category_prompt_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.login_audit_logs         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.usage_events             ENABLE ROW LEVEL SECURITY;
 
 -- Helper: returns the current user's role (used in RLS policies)
 CREATE OR REPLACE FUNCTION public.user_role()
@@ -283,6 +316,10 @@ CREATE POLICY "Admins can manage category prompt versions"
 -- Login audit logs — admins read only. Inserts come from the service role.
 CREATE POLICY "Admins can read login audit logs"
     ON public.login_audit_logs FOR SELECT USING (public.user_role() = 'admin');
+
+-- Usage events — admins read only. Inserts come from the service role.
+CREATE POLICY "Admins can read usage events"
+    ON public.usage_events FOR SELECT USING (public.user_role() = 'admin');
 
 -- ============================================================
 -- FUNCTION: auto-create profile when a new auth user signs up

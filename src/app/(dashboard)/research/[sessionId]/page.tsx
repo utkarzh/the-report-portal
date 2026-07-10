@@ -36,4 +36,6 @@ export default async function ResearchSessionPage({ params, searchParams }: Prop
       isAdmin={profile.role === 'admin'}
     />
   )
+  // Note: `session.status` ('pending'|'generating'|'complete'|'failed') is read
+  // inside ResearchOutput to reconnect to an in-progress generation on return.
 }

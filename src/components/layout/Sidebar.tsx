@@ -113,7 +113,7 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
             width={222}
             priority
             unoptimized
-            className="h-auto w-32 flex-shrink-0"
+            className="h-auto w-44 flex-shrink-0"
           />
         )}
         <button

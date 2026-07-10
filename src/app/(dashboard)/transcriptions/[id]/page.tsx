@@ -57,6 +57,7 @@ export default async function TranscriptionDetailPage({ params }: { params: { id
         <TranscriptionWorkspace
           transcription={transcription}
           audioUrl={signed?.signedUrl ?? null}
+          isAdmin={profile.role === 'admin'}
         />
       </div>
     </div>

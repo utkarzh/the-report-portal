@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { marked } from 'marked'
-import { AudioLines, Mic, WandSparkles, FileText, Loader2, Download, Languages, ChevronDown, Copy, Check } from 'lucide-react'
+import { AudioLines, Mic, WandSparkles, FileText, Loader2, Download, Languages, ChevronDown, Copy, Check, Sparkles } from 'lucide-react'
 import type { Transcription } from '@/types'
 import { TRANSCRIPTION_PROVIDER, TRANSLATION_LANGUAGES, type TranslationLanguage } from '@/lib/transcriptions'
+import AudioPlayer from './AudioPlayer'
+import TranscribingLoader from './TranscribingLoader'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -74,6 +76,7 @@ type RefineSource = 'raw' | 'translated'
 interface Props {
   transcription: Transcription
   audioUrl: string | null
+  isAdmin?: boolean
 }
 
 // Reads an SSE stream produced by the transcribe/refine routes, calling
@@ -125,7 +128,7 @@ async function consumeStream(
   }
 }
 
-export default function TranscriptionWorkspace({ transcription, audioUrl }: Props) {
+export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmin = false }: Props) {
   const router = useRouter()
 
   const chunkPaths = transcription.chunk_paths ?? []
@@ -336,25 +339,48 @@ export default function TranscriptionWorkspace({ transcription, audioUrl }: Prop
     <div className="flex flex-col gap-6">
       {/* Header + audio */}
       <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl border border-[#e5e3df] bg-[#f7f6f3] p-2.5 text-gray-700">
-            <AudioLines size={18} />
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="rounded-xl border border-[#e5e3df] bg-[#f7f6f3] p-2.5 text-gray-700">
+              <AudioLines size={18} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-semibold text-gray-900">{transcription.title}</h1>
+              <p className="mt-1 truncate text-sm text-gray-500">
+                {transcription.audio_filename || 'audio'}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold text-gray-900">{transcription.title}</h1>
-            <p className="mt-1 truncate text-sm text-gray-500">
-              {transcription.audio_filename || 'audio'}
-              {usage.tokens_total > 0 && (
-                <span className="text-gray-400"> · {formatTokens(usage.tokens_total)} tokens · ${usage.cost_usd.toFixed(4)}</span>
-              )}
-            </p>
-          </div>
+
+          {/* AI (Claude) usage for this transcript — refine + translation.
+              Transcription itself (AssemblyAI) is not billed. Cost accumulates
+              across every refine/translate, so it survives re-transcribing. */}
+          {isAdmin && usage.tokens_total > 0 && (
+            <div
+              title="Claude usage for AI refine & translation on this transcript. Transcription (speaker detection) is not billed."
+              className="flex flex-shrink-0 items-center gap-4 rounded-xl border border-[#e5e3df] bg-[#f7f6f3] px-4 py-2.5"
+            >
+              <div className="text-right">
+                <p className="flex items-center justify-end gap-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                  <Sparkles size={11} /> AI cost
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 tabular-nums">
+                  ${usage.cost_usd.toFixed(4)}
+                </p>
+              </div>
+              <div className="h-8 w-px bg-[#e5e3df]" />
+              <div className="text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Tokens</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 tabular-nums">
+                  {formatTokens(usage.tokens_total)}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {audioUrl ? (
-          <audio controls src={audioUrl} className="mt-5 w-full">
-            Your browser does not support the audio element.
-          </audio>
+          <AudioPlayer src={audioUrl} />
         ) : (
           <p className="mt-5 text-sm text-gray-400">Audio preview unavailable.</p>
         )}
@@ -395,10 +421,11 @@ export default function TranscriptionWorkspace({ transcription, audioUrl }: Prop
 
         {!rawCollapsed && (
           <>
+            <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
             <div
               ref={rawScroll.ref}
               onScroll={rawScroll.onScroll}
-              className="mt-4 max-h-[440px] min-h-[160px] overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-gray-700"
+              className="scroll-fade max-h-[440px] min-h-[160px] overflow-y-auto whitespace-pre-wrap px-5 py-4 text-sm leading-7 text-gray-700"
             >
               {raw ? (
                 <>
@@ -406,17 +433,18 @@ export default function TranscriptionWorkspace({ transcription, audioUrl }: Prop
                   {transcribing && <span className="cursor-blink select-none text-gray-300">▋</span>}
                 </>
               ) : transcribing ? (
-                <span className="flex items-center gap-2 text-gray-400">
-                  <span>
-                    {TRANSCRIPTION_PROVIDER === 'assemblyai'
-                      ? `Transcribing and identifying speakers${waitSecs ? ` · ${waitSecs}s` : ''}… this can take a few minutes for long recordings.`
-                      : 'Listening to the audio…'}
+                TRANSCRIPTION_PROVIDER === 'assemblyai' ? (
+                  <TranscribingLoader waitSecs={waitSecs} />
+                ) : (
+                  <span className="flex items-center gap-2 text-gray-400">
+                    <span>Listening to the audio…</span>
+                    <span className="cursor-blink select-none">▋</span>
                   </span>
-                  <span className="cursor-blink select-none">▋</span>
-                </span>
+                )
               ) : (
                 <span className="text-gray-400">No transcript yet.</span>
               )}
+            </div>
             </div>
 
             {transcribeError && (
@@ -494,10 +522,11 @@ export default function TranscriptionWorkspace({ transcription, audioUrl }: Prop
           </div>
 
           {!translatedCollapsed && (
+          <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
           <div
             ref={translatedScroll.ref}
             onScroll={translatedScroll.onScroll}
-            className="mt-4 max-h-[440px] min-h-[120px] overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-gray-700"
+            className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto whitespace-pre-wrap px-5 py-4 text-sm leading-7 text-gray-700"
           >
             {translated ? (
               <>
@@ -510,6 +539,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl }: Prop
                 <span className="cursor-blink select-none">▋</span>
               </span>
             ) : null}
+          </div>
           </div>
           )}
 
@@ -562,7 +592,8 @@ export default function TranscriptionWorkspace({ transcription, audioUrl }: Prop
           </div>
 
           {!refinedCollapsed && (
-          <div className="mt-4 max-h-[440px] min-h-[120px] overflow-y-auto text-sm leading-7 text-gray-800" ref={refinedScroll.ref} onScroll={refinedScroll.onScroll}>
+          <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
+          <div className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto px-5 py-4 text-sm leading-7 text-gray-800" ref={refinedScroll.ref} onScroll={refinedScroll.onScroll}>
             {refined ? (
               <>
                 <div
@@ -577,6 +608,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl }: Prop
                 <span className="cursor-blink select-none">▋</span>
               </span>
             ) : null}
+          </div>
           </div>
           )}
 

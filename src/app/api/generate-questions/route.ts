@@ -3,6 +3,9 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE } from '@/lib/claude/tokens'
+import { logUsageEvent } from '@/lib/claude/usage'
+
+const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
 export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient()
@@ -172,6 +175,19 @@ Media Partner Country: ${session.media_partner_country}`
         await supabaseAdmin.rpc('increment_user_tokens', {
           p_user_id: user!.id,
           p_tokens: totalTokens,
+        })
+
+        // Ledger event for THIS question generation only (not the accumulated
+        // session total) — so analytics counts every regeneration separately.
+        await logUsageEvent({
+          userId: user!.id,
+          workflow: 'research_questions',
+          sourceId: session!.id,
+          model: CLAUDE_MODEL,
+          tokensInput: promptTokens,
+          tokensOutput: usage.outputTokens,
+          tokensTotal: totalTokens,
+          costUsd: cost,
         })
 
         // Push the combined session usage so the live sidebar reflects the

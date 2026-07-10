@@ -1,9 +1,37 @@
-// Claude claude-sonnet-4-6 pricing (per 1M tokens)
-export const PRICE_INPUT_PER_MILLION = 3.0
-export const PRICE_OUTPUT_PER_MILLION = 15.0
-const PRICE_CACHE_WRITE_5M_PER_MILLION = 3.75 // 1.25x input — 5-min ephemeral cache write
-const PRICE_CACHE_WRITE_1H_PER_MILLION = 6.0  // 2.00x input — 1-hour ephemeral cache write
-const PRICE_CACHE_READ_PER_MILLION = 0.30     // 0.10x input — cache read (any TTL)
+// Per-model pricing (per 1M tokens). Cache write/read rates follow Anthropic's
+// standard multipliers off the input price: 5-min write = 1.25x, 1h write = 2x,
+// cache read = 0.1x.
+export interface ModelPricing {
+  input: number
+  output: number
+  cacheWrite5m: number
+  cacheWrite1h: number
+  cacheRead: number
+}
+
+// claude-sonnet-4-6 — used for research + question generation.
+export const SONNET_PRICING: ModelPricing = {
+  input: 3.0,
+  output: 15.0,
+  cacheWrite5m: 3.75,
+  cacheWrite1h: 6.0,
+  cacheRead: 0.30,
+}
+
+// claude-haiku-4-5 — used for transcript refine + translate (cheaper: $1/$5).
+export const HAIKU_PRICING: ModelPricing = {
+  input: 1.0,
+  output: 5.0,
+  cacheWrite5m: 1.25,
+  cacheWrite1h: 2.0,
+  cacheRead: 0.10,
+}
+
+// Back-compat exports (Sonnet). The analytics cost-breakdown derivation uses
+// the output price; it's a Sonnet-based approximation for the in/out/search
+// split and doesn't affect the accurate per-event cost stored in the ledger.
+export const PRICE_INPUT_PER_MILLION = SONNET_PRICING.input
+export const PRICE_OUTPUT_PER_MILLION = SONNET_PRICING.output
 
 // Anthropic web search tool — billed separately, NOT included in token usage.
 // Source: https://docs.anthropic.com/en/docs/build-with-claude/tool-use/web-search-tool
@@ -68,13 +96,15 @@ export function totalPromptTokens(usage: UsageBreakdown): number {
   )
 }
 
-export function calculateCost(usage: UsageBreakdown): number {
+// Defaults to Sonnet pricing (research/questions). Pass HAIKU_PRICING for the
+// transcript refine/translate routes so the ledger records their real cost.
+export function calculateCost(usage: UsageBreakdown, pricing: ModelPricing = SONNET_PRICING): number {
   return (
-    (usage.inputTokens / 1_000_000) * PRICE_INPUT_PER_MILLION +
-    (usage.outputTokens / 1_000_000) * PRICE_OUTPUT_PER_MILLION +
-    ((usage.cacheCreation5mTokens ?? 0) / 1_000_000) * PRICE_CACHE_WRITE_5M_PER_MILLION +
-    ((usage.cacheCreation1hTokens ?? 0) / 1_000_000) * PRICE_CACHE_WRITE_1H_PER_MILLION +
-    ((usage.cacheReadTokens ?? 0) / 1_000_000) * PRICE_CACHE_READ_PER_MILLION +
+    (usage.inputTokens / 1_000_000) * pricing.input +
+    (usage.outputTokens / 1_000_000) * pricing.output +
+    ((usage.cacheCreation5mTokens ?? 0) / 1_000_000) * pricing.cacheWrite5m +
+    ((usage.cacheCreation1hTokens ?? 0) / 1_000_000) * pricing.cacheWrite1h +
+    ((usage.cacheReadTokens ?? 0) / 1_000_000) * pricing.cacheRead +
     (usage.webSearches ?? 0) * WEB_SEARCH_PRICE_PER_REQUEST
   )
 }
