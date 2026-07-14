@@ -19,7 +19,8 @@ export default function NewTranscriptionPage() {
         <div className="mb-8">
           <h1 className="text-lg font-semibold text-gray-900">New Transcript</h1>
           <p className="mt-1.5 max-w-2xl text-sm text-gray-500">
-            Upload an audio recording. We&apos;ll transcribe it in real time, then you can refine the result with AI.
+            Upload an audio recording — or several files from one interview, which we&apos;ll join in order.
+            We&apos;ll transcribe it, then you can refine the result with AI.
           </p>
         </div>
 

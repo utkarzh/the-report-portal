@@ -99,6 +99,86 @@ export async function transcodeToMp3(
   return { blob, durationSeconds: duration }
 }
 
+// Concatenate several audio files into ONE compact 16kHz mono MP3, in the given
+// order. Used when a single interview arrives as multiple recordings (e.g. it
+// was split into two files): joining them into one continuous recording means a
+// single AssemblyAI job, so speaker labels stay consistent across the whole
+// interview — and the rest of the pipeline (one upload, one transcript) is
+// unchanged. Re-encodes via the concat filter so mixed formats/sample rates
+// combine cleanly. Falls back to the single-file path when given one file.
+export async function transcodeManyToMp3(
+  files: File[],
+  opts: { onProgress?: (ratio: number) => void; onStage?: (stage: string) => void } = {},
+): Promise<Mp3Result> {
+  if (files.length === 0) throw new Error('No audio files selected.')
+  if (files.length === 1) return transcodeToMp3(files[0], opts)
+
+  const ffmpeg = await getFFmpeg()
+
+  // Sum the per-input durations ffmpeg logs while parsing each file.
+  const durations: number[] = []
+  const onLog = ({ message }: { message: string }) => {
+    const m = message.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
+    if (m) durations.push(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]))
+  }
+  ffmpeg.on('log', onLog)
+
+  const onProg = ({ progress }: { progress: number }) =>
+    opts.onProgress?.(Math.max(0, Math.min(1, progress)))
+  if (opts.onProgress) ffmpeg.on('progress', onProg)
+
+  opts.onStage?.('transcoding')
+
+  const inputNames: string[] = []
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const ext = (files[i].name.split('.').pop() || 'audio').toLowerCase()
+      const name = `input_${i}.${ext}`
+      await ffmpeg.writeFile(name, await fetchFile(files[i]))
+      inputNames.push(name)
+    }
+
+    const args: string[] = []
+    for (const n of inputNames) args.push('-i', n)
+    // Normalise every input to 16kHz mono FIRST, then concat. The concat filter
+    // requires matching sample rate + channel layout across inputs, so without
+    // this a mix of formats (e.g. 44.1kHz stereo + 48kHz mono) would fail to
+    // join. aformat forces a resample/downmix per input to a common shape.
+    const pre = inputNames
+      .map((_, i) => `[${i}:a]aformat=sample_rates=16000:channel_layouts=mono[a${i}]`)
+      .join(';')
+    const joined = inputNames.map((_, i) => `[a${i}]`).join('')
+    const filter = `${pre};${joined}concat=n=${inputNames.length}:v=0:a=1[out]`
+    args.push(
+      '-filter_complex', filter,
+      '-map', '[out]',
+      '-vn',
+      '-ar', '16000',
+      '-ac', '1',
+      '-c:a', 'libmp3lame',
+      '-b:a', '48k',
+      'output.mp3',
+    )
+    await ffmpeg.exec(args)
+
+    const data = (await ffmpeg.readFile('output.mp3')) as Uint8Array
+    if (!data || data.byteLength === 0) {
+      throw new Error('Combining the audio produced no output. One of the files may be corrupt or unsupported.')
+    }
+    const buf = new Uint8Array(data.byteLength)
+    buf.set(data)
+    const blob = new Blob([buf], { type: 'audio/mpeg' })
+    await ffmpeg.deleteFile('output.mp3').catch(() => {})
+
+    const total = durations.length ? durations.reduce((a, b) => a + b, 0) : null
+    return { blob, durationSeconds: total }
+  } finally {
+    for (const n of inputNames) await ffmpeg.deleteFile(n).catch(() => {})
+    ffmpeg.off?.('log', onLog)
+    if (opts.onProgress) ffmpeg.off?.('progress', onProg)
+  }
+}
+
 export async function transcodeAndSegment(
   file: File,
   opts: { onProgress?: (ratio: number) => void; onStage?: (stage: string) => void } = {},
