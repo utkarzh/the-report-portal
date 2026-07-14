@@ -41,10 +41,18 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   // Which transcript to refine: the raw one (default) or the translation.
   const body = await request.json().catch(() => ({}))
   const source = (body as { source?: string }).source === 'translated' ? 'translated' : 'raw'
+  // Optional, per-refine editor instruction ("what would you like to make
+  // better"). NOT stored — it only shapes this one refine. Bounded so it can't
+  // blow up the prompt.
+  const rawInstruction = (body as { instruction?: string }).instruction
+  const instruction =
+    typeof rawInstruction === 'string' && rawInstruction.trim()
+      ? rawInstruction.trim().slice(0, 2000)
+      : ''
 
   const { data: row } = await supabaseAdmin
     .from('transcriptions')
-    .select('id, user_id, raw_transcript, translated_transcript, tokens_input, tokens_output, tokens_total, cost_usd')
+    .select('id, user_id, raw_transcript, translated_transcript, topic_outline, tokens_input, tokens_output, tokens_total, cost_usd')
     .eq('id', params.id)
     .single()
 
@@ -74,12 +82,35 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     ? [{ type: 'text' as const, text: refiningPrompt, cache_control: CACHE_1H }]
     : []
 
-  const userContentBlocks = [
-    {
+  // Order matters: supporting context (outline) first, then the editor's
+  // one-off instruction, then the transcript to clean. The framing text makes
+  // clear the refining prompt (system) is the primary instruction and these are
+  // secondary guidance — never content to insert into the transcript.
+  const userContentBlocks: { type: 'text'; text: string }[] = []
+
+  if (row.topic_outline) {
+    userContentBlocks.push({
       type: 'text' as const,
-      text: `--- ${source === 'translated' ? 'TRANSLATED' : 'RAW'} TRANSCRIPT ---\n\n${sourceText}`,
-    },
-  ]
+      text:
+        `--- TOPIC OUTLINE (supporting context only) ---\n` +
+        `Use this to guide cleanup — e.g. correct names, terms, and topics, and understand the interview's structure. ` +
+        `It is NOT part of the transcript; never copy its text into the output. The refining instructions take precedence over it.\n\n` +
+        `${row.topic_outline}`,
+    })
+  }
+
+  if (instruction) {
+    userContentBlocks.push({
+      type: 'text' as const,
+      text:
+        `--- ADDITIONAL REQUEST FROM THE EDITOR (apply within the refining instructions) ---\n\n${instruction}`,
+    })
+  }
+
+  userContentBlocks.push({
+    type: 'text' as const,
+    text: `--- ${source === 'translated' ? 'TRANSLATED' : 'RAW'} TRANSCRIPT ---\n\n${sourceText}`,
+  })
 
   const anthropic = getAnthropicClient()
   const encoder = new TextEncoder()

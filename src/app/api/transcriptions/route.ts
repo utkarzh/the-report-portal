@@ -27,13 +27,15 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { audioPath, chunkPaths, filename, mime, sizeBytes, durationSeconds } = body as {
+  const { audioPath, chunkPaths, filename, mime, sizeBytes, durationSeconds, topicOutline, topicOutlineFilename } = body as {
     audioPath?: string
     chunkPaths?: string[]
     filename?: string
     mime?: string
     sizeBytes?: number
     durationSeconds?: number
+    topicOutline?: string
+    topicOutlineFilename?: string
   }
 
   if (!audioPath || typeof audioPath !== 'string') {
@@ -77,6 +79,11 @@ export async function POST(request: NextRequest) {
       audio_mime: mime || null,
       audio_size_bytes: typeof sizeBytes === 'number' ? sizeBytes : null,
       duration_seconds: typeof durationSeconds === 'number' ? durationSeconds : null,
+      topic_outline: typeof topicOutline === 'string' && topicOutline.trim() ? topicOutline.trim() : null,
+      topic_outline_filename:
+        typeof topicOutlineFilename === 'string' && topicOutlineFilename.trim()
+          ? topicOutlineFilename.trim().split('/').pop()
+          : null,
       status: 'uploaded',
     })
     .select('id')

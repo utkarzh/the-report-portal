@@ -2,9 +2,10 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, FileAudio, X, Loader2, ChevronUp, ChevronDown } from 'lucide-react'
+import { Upload, FileAudio, X, Loader2, ChevronUp, ChevronDown, FileText } from 'lucide-react'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { TRANSCRIPTION_AUDIO_BUCKET, TRANSCRIPTION_PROVIDER } from '@/lib/transcriptions'
+import { OUTLINE_ACCEPT, OUTLINE_EXT_RE, extractOutlineText } from '@/lib/outline-extract'
 
 type Phase = 'idle' | 'preparing' | 'transcoding' | 'uploading' | 'creating' | 'error'
 
@@ -21,7 +22,13 @@ const AUDIO_EXT_RE = /\.(mp3|wav|m4a|mp4|mpeg|mpga|webm|ogg|oga|flac|aac|aiff?)$
 export default function TranscriptionUploader({ userId }: { userId: string }) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
+  const outlineInputRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<File[]>([])
+  // Optional topic-outline document. We extract its text on selection (the file
+  // itself is never uploaded) and send that text with the record.
+  const [outlineFile, setOutlineFile] = useState<File | null>(null)
+  const [outlineText, setOutlineText] = useState<string | null>(null)
+  const [outlineBusy, setOutlineBusy] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [progress, setProgress] = useState(0)
   const [uploadInfo, setUploadInfo] = useState({ done: 0, total: 0 })
@@ -59,6 +66,34 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
 
   function removeAt(i: number) {
     setFiles((prev) => prev.filter((_, idx) => idx !== i))
+    setError(null)
+  }
+
+  async function pickOutline(f: File | null | undefined) {
+    if (!f) return
+    setError(null)
+    if (!OUTLINE_EXT_RE.test(f.name)) {
+      setError('Outline must be a .docx, .txt or .md file.')
+      return
+    }
+    setOutlineBusy(true)
+    try {
+      const { text } = await extractOutlineText(f)
+      setOutlineFile(f)
+      setOutlineText(text)
+    } catch (e) {
+      setOutlineFile(null)
+      setOutlineText(null)
+      setError(e instanceof Error ? e.message : 'Could not read that outline document.')
+    } finally {
+      setOutlineBusy(false)
+      if (outlineInputRef.current) outlineInputRef.current.value = ''
+    }
+  }
+
+  function removeOutline() {
+    setOutlineFile(null)
+    setOutlineText(null)
     setError(null)
   }
 
@@ -175,6 +210,8 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
           mime,
           sizeBytes: totalBytes,
           durationSeconds,
+          topicOutline: outlineText || undefined,
+          topicOutlineFilename: outlineFile?.name || undefined,
         }),
       })
 
@@ -293,6 +330,56 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
           )}
         </div>
       )}
+
+      {/* Optional topic-outline document */}
+      <div className="mt-4 rounded-xl border border-dashed border-[#d4d0c8] bg-[#fcfbf8] px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg bg-white p-2 text-gray-600 shadow-sm">
+              <FileText size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-900">
+                Topic outline <span className="font-normal text-gray-400">(optional)</span>
+              </p>
+              {outlineFile ? (
+                <p className="truncate text-xs text-gray-500">{outlineFile.name}</p>
+              ) : (
+                <p className="text-xs text-gray-500">Guides the AI refine. .docx, .txt or .md</p>
+              )}
+            </div>
+          </div>
+          {!busy && (
+            outlineFile ? (
+              <button
+                type="button"
+                onClick={removeOutline}
+                className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 flex-shrink-0"
+                aria-label="Remove outline"
+              >
+                <X size={16} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => outlineInputRef.current?.click()}
+                disabled={outlineBusy}
+                className="inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:opacity-50 flex-shrink-0"
+              >
+                {outlineBusy && <Loader2 size={13} className="animate-spin" />}
+                <span>{outlineBusy ? 'Reading…' : 'Add outline'}</span>
+              </button>
+            )
+          )}
+          <input
+            ref={outlineInputRef}
+            type="file"
+            accept={OUTLINE_ACCEPT}
+            className="sr-only"
+            onChange={(e) => pickOutline(e.target.files?.[0])}
+          />
+        </div>
+      </div>
 
       {/* Progress bar while processing / uploading */}
       {(phase === 'transcoding' || phase === 'uploading') && (

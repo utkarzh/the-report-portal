@@ -143,6 +143,10 @@ export interface Transcription {
   raw_transcript: string | null
   refined_transcript: string | null
   refining_prompt_snapshot: string | null
+  // Optional topic-outline document attached at upload (extracted text + its
+  // original filename). Used as supporting context during refine.
+  topic_outline: string | null
+  topic_outline_filename: string | null
   // Single translation slot (one of the TRANSLATION_LANGUAGES); overwritten on re-translate.
   translated_transcript: string | null
   translation_language: string | null

@@ -453,6 +453,10 @@ CREATE TABLE IF NOT EXISTS public.transcriptions (
     raw_transcript            TEXT,
     refined_transcript        TEXT,
     refining_prompt_snapshot  TEXT,
+    -- Optional topic-outline document attached at upload: extracted text (the
+    -- file itself is not stored) used as supporting context during refine.
+    topic_outline             TEXT,
+    topic_outline_filename    TEXT,
     -- Single translation slot (one of: English, German, Spanish, Italian, Russian).
     -- Independent of refining; re-translating overwrites it.
     translated_transcript     TEXT,

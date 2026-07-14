@@ -165,6 +165,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   const [showLangPicker, setShowLangPicker] = useState(false)
   const [refineSource, setRefineSource] = useState<RefineSource>('raw')
   const [showRefinePicker, setShowRefinePicker] = useState(false)
+  // "Refine again" panel: an optional, non-stored instruction for the next refine.
+  const [showRefinePanel, setShowRefinePanel] = useState(false)
+  const [refineInstruction, setRefineInstruction] = useState('')
   const [usage, setUsage] = useState({
     tokens_total: transcription.tokens_total || 0,
     cost_usd: Number(transcription.cost_usd) || 0,
@@ -273,8 +276,10 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   }
 
   // Refine either the raw transcript or the translation. Streams like before.
-  async function startRefine(source: RefineSource) {
+  // `instruction` is an optional one-off editor request (not stored).
+  async function startRefine(source: RefineSource, instruction?: string) {
     setShowRefinePicker(false)
+    setShowRefinePanel(false)
     setRefineSource(source)
     setRefineError(null)
     setRefining(true)
@@ -285,7 +290,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
         `/api/transcriptions/${transcription.id}/refine`,
         (text) => { acc += text; setRefined(acc) },
         (u) => setUsage(u),
-        { source },
+        { source, instruction: instruction?.trim() || undefined },
       )
       router.refresh()
     } catch (e) {
@@ -349,6 +354,17 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               <p className="mt-1 truncate text-sm text-gray-500">
                 {transcription.audio_filename || 'audio'}
               </p>
+              {transcription.topic_outline && (
+                <span
+                  title={transcription.topic_outline_filename || 'Topic outline attached'}
+                  className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[#e5e3df] bg-[#f7f6f3] px-2 py-0.5 text-[11px] text-gray-500"
+                >
+                  <FileText size={11} />
+                  <span className="max-w-[180px] truncate">
+                    Outline: {transcription.topic_outline_filename || 'attached'}
+                  </span>
+                </span>
+              )}
             </div>
           </div>
 
@@ -577,6 +593,14 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                 </span>
               ) : hasRefined ? (
                 <>
+                  <button
+                    onClick={() => setShowRefinePanel((v) => !v)}
+                    title="Refine again, optionally with an instruction"
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                  >
+                    <WandSparkles size={13} />
+                    <span>Refine again</span>
+                  </button>
                   <CopyButton text={refined} />
                   <a
                     href={`/api/transcriptions/${transcription.id}/download?variant=refined`}
@@ -590,6 +614,42 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               ) : null}
             </div>
           </div>
+
+          {/* Refine-again panel: optional one-off instruction (not stored). */}
+          {showRefinePanel && !refining && (
+            <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-4">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                What would you like to make better? <span className="font-normal normal-case tracking-normal text-gray-400">(optional)</span>
+              </label>
+              <textarea
+                value={refineInstruction}
+                onChange={(e) => setRefineInstruction(e.target.value)}
+                rows={3}
+                placeholder="e.g. Tighten the intro, make speaker labels clearer, fix the company name to Acme Corp…"
+                className="mt-2 w-full resize-y rounded-lg border border-[#e5e3df] bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400"
+              />
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-xs text-gray-400">
+                  Applied on top of the saved refining prompt{transcription.topic_outline ? ' and topic outline' : ''}. Not saved.
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setShowRefinePanel(false); setRefineInstruction('') }}
+                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#efece7] hover:text-gray-900"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => startRefine(refineSource, refineInstruction)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-900"
+                  >
+                    <WandSparkles size={13} />
+                    <span>Refine again</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {!refinedCollapsed && (
           <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
