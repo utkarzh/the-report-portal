@@ -163,10 +163,10 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   const [translating, setTranslating] = useState(false)
   const [translateError, setTranslateError] = useState<string | null>(null)
   const [showLangPicker, setShowLangPicker] = useState(false)
+  // One unified refine dialog: pick the source (only when a translation exists)
+  // AND give an optional, non-stored instruction for this refine.
   const [refineSource, setRefineSource] = useState<RefineSource>('raw')
-  const [showRefinePicker, setShowRefinePicker] = useState(false)
-  // "Refine again" panel: an optional, non-stored instruction for the next refine.
-  const [showRefinePanel, setShowRefinePanel] = useState(false)
+  const [showRefineModal, setShowRefineModal] = useState(false)
   const [refineInstruction, setRefineInstruction] = useState('')
   const [usage, setUsage] = useState({
     tokens_total: transcription.tokens_total || 0,
@@ -196,9 +196,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   }, [])
 
   useEffect(() => {
-    document.body.style.overflow = showLangPicker || showRefinePicker ? 'hidden' : ''
+    document.body.style.overflow = showLangPicker || showRefineModal ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
-  }, [showLangPicker, showRefinePicker])
+  }, [showLangPicker, showRefineModal])
 
   async function startTranscribe() {
     if (TRANSCRIPTION_PROVIDER === 'assemblyai') {
@@ -278,8 +278,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   // Refine either the raw transcript or the translation. Streams like before.
   // `instruction` is an optional one-off editor request (not stored).
   async function startRefine(source: RefineSource, instruction?: string) {
-    setShowRefinePicker(false)
-    setShowRefinePanel(false)
+    setShowRefineModal(false)
     setRefineSource(source)
     setRefineError(null)
     setRefining(true)
@@ -300,11 +299,16 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
     }
   }
 
-  // Clicking Refine: if a translation exists, ask which source to refine;
-  // otherwise refine the raw transcript directly.
-  function onRefineClick() {
-    if (hasTranslation) setShowRefinePicker(true)
-    else startRefine('raw')
+  // Open the unified refine dialog (source choice + optional instruction).
+  // Starts each time from a clean instruction and the raw source as default.
+  function openRefineModal() {
+    setRefineInstruction('')
+    setRefineSource('raw')
+    setShowRefineModal(true)
+  }
+
+  function confirmRefine() {
+    startRefine(refineSource, refineInstruction)
   }
 
   // Translate the raw transcript into the selected language (single slot —
@@ -490,7 +494,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                 </button>
 
                 <button
-                  onClick={onRefineClick}
+                  onClick={openRefineModal}
                   disabled={refining || translating}
                   className="ml-auto inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-5 text-sm font-medium tracking-wide text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -594,8 +598,8 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               ) : hasRefined ? (
                 <>
                   <button
-                    onClick={() => setShowRefinePanel((v) => !v)}
-                    title="Refine again, optionally with an instruction"
+                    onClick={openRefineModal}
+                    title="Refine again — choose the source and add an optional instruction"
                     className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                   >
                     <WandSparkles size={13} />
@@ -615,41 +619,6 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
             </div>
           </div>
 
-          {/* Refine-again panel: optional one-off instruction (not stored). */}
-          {showRefinePanel && !refining && (
-            <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-4">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                What would you like to make better? <span className="font-normal normal-case tracking-normal text-gray-400">(optional)</span>
-              </label>
-              <textarea
-                value={refineInstruction}
-                onChange={(e) => setRefineInstruction(e.target.value)}
-                rows={3}
-                placeholder="e.g. Tighten the intro, make speaker labels clearer, fix the company name to Acme Corp…"
-                className="mt-2 w-full resize-y rounded-lg border border-[#e5e3df] bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400"
-              />
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-xs text-gray-400">
-                  Applied on top of the saved refining prompt{transcription.topic_outline ? ' and topic outline' : ''}. Not saved.
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => { setShowRefinePanel(false); setRefineInstruction('') }}
-                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#efece7] hover:text-gray-900"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => startRefine(refineSource, refineInstruction)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-900"
-                  >
-                    <WandSparkles size={13} />
-                    <span>Refine again</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {!refinedCollapsed && (
           <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
@@ -736,50 +705,87 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
         </div>
       )}
 
-      {/* Refine source picker — shown only when a translation also exists */}
-      {showRefinePicker && (
+      {/* Unified refine dialog: source choice (only when a translation exists)
+          + an optional, non-stored instruction for this refine. */}
+      {showRefineModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowRefinePicker(false)} />
-          <div className="relative mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowRefineModal(false)} />
+          <div className="relative mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <div className="flex items-center gap-2 text-gray-900">
               <WandSparkles size={16} />
-              <h3 className="text-sm font-semibold">Refine which transcript?</h3>
+              <h3 className="text-sm font-semibold">{hasRefined ? 'Refine again' : 'Refine transcript'}</h3>
             </div>
             <p className="mt-1.5 text-sm text-gray-500">
-              Choose the version to clean up. This replaces the current refined transcript.
+              Cleans up the transcript with the saved refining prompt{transcription.topic_outline ? ' and topic outline' : ''}. This replaces the current refined transcript.
             </p>
 
-            <div className="mt-5 space-y-2">
-              <button
-                onClick={() => startRefine('raw')}
-                className="flex w-full items-center gap-3 rounded-lg border border-[#e5e3df] px-4 py-3 text-left transition-colors hover:border-gray-300 hover:bg-[#faf9f7]"
-              >
-                <Mic size={16} className="shrink-0 text-gray-400" />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-gray-900">Raw transcript</span>
-                  <span className="block text-xs text-gray-500">The original transcription</span>
-                </span>
-              </button>
-              <button
-                onClick={() => startRefine('translated')}
-                className="flex w-full items-center gap-3 rounded-lg border border-[#e5e3df] px-4 py-3 text-left transition-colors hover:border-gray-300 hover:bg-[#faf9f7]"
-              >
-                <Languages size={16} className="shrink-0 text-gray-400" />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-gray-900">
-                    Translated transcript{translatedLang ? ` · ${translatedLang}` : ''}
-                  </span>
-                  <span className="block text-xs text-gray-500">The translated version</span>
-                </span>
-              </button>
+            {/* Source choice — only meaningful when a translation also exists. */}
+            {hasTranslation && (
+              <div className="mt-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Which transcript?</p>
+                <div className="mt-2 space-y-2">
+                  <button
+                    onClick={() => setRefineSource('raw')}
+                    className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                      refineSource === 'raw' ? 'border-black bg-[#faf9f7]' : 'border-[#e5e3df] hover:border-gray-300 hover:bg-[#faf9f7]'
+                    }`}
+                  >
+                    <Mic size={16} className="shrink-0 text-gray-400" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-gray-900">Original transcript</span>
+                      <span className="block text-xs text-gray-500">The raw transcription</span>
+                    </span>
+                    {refineSource === 'raw' && <Check size={16} className="shrink-0 text-black" />}
+                  </button>
+                  <button
+                    onClick={() => setRefineSource('translated')}
+                    className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                      refineSource === 'translated' ? 'border-black bg-[#faf9f7]' : 'border-[#e5e3df] hover:border-gray-300 hover:bg-[#faf9f7]'
+                    }`}
+                  >
+                    <Languages size={16} className="shrink-0 text-gray-400" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-gray-900">
+                        Translated transcript{translatedLang ? ` · ${translatedLang}` : ''}
+                      </span>
+                      <span className="block text-xs text-gray-500">The translated version</span>
+                    </span>
+                    {refineSource === 'translated' && <Check size={16} className="shrink-0 text-black" />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Optional, non-stored instruction for this refine. */}
+            <div className="mt-5">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                What would you like to make better? <span className="font-normal normal-case tracking-normal text-gray-400">(optional)</span>
+              </label>
+              <textarea
+                value={refineInstruction}
+                onChange={(e) => setRefineInstruction(e.target.value)}
+                rows={3}
+                placeholder="e.g. Tighten the intro, make speaker labels clearer, fix the company name to Acme Corp…"
+                className="mt-2 w-full resize-y rounded-lg border border-[#e5e3df] bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400"
+              />
+              <p className="mt-1.5 text-xs text-gray-400">Applied on top of the refining prompt for this run only — not saved.</p>
             </div>
 
-            <button
-              onClick={() => setShowRefinePicker(false)}
-              className="mt-6 w-full rounded-lg border border-[#e5e3df] bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-[#f7f6f3]"
-            >
-              Cancel
-            </button>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowRefineModal(false)}
+                className="flex-1 rounded-lg border border-[#e5e3df] bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-[#f7f6f3]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRefine}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+              >
+                <WandSparkles size={15} />
+                <span>{hasRefined ? 'Refine again' : 'Refine'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
