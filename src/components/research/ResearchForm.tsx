@@ -6,17 +6,23 @@ import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
+import ResearchDocPicker from '@/components/research/ResearchDocPicker'
+import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { RESEARCH_DOCS_BUCKET } from '@/lib/research-docs'
 import type { Category } from '@/types'
 
 interface ResearchFormProps {
   categories: Category[]
   isAtLimit: boolean
+  userId: string
 }
 
-export default function ResearchForm({ categories, isAtLimit }: ResearchFormProps) {
+export default function ResearchForm({ categories, isAtLimit, userId }: ResearchFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [docs, setDocs] = useState<File[]>([])
+  const [docError, setDocError] = useState<string | null>(null)
 
   const [form, setForm] = useState({
     categoryId: '',
@@ -60,6 +66,46 @@ export default function ResearchForm({ categories, isAtLimit }: ResearchFormProp
       }
 
       const { id: sessionId } = await res.json()
+
+      // Upload any attached company documents now that we have a session id.
+      // Each is uploaded to the private bucket, then recorded (+ text extracted
+      // server-side) so /api/generate can use it as context. Must complete
+      // BEFORE navigation — the session page auto-starts generation on mount.
+      if (docs.length > 0) {
+        const supabase = getSupabaseBrowserClient()
+        for (const file of docs) {
+          const ext = file.name.split('.').pop() || 'bin'
+          const storagePath = `${userId}/${sessionId}/${crypto.randomUUID()}.${ext}`
+          const { error: upErr } = await supabase
+            .storage
+            .from(RESEARCH_DOCS_BUCKET)
+            .upload(storagePath, file, {
+              contentType: file.type || 'application/octet-stream',
+              upsert: false,
+            })
+          if (upErr) {
+            setError(`Couldn't upload "${file.name}". Please remove it and try again.`)
+            setLoading(false)
+            return
+          }
+          const recRes = await fetch(`/api/sessions/${sessionId}/documents`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              storagePath,
+              filename: file.name,
+              mime: file.type || null,
+              sizeBytes: file.size,
+            }),
+          })
+          if (!recRes.ok) {
+            const d = await recRes.json().catch(() => ({}))
+            setError(d.error || `Couldn't process "${file.name}". Please try a different file.`)
+            setLoading(false)
+            return
+          }
+        }
+      }
 
       // Hand off the (ephemeral) additional prompt to the output page via
       // sessionStorage — it gets sent to /api/generate once and is not persisted.
@@ -149,6 +195,14 @@ export default function ResearchForm({ categories, isAtLimit }: ResearchFormProp
         value={additionalPrompt}
         onChange={(e) => setAdditionalPrompt(e.target.value)}
         rows={3}
+      />
+
+      <ResearchDocPicker
+        files={docs}
+        onChange={setDocs}
+        disabled={loading}
+        error={docError}
+        onError={setDocError}
       />
 
       <div className="pt-2">

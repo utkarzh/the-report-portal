@@ -14,6 +14,8 @@ export interface Profile {
   // ignore these flags.
   can_access_interview: boolean
   can_access_transcriptions: boolean
+  can_access_business_cases: boolean
+  can_access_editorial_briefs: boolean
   created_at: string
   updated_at: string
 }
@@ -25,6 +27,8 @@ export interface Invitation {
   token_limit: number | null // null = no limit (admins)
   can_access_interview: boolean
   can_access_transcriptions: boolean
+  can_access_business_cases: boolean
+  can_access_editorial_briefs: boolean
   token: string
   status: InviteStatus
   invited_by: string | null
@@ -86,6 +90,8 @@ export type UsageWorkflow =
   | 'research_questions'
   | 'transcript_refine'
   | 'transcript_translate'
+  | 'business_case'
+  | 'editorial_brief'
 
 export interface UsageEvent {
   id: string
@@ -111,6 +117,22 @@ export interface ResearchFormData {
   countryFocus: string
   publication: string
   mediaPartnerCountry: string
+}
+
+// Company document attached to an interview (research session) and used as
+// supporting context during research + question generation.
+export interface ResearchDocument {
+  id: string
+  session_id: string
+  user_id: string | null
+  filename: string
+  storage_path: string
+  mime: string | null
+  size_bytes: number | null
+  extracted_text: string
+  char_count: number
+  truncated: boolean
+  created_at: string
 }
 
 export interface TranscriptPrompt {
@@ -160,6 +182,55 @@ export interface Transcription {
   error: string | null
   created_at: string
   updated_at: string
+}
+
+// ── Business Cases / Editorial Briefs modules ──────────────────────────────
+export type DocType = 'business_case' | 'editorial_brief'
+
+export type DocumentStatus = 'pending' | 'generating' | 'complete' | 'failed'
+
+export interface DocumentSession {
+  id: string
+  user_id: string | null
+  doc_type: DocType
+  title: string
+  project_country: string | null
+  media_partner: string | null
+  media_country: string | null
+  additional_context: string | null
+  output: string | null
+  prompt_snapshot: string | null
+  tokens_input: number
+  tokens_output: number
+  tokens_total: number
+  web_searches: number
+  cost_usd: number
+  status: DocumentStatus
+  error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentPrompt {
+  id: string
+  doc_type: DocType
+  prompt_text: string
+  updated_by: string | null
+  updated_at: string
+}
+
+export interface DocumentSample {
+  id: string
+  doc_type: DocType
+  filename: string
+  storage_path: string
+  mime: string | null
+  size_bytes: number | null
+  extracted_text: string
+  char_count: number
+  truncated: boolean
+  uploaded_by: string | null
+  created_at: string
 }
 
 export interface PromptVersion {

@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { marked } from 'marked'
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { letterheadHeaderFooter, markdownToParagraphs } from '@/lib/docx-render'
 
-marked.use({ gfm: true, breaks: true })
-
-// Generates a Word-openable .doc file from a research or questions output.
-// We render the markdown to HTML and serve it with the application/msword
-// content type — Word opens HTML documents natively, no extra dependency.
+// Generates a Word (.docx) file from an interview's research or questions
+// output, with the Report Company letterhead (logo header + footer/page number).
 export async function GET(
   request: NextRequest,
   { params }: { params: { sessionId: string } },
@@ -43,12 +41,12 @@ export async function GET(
     return NextResponse.json({ error: `${type} output not available` }, { status: 404 })
   }
 
-  const bodyHtml = await marked.parse(markdown)
-  const heading = type === 'questions' ? 'Interview Questions' : 'Research'
+  const heading = type === 'questions' ? 'Interview Questions' : 'Background Research'
   const subjectSafe = (session.full_name || 'Interview Subject').replace(/[^a-z0-9-_ ]/gi, '').trim() || 'subject'
-  const filename = `${subjectSafe} — ${heading}.doc`
+  const filename = `${subjectSafe} — ${heading}.docx`
 
-  const meta = [
+  // Subject metadata as compact bold-labelled lines under the heading.
+  const metaRows: [string, string | null][] = [
     ['Subject', session.full_name],
     ['Title', session.title_position],
     ['Organisation', session.company_org],
@@ -57,52 +55,39 @@ export async function GET(
     ['Publication', session.publication],
     ['Media Partner', session.media_partner_country],
   ]
+  const metaParas = metaRows
     .filter(([, v]) => v)
-    .map(([k, v]) => `<tr><td><strong>${k}</strong></td><td>${escapeHtml(String(v))}</td></tr>`)
-    .join('')
+    .map(([k, v]) =>
+      new Paragraph({
+        spacing: { after: 40 },
+        children: [
+          new TextRun({ text: `${k}: `, bold: true, size: 18 }),
+          new TextRun({ text: String(v), size: 18 }),
+        ],
+      }),
+    )
 
-  const html = `<!doctype html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="utf-8">
-<title>${escapeHtml(`${session.full_name || 'Subject'} — ${heading}`)}</title>
-<style>
-  body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #1a1a1a; line-height: 1.5; }
-  h1 { font-size: 20pt; margin: 0 0 4pt; }
-  h2 { font-size: 14pt; margin: 18pt 0 6pt; }
-  h3 { font-size: 12pt; margin: 14pt 0 4pt; }
-  .meta { border-collapse: collapse; margin: 12pt 0 18pt; font-size: 10pt; }
-  .meta td { padding: 3pt 10pt 3pt 0; vertical-align: top; }
-  hr { border: 0; border-top: 1px solid #cccccc; margin: 16pt 0; }
-  ul, ol { margin: 6pt 0 6pt 24pt; }
-  p { margin: 6pt 0; }
-  blockquote { margin: 8pt 0 8pt 18pt; color: #555; border-left: 3px solid #cccccc; padding-left: 10pt; }
-  code { font-family: Consolas, monospace; background: #f4f4f4; padding: 1pt 3pt; }
-</style>
-</head>
-<body>
-<h1>${escapeHtml(heading)}</h1>
-<div style="font-size: 10pt; color: #666;">${escapeHtml(session.full_name || '')}</div>
-<table class="meta">${meta}</table>
-<hr>
-${bodyHtml}
-</body>
-</html>`
+  const doc = new Document({
+    sections: [
+      {
+        ...letterheadHeaderFooter(),
+        children: [
+          new Paragraph({ text: heading, heading: HeadingLevel.HEADING_1 }),
+          ...metaParas,
+          new Paragraph({ text: '', spacing: { after: 120 } }),
+          ...markdownToParagraphs(markdown),
+        ],
+      },
+    ],
+  })
 
-  return new NextResponse(html, {
+  const buffer = await Packer.toBuffer(doc)
+
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
-      'Content-Type': 'application/msword; charset=utf-8',
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
       'Cache-Control': 'no-store',
     },
   })
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
 }

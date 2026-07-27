@@ -48,6 +48,8 @@ export function getProfileFromHeaders() {
     // Effective module access (admins are always true). Set by middleware.
     can_access_interview: h.get('x-user-can-interview') === 'true',
     can_access_transcriptions: h.get('x-user-can-transcriptions') === 'true',
+    can_access_business_cases: h.get('x-user-can-business-cases') === 'true',
+    can_access_editorial_briefs: h.get('x-user-can-editorial-briefs') === 'true',
   }
 }
 

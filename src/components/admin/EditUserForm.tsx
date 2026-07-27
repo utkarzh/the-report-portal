@@ -23,6 +23,8 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
     tokenLimit: user.token_limit != null ? String(user.token_limit) : '2000000',
     canAccessInterview: user.can_access_interview,
     canAccessTranscriptions: user.can_access_transcriptions,
+    canAccessBusinessCases: user.can_access_business_cases,
+    canAccessEditorialBriefs: user.can_access_editorial_briefs,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,6 +49,8 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
           tokenLimit: parseInt(form.tokenLimit),
           canAccessInterview: form.canAccessInterview,
           canAccessTranscriptions: form.canAccessTranscriptions,
+          canAccessBusinessCases: form.canAccessBusinessCases,
+          canAccessEditorialBriefs: form.canAccessEditorialBriefs,
         }),
       }),
     })
@@ -139,6 +143,16 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
               label="Transcriptions"
               checked={form.canAccessTranscriptions}
               onChange={(v) => setForm(p => ({ ...p, canAccessTranscriptions: v }))}
+            />
+            <ModuleCheckbox
+              label="Business Cases"
+              checked={form.canAccessBusinessCases}
+              onChange={(v) => setForm(p => ({ ...p, canAccessBusinessCases: v }))}
+            />
+            <ModuleCheckbox
+              label="Editorial Briefs"
+              checked={form.canAccessEditorialBriefs}
+              onChange={(v) => setForm(p => ({ ...p, canAccessEditorialBriefs: v }))}
             />
           </div>
         </div>

@@ -64,6 +64,18 @@ export async function POST(request: NextRequest) {
   const extra = (additionalPrompt || '').trim()
   const isRegeneration = Boolean(session.questions_output)
 
+  // Company documents attached to this interview — same supporting context the
+  // research step used, so the questions can reference specifics.
+  const { data: docRows } = await supabaseAdmin
+    .from('research_documents')
+    .select('filename, extracted_text')
+    .eq('session_id', session.id)
+    .order('created_at', { ascending: true })
+  const docsText = (docRows || [])
+    .filter((d) => (d.extracted_text || '').trim())
+    .map((d, i) => `### DOCUMENT ${i + 1}: ${d.filename}\n\n${d.extracted_text}`)
+    .join('\n\n---\n\n')
+
   const systemPrompt = session.general_prompt_snapshot || ''
   const categoryPrompt = session.category_prompt_snapshot || ''
   const subjectDetails = `--- SUBJECT DETAILS ---
@@ -100,6 +112,14 @@ Media Partner Country: ${session.media_partner_country}`
       text: categoryPrompt,
       cache_control: CACHE_1H,
     },
+    ...(docsText
+      ? [{
+          type: 'text' as const,
+          text:
+            `--- SUPPORTING COMPANY DOCUMENTS (context only; do not copy verbatim) ---\n\n${docsText}`,
+          cache_control: CACHE_1H,
+        }]
+      : []),
     {
       type: 'text' as const,
       text: `\n\n${subjectDetails}\n\n${taskInstruction}\n\n--- RESEARCH ---\n${session.initial_output}${previousAttemptBlock}${feedbackBlock}`,

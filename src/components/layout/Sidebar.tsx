@@ -9,6 +9,8 @@ import { useRouter } from 'next/navigation'
 import {
   MessagesSquare,
   AudioLines,
+  Briefcase,
+  FileText,
   Users,
   BarChart3,
   ScrollText,
@@ -25,6 +27,8 @@ interface SidebarProps {
   userName: string | null
   canAccessInterview: boolean
   canAccessTranscriptions: boolean
+  canAccessBusinessCases: boolean
+  canAccessEditorialBriefs: boolean
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
@@ -56,7 +60,7 @@ function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: bool
   )
 }
 
-export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, mobileOpen = false }: SidebarProps) {
+export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, mobileOpen = false }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
@@ -65,6 +69,8 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
   const toolNavItems: NavItem[] = [
     ...(canAccessInterview ? [{ label: 'Interview Tool', href: '/interview', icon: MessagesSquare }] : []),
     ...(canAccessTranscriptions ? [{ label: 'Transcriptions', href: '/transcriptions', icon: AudioLines }] : []),
+    ...(canAccessBusinessCases ? [{ label: 'Business Cases', href: '/business-cases', icon: Briefcase }] : []),
+    ...(canAccessEditorialBriefs ? [{ label: 'Editorial Briefs', href: '/editorial-briefs', icon: FileText }] : []),
   ]
 
   useEffect(() => {

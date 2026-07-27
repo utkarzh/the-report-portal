@@ -154,6 +154,15 @@ body {
 .prose-research li > p { margin-bottom: 0.25rem; }
 .prose-research strong { font-weight: 600; }
 .prose-research em { font-style: italic; }
+/* Client-confirmation spans (from the [[ … ]] convention) rendered as a yellow
+   highlight in the refined transcript. */
+.confirm-highlight,
+.prose-research mark.confirm-highlight {
+  background: #fef08a;
+  color: inherit;
+  padding: 0 0.1em;
+  border-radius: 2px;
+}
 .prose-research code {
   background: #f3f2ef;
   padding: 0.15rem 0.35rem;

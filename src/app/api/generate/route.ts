@@ -68,6 +68,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Company documents attached to this interview — fed as supporting context.
+  const { data: docRows } = await supabaseAdmin
+    .from('research_documents')
+    .select('filename, extracted_text')
+    .eq('session_id', session.id)
+    .order('created_at', { ascending: true })
+  const docsText = (docRows || [])
+    .filter((d) => (d.extracted_text || '').trim())
+    .map((d, i) => `### DOCUMENT ${i + 1}: ${d.filename}\n\n${d.extracted_text}`)
+    .join('\n\n---\n\n')
+
   const systemPrompt = session.general_prompt_snapshot || ''
   const categoryPrompt = session.category_prompt_snapshot || ''
   const subjectDetails = `--- SUBJECT DETAILS ---
@@ -130,6 +141,16 @@ OUTPUT RULES:
       text: categoryPrompt,
       cache_control: CACHE_1H,
     },
+    // Supporting company documents (annual/sustainability reports, etc.),
+    // cached so regenerations don't re-pay for them. Context only.
+    ...(docsText
+      ? [{
+          type: 'text' as const,
+          text:
+            `--- SUPPORTING COMPANY DOCUMENTS (context only; do not copy verbatim, cite facts you use) ---\n\n${docsText}`,
+          cache_control: CACHE_1H,
+        }]
+      : []),
     {
       type: 'text' as const,
       text: extra

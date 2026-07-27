@@ -27,6 +27,18 @@ async function revealText(full: string, onUpdate: (t: string) => void) {
 
 marked.use({ gfm: true, breaks: true })
 
+// Renders the refined transcript, turning [[ … ]] client-confirmation spans into
+// yellow highlights (brackets removed). marked passes the inline <mark> HTML
+// through. Only complete [[ … ]] pairs match, so partial spans mid-stream stay
+// literal until closed.
+function renderRefinedHtml(md: string): string {
+  const withHighlights = md.replace(
+    /\[\[([\s\S]+?)\]\]/g,
+    '<mark class="confirm-highlight">$1</mark>',
+  )
+  return marked.parse(withHighlights) as string
+}
+
 // Keeps a scroll container pinned to the bottom as content streams in, BUT only
 // while the user is already near the bottom. The moment they scroll up, it stops
 // auto-following so they can read earlier text mid-stream; scrolling back down
@@ -627,7 +639,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               <>
                 <div
                   className="prose-research"
-                  dangerouslySetInnerHTML={{ __html: marked.parse(refined) as string }}
+                  dangerouslySetInnerHTML={{ __html: renderRefinedHtml(refined) }}
                 />
                 {refining && <span className="cursor-blink select-none text-gray-300">▋</span>}
               </>

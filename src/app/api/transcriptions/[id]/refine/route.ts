@@ -78,9 +78,25 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const CACHE_1H = { type: 'ephemeral' as const, ttl: '1h' as const }
 
-  const systemBlocks = refiningPrompt
-    ? [{ type: 'text' as const, text: refiningPrompt, cache_control: CACHE_1H }]
-    : []
+  // Client-confirmation markup. The refined transcript flags anything that
+  // should be verified by the client by wrapping ONLY that word/phrase in
+  // double square brackets; the app renders those spans as a yellow highlight
+  // (on screen and in the .docx download). Applied on top of the admin refining
+  // prompt so the markers are produced reliably regardless of the saved prompt.
+  const CONFIRM_MARKUP_INSTRUCTION =
+    `CLIENT-CONFIRMATION MARKUP (IMPORTANT):\n` +
+    `While cleaning the transcript, wrap ONLY the specific words or phrases that the client should verify in ` +
+    `double square brackets — e.g. [[Acme Corporation]], [[$4.2 million]], [[Dr. Ngozi Okafor]]. ` +
+    `Use this for genuinely uncertain items that are ALREADY in the transcript: proper nouns (people, ` +
+    `companies, places, products), figures/dates, and words that were unclear or inaudible in the audio. ` +
+    `Do NOT add, remove, translate, or invent any content — the brackets only mark existing text. ` +
+    `Use the brackets sparingly and never for anything that isn't a real confirmation item. ` +
+    `Never use single brackets or any other marker for this.`
+
+  const systemBlocks = [
+    ...(refiningPrompt ? [{ type: 'text' as const, text: refiningPrompt, cache_control: CACHE_1H }] : []),
+    { type: 'text' as const, text: CONFIRM_MARKUP_INSTRUCTION },
+  ]
 
   // Order matters: supporting context (outline) first, then the editor's
   // one-off instruction, then the transcript to clean. The framing text makes

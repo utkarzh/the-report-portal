@@ -14,9 +14,11 @@ interface Props {
   userName: string | null
   canAccessInterview: boolean
   canAccessTranscriptions: boolean
+  canAccessBusinessCases: boolean
+  canAccessEditorialBriefs: boolean
 }
 
-export default function AppShell({ children, role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions }: Props) {
+export default function AppShell({ children, role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
 
@@ -51,6 +53,8 @@ export default function AppShell({ children, role, tokenUsed, tokenLimit, userNa
         userName={userName}
         canAccessInterview={canAccessInterview}
         canAccessTranscriptions={canAccessTranscriptions}
+        canAccessBusinessCases={canAccessBusinessCases}
+        canAccessEditorialBriefs={canAccessEditorialBriefs}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />

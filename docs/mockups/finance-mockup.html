@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cash Box — Finance Module Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --content-bg: #f0efec;
+    --sidebar-bg: #000000;
+    --card: #ffffff;
+    --border: #e5e3df;
+    --border-2: #dedbd5;
+    --ink: #1a1a1a;
+    --muted: #6b6a66;
+    --faint: #9a988f;
+    --ok: #1f7a52;      --ok-bg: #e6f2ec;
+    --warn: #96690f;    --warn-bg: #f6eed9;
+    --crit: #a5372f;    --crit-bg: #f6e2df;
+    --info: #3a5a8c;    --info-bg: #e4ebf5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--content-bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .tabnum { font-variant-numeric: tabular-nums; }
+
+  /* ---------- Persona switch (prototype-only chrome) ---------- */
+  .proto-bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 46px; z-index: 100;
+    background: #111; color: #cfcdc6; display: flex; align-items: center;
+    gap: 14px; padding: 0 16px; border-bottom: 1px solid #2a2a2a;
+    font-size: 12.5px;
+  }
+  .proto-bar .brand { font-weight: 600; color: #fff; letter-spacing: .01em; }
+  .proto-bar .brand span { color: #6f6d67; font-weight: 400; }
+  .proto-bar .spacer { flex: 1; }
+  .proto-bar .lbl { color: #77756e; text-transform: uppercase; letter-spacing: .1em; font-size: 10.5px; }
+  .switch { display: inline-flex; background: #000; border: 1px solid #2f2f2f; border-radius: 8px; padding: 3px; }
+  .switch button {
+    font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+    background: transparent; color: #b7b5ae; border: 0; padding: 6px 14px; border-radius: 6px;
+    transition: all .15s;
+  }
+  .switch button.active { background: #fff; color: #111; }
+
+  /* ---------- App shell ---------- */
+  .app { display: none; height: 100vh; padding-top: 46px; }
+  .app.active { display: flex; }
+  aside {
+    width: 244px; background: var(--sidebar-bg); flex-shrink: 0;
+    display: flex; flex-direction: column; color: #9a988f;
+  }
+  .logo {
+    height: 60px; display: flex; align-items: center; gap: 9px; padding: 0 18px;
+    border-bottom: 1px solid #1c1c1c; color: #fff; font-weight: 600; font-size: 15px;
+  }
+  .logo .mark {
+    width: 24px; height: 24px; border-radius: 6px; background: #fff; color: #000;
+    display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0;
+  }
+  .logo small { display: block; color: #6f6d67; font-size: 10px; font-weight: 400; letter-spacing: .08em; text-transform: uppercase; }
+  nav { flex: 1; padding: 14px 12px; overflow-y: auto; }
+  .nav-sec { padding: 16px 10px 6px; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #56544e; }
+  .navlink {
+    display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 7px;
+    font-size: 13.5px; color: #9a988f; cursor: pointer; margin-bottom: 2px; transition: all .12s;
+  }
+  .navlink:hover { background: rgba(255,255,255,.05); color: #fff; }
+  .navlink.active { background: rgba(255,255,255,.1); color: #fff; font-weight: 500; }
+  .navlink svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .navlink .badge {
+    margin-left: auto; background: var(--crit); color: #fff; font-size: 10.5px; font-weight: 600;
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center;
+  }
+  .userbox { border-top: 1px solid #1c1c1c; padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; background: #2b2b2b; color: #ddd; display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+  .userbox .nm { font-size: 12.5px; color: #fff; font-weight: 500; }
+  .userbox .rl { font-size: 10px; color: #6f6d67; text-transform: uppercase; letter-spacing: .08em; }
+
+  main { flex: 1; overflow-y: auto; }
+  .page { display: none; padding: 30px 34px 80px; max-width: 1120px; }
+  .page.active { display: block; }
+  .page-head { margin-bottom: 22px; }
+  .crumb { font-size: 12px; color: var(--faint); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .crumb a { color: var(--muted); cursor: pointer; text-decoration: none; }
+  .crumb a:hover { color: var(--ink); }
+  h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0; }
+
+  /* ---------- Bits ---------- */
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+  .pad { padding: 18px 20px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 14px; margin-bottom: 20px; }
+  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .kpi .k { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); }
+  .kpi .v { font-size: 26px; font-weight: 600; margin-top: 6px; letter-spacing: -.02em; }
+  .kpi .d { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .kpi .v.ok { color: var(--ok); } .kpi .v.crit { color: var(--crit); }
+
+  .btn {
+    font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+    border: 1px solid var(--ink); background: var(--ink); color: #fff;
+    padding: 9px 15px; border-radius: 8px; display: inline-flex; align-items: center; gap: 7px;
+    transition: opacity .12s;
+  }
+  .btn:hover { opacity: .86; }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--border-2); }
+  .btn.ghost:hover { background: #fff; opacity: 1; }
+  .btn.ok { background: var(--ok); border-color: var(--ok); }
+  .btn.danger { background: transparent; color: var(--crit); border-color: var(--crit); }
+  .btn svg { width: 15px; height: 15px; }
+  .btn.sm { padding: 6px 11px; font-size: 12px; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500;
+    padding: 3px 9px; border-radius: 20px; border: 1px solid transparent; white-space: nowrap;
+  }
+  .pill svg { width: 12px; height: 12px; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.crit { background: var(--crit-bg); color: var(--crit); }
+  .pill.info { background: var(--info-bg); color: var(--info); }
+  .pill.mut { background: #eeece7; color: var(--muted); }
+
+  .sec-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 26px 0 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr.clk { cursor: pointer; }
+  tbody tr.clk:hover { background: #faf9f7; }
+  .amt { font-weight: 600; }
+
+  /* category chips + bars */
+  .catgrid { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 12px; }
+  .catcard { border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; background: #fff; }
+  .catcard .cn { font-size: 12.5px; color: var(--muted); display: flex; justify-content: space-between; }
+  .catcard .cv { font-size: 18px; font-weight: 600; margin-top: 5px; }
+  .bar { height: 5px; background: #eeece7; border-radius: 3px; margin-top: 9px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+
+  /* receipt + review */
+  .review { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+  .receipt {
+    background: repeating-linear-gradient(#fff, #fff 22px, #f4f2ee 23px);
+    border: 1px solid var(--border-2); border-radius: 10px; padding: 16px; min-height: 260px;
+    box-shadow: inset 0 0 0 1px #fff, 0 1px 2px rgba(0,0,0,.04); position: relative;
+  }
+  .receipt .rc-h { font-weight: 700; font-size: 14px; letter-spacing: .04em; }
+  .receipt .rc-l { display: flex; justify-content: space-between; font-size: 11.5px; color: #55534e; margin-top: 3px; font-family: ui-monospace, monospace; }
+  .receipt .rc-tot { border-top: 1px dashed #bbb8b0; margin-top: 12px; padding-top: 8px; font-weight: 700; display: flex; justify-content: space-between; }
+  .receipt .stamp { position: absolute; bottom: 12px; right: 12px; font-size: 10px; color: #b8b5ac; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+  .field { }
+  .field label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); display: block; margin-bottom: 4px; }
+  .field .val { font-size: 14px; border: 1px solid var(--border-2); border-radius: 7px; padding: 8px 10px; background: #fff; }
+  .field .val.low { border-color: var(--warn); background: var(--warn-bg); }
+  .field .hint { font-size: 10.5px; color: var(--warn); margin-top: 3px; }
+
+  .flagline { display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px; border-radius: 9px; margin-bottom: 8px; border: 1px solid var(--border); }
+  .flagline.crit { background: var(--crit-bg); border-color: #ecc9c4; }
+  .flagline.warn { background: var(--warn-bg); border-color: #e8dcbe; }
+  .flagline.info { background: var(--info-bg); border-color: #ccd7e8; }
+  .flagline .ftxt { font-size: 12.5px; }
+  .flagline .ftxt b { display: block; margin-bottom: 1px; }
+  .flagline svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+
+  .note { font-size: 12.5px; color: var(--muted); background:#faf9f7; border:1px solid var(--border); border-left:3px solid var(--faint); padding:10px 13px; border-radius:8px; }
+  .reason-box { background: var(--crit-bg); border:1px solid #ecc9c4; border-radius:9px; padding:11px 13px; font-size:12.5px; color:#7a2c26; }
+  .reason-box b { color: var(--crit); }
+
+  .ledger td .in { color: var(--ok); font-weight:600; }
+  .ledger td .out { color: var(--ink); }
+
+  .empty-thumb { width:40px; height:52px; border:1px solid var(--border-2); border-radius:5px; background: repeating-linear-gradient(#fff,#fff 5px,#f1efeb 6px); flex-shrink:0; }
+  .cellflex { display:flex; align-items:center; gap:10px; }
+
+  .modal-back { position: fixed; inset: 0; background: rgba(15,14,12,.42); z-index: 90; display:none; align-items:flex-start; justify-content:center; padding: 70px 16px; }
+  .modal-back.open { display:flex; }
+  .modal { background:#fff; border-radius:14px; width: 560px; max-width:100%; box-shadow: 0 24px 60px rgba(0,0,0,.28); overflow:hidden; }
+  .modal h3 { margin:0; font-size:16px; }
+  .modal .mh { padding:18px 22px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .modal .mb { padding:20px 22px; }
+  .modal .mf { padding:16px 22px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px; background:#faf9f7; }
+  .xbtn { cursor:pointer; color:var(--faint); background:none; border:0; }
+  .drop { border:2px dashed var(--border-2); border-radius:11px; padding:26px; text-align:center; color:var(--muted); font-size:13px; }
+  .drop svg { width:26px; height:26px; color:var(--faint); }
+
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 18px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .inp { width:100%; font-family:inherit; font-size:13.5px; border:1px solid var(--border-2); border-radius:8px; padding:9px 11px; background:#fff; color:var(--ink); }
+  label.fl { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); display:block; margin-bottom:5px; }
+
+  @media (max-width: 720px){
+    aside{ display:none; } .review{ grid-template-columns:1fr; } .fields{ grid-template-columns:1fr; }
+    .page{ padding:22px 16px 60px; }
+  }
+</style>
+</head>
+<body data-persona="field">
+
+<!-- icon sprite -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8M8 11h8M8 15h5"/></symbol>
+  <symbol id="i-check-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 2 2 3-3M3 17l2 2 3-3M13 6h8M13 12h8M13 18h8"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1Z"/><path d="M4 22v-7"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5"/><path d="M16 12h.01"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></symbol>
+</svg>
+
+<!-- ============ PROTOTYPE SWITCHER ============ -->
+<div class="proto-bar">
+  <span class="brand">Cash Box <span>· interactive prototype (dummy data)</span></span>
+  <span class="spacer"></span>
+  <span class="lbl">Viewing as</span>
+  <div class="switch">
+    <button id="sw-field" class="active" onclick="setPersona('field')">Field Director</button>
+    <button id="sw-admin" onclick="setPersona('admin')">Finance Admin</button>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- ===================== FIELD DIRECTOR APP ==================== -->
+<!-- ============================================================= -->
+<div class="app" id="app-field">
+  <aside>
+    <div class="logo"><span class="mark">R</span><div>The Report Co.<small>Cash Box</small></div></div>
+    <nav>
+      <div class="nav-sec">Finance</div>
+      <div class="navlink active" data-app="field" data-page="f-projects"><svg><use href="#i-folder"/></svg> My Projects</div>
+      <div class="navlink" data-app="field" data-page="f-project"><svg><use href="#i-wallet"/></svg> India · The Guardian</div>
+      <div class="navlink" data-app="field" data-page="f-expenses"><svg><use href="#i-receipt"/></svg> My Expenses</div>
+    </nav>
+    <div class="userbox"><div class="avatar">RM</div><div><div class="nm">Rahul Mehta</div><div class="rl">Field Director</div></div></div>
+  </aside>
+  <main>
+
+    <!-- Field: projects list -->
+    <div class="page active" data-page="f-projects">
+      <div class="page-head">
+        <h1>My Projects</h1>
+        <p class="sub">Projects you've been added to by Finance. Tap one to log expenses.</p>
+      </div>
+      <div class="row">
+        <div class="card pad" style="width:340px; cursor:pointer" onclick="go('field','f-project')">
+          <div style="display:flex; justify-content:space-between; align-items:start">
+            <div>
+              <div style="font-weight:600; font-size:15px">India · The Guardian 2026</div>
+              <div class="sub" style="font-size:12.5px; margin-top:2px">India · USD · Director (you)</div>
+            </div>
+            <span class="pill ok">Active</span>
+          </div>
+          <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:end">
+            <div><div class="k" style="font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.07em">Balance left</div><div class="tabnum" style="font-size:24px; font-weight:600">$1,464.02</div></div>
+            <span class="pill warn"><svg><use href="#i-clock"/></svg> 3 pending</span>
+          </div>
+          <div class="bar" style="margin-top:14px"><span style="width:2.4%"></span></div>
+          <div class="sub" style="font-size:11.5px; margin-top:6px">$35.98 of $1,500.00 verified spend</div>
+        </div>
+
+        <div class="card pad" style="width:340px; cursor:pointer" onclick="go('field','f-project')">
+          <div style="display:flex; justify-content:space-between; align-items:start">
+            <div>
+              <div style="font-weight:600; font-size:15px">Pakistan · Dawn 2026</div>
+              <div class="sub" style="font-size:12.5px; margin-top:2px">Pakistan · USD · Director (you)</div>
+            </div>
+            <span class="pill ok">Active</span>
+          </div>
+          <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:end">
+            <div><div class="k" style="font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.07em">Balance left</div><div class="tabnum" style="font-size:24px; font-weight:600">$780.50</div></div>
+            <span class="pill mut">All reviewed</span>
+          </div>
+          <div class="bar" style="margin-top:14px"><span style="width:22%"></span></div>
+          <div class="sub" style="font-size:11.5px; margin-top:6px">$219.50 of $1,000.00 verified spend</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Field: single project dashboard -->
+    <div class="page" data-page="f-project">
+      <div class="page-head">
+        <div class="crumb"><a onclick="go('field','f-projects')">My Projects</a> <svg style="width:13px;height:13px;color:var(--faint)"><use href="#i-chev"/></svg> India · The Guardian 2026</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px">
+          <div><h1>India · The Guardian 2026</h1><p class="sub">India · settlement USD · rate 83.20 INR/USD · Week 12 (14–20 Jul)</p></div>
+          <button class="btn" onclick="openModal('m-upload')"><svg><use href="#i-upload"/></svg> Upload receipt</button>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="k">Funds received</div><div class="v tabnum">$1,500.00</div><div class="d">Opening $1,000 + top-up $500</div></div>
+        <div class="kpi"><div class="k">Verified spend</div><div class="v tabnum">$35.98</div><div class="d">3 expenses approved</div></div>
+        <div class="kpi"><div class="k">Balance left</div><div class="v ok tabnum">$1,464.02</div><div class="d">Pending items not yet deducted</div></div>
+        <div class="kpi"><div class="k">Awaiting review</div><div class="v warn tabnum">3</div><div class="d">1 needs your fix</div></div>
+      </div>
+
+      <div class="sec-title">Spend by category</div>
+      <div class="catgrid">
+        <div class="catcard"><div class="cn"><span>Transport</span><span class="tabnum">$9.98</span></div><div class="bar"><span style="width:30%"></span></div></div>
+        <div class="catcard"><div class="cn"><span>Accommodation</span><span class="tabnum">$0.00</span></div><div class="bar"><span style="width:0%"></span></div></div>
+        <div class="catcard"><div class="cn"><span>Communications</span><span class="tabnum">$20.00</span></div><div class="bar"><span style="width:60%"></span></div></div>
+        <div class="catcard"><div class="cn"><span>Printing / Office</span><span class="tabnum">$6.00</span></div><div class="bar"><span style="width:18%"></span></div></div>
+      </div>
+
+      <div class="sec-title">This week's expenses</div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Date</th><th>Concept</th><th>Category</th><th style="text-align:right">Local</th><th style="text-align:right">USD</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td class="tabnum">14 Jul</td><td class="cellflex"><span class="empty-thumb"></span> Yandex taxi — airport</td><td>Transport</td><td class="tabnum" style="text-align:right">₹830</td><td class="tabnum amt" style="text-align:right">$9.98</td><td><span class="pill ok"><svg><use href="#i-check"/></svg> Verified</span></td></tr>
+            <tr><td class="tabnum">14 Jul</td><td class="cellflex"><span class="empty-thumb"></span> Airtel SIM + data</td><td>Communications</td><td class="tabnum" style="text-align:right">₹1,664</td><td class="tabnum amt" style="text-align:right">$20.00</td><td><span class="pill ok"><svg><use href="#i-check"/></svg> Verified</span></td></tr>
+            <tr><td class="tabnum">15 Jul</td><td class="cellflex"><span class="empty-thumb"></span> Printing — press kit</td><td>Printing / Office</td><td class="tabnum" style="text-align:right">₹500</td><td class="tabnum amt" style="text-align:right">$6.00</td><td><span class="pill ok"><svg><use href="#i-check"/></svg> Verified</span></td></tr>
+            <tr class="clk" onclick="go('field','f-project')"><td class="tabnum">16 Jul</td><td class="cellflex"><span class="empty-thumb"></span> Taj hotel — 3 nights</td><td>Accommodation</td><td class="tabnum" style="text-align:right">₹17,472</td><td class="tabnum amt" style="text-align:right">$210.00</td><td><span class="pill warn"><svg><use href="#i-clock"/></svg> Pending</span></td></tr>
+            <tr><td class="tabnum">16 Jul</td><td class="cellflex"><span class="empty-thumb"></span> PR launch event</td><td>Other Services</td><td class="tabnum" style="text-align:right">₹39,936</td><td class="tabnum amt" style="text-align:right">$480.00</td><td><span class="pill warn"><svg><use href="#i-clock"/></svg> Pending</span></td></tr>
+            <tr><td class="tabnum">13 Jul</td><td class="cellflex"><span class="empty-thumb"></span> Yandex taxi — airport</td><td>Transport</td><td class="tabnum" style="text-align:right">₹830</td><td class="tabnum amt" style="text-align:right">$10.00</td><td><span class="pill crit"><svg><use href="#i-x"/></svg> Rejected</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- rejected item — director's fix view -->
+      <div class="sec-title">Needs your attention</div>
+      <div class="card pad">
+        <div style="display:flex; justify-content:space-between; align-items:start; gap:16px; flex-wrap:wrap">
+          <div style="flex:1; min-width:240px">
+            <div style="font-weight:600; margin-bottom:4px">Yandex taxi — airport · $10.00 · 13 Jul</div>
+            <div class="reason-box"><b>Rejected by Finance (Paula):</b> Looks like a duplicate of the 14 Jul airport taxi (same amount &amp; route). If it's a separate trip, re-upload with the trip time visible.</div>
+          </div>
+          <div style="display:flex; gap:8px">
+            <button class="btn ghost sm" onclick="openModal('m-upload')"><svg><use href="#i-upload"/></svg> Re-upload</button>
+            <button class="btn danger sm">Withdraw</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Field: all expenses -->
+    <div class="page" data-page="f-expenses">
+      <div class="page-head"><h1>My Expenses</h1><p class="sub">Every expense you've logged across projects.</p></div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Date</th><th>Project</th><th>Concept</th><th style="text-align:right">USD</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td class="tabnum">16 Jul</td><td>India · Guardian</td><td>PR launch event</td><td class="tabnum amt" style="text-align:right">$480.00</td><td><span class="pill warn"><svg><use href="#i-clock"/></svg> Pending</span></td></tr>
+            <tr><td class="tabnum">16 Jul</td><td>India · Guardian</td><td>Taj hotel — 3 nights</td><td class="tabnum amt" style="text-align:right">$210.00</td><td><span class="pill warn"><svg><use href="#i-clock"/></svg> Pending</span></td></tr>
+            <tr><td class="tabnum">15 Jul</td><td>India · Guardian</td><td>Printing — press kit</td><td class="tabnum amt" style="text-align:right">$6.00</td><td><span class="pill ok"><svg><use href="#i-check"/></svg> Verified</span></td></tr>
+            <tr><td class="tabnum">14 Jul</td><td>India · Guardian</td><td>Airtel SIM + data</td><td class="tabnum amt" style="text-align:right">$20.00</td><td><span class="pill ok"><svg><use href="#i-check"/></svg> Verified</span></td></tr>
+            <tr><td class="tabnum">14 Jul</td><td>India · Guardian</td><td>Yandex taxi — airport</td><td class="tabnum amt" style="text-align:right">$9.98</td><td><span class="pill ok"><svg><use href="#i-check"/></svg> Verified</span></td></tr>
+            <tr><td class="tabnum">13 Jul</td><td>India · Guardian</td><td>Yandex taxi — airport</td><td class="tabnum amt" style="text-align:right">$10.00</td><td><span class="pill crit"><svg><use href="#i-x"/></svg> Rejected</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ============================================================= -->
+<!-- ===================== FINANCE ADMIN APP ==================== -->
+<!-- ============================================================= -->
+<div class="app" id="app-admin">
+  <aside>
+    <div class="logo"><span class="mark">R</span><div>The Report Co.<small>Cash Box · Finance</small></div></div>
+    <nav>
+      <div class="nav-sec">Finance admin</div>
+      <div class="navlink active" data-app="admin" data-page="a-overview"><svg><use href="#i-grid"/></svg> Overview</div>
+      <div class="navlink" data-app="admin" data-page="a-review"><svg><use href="#i-check-list"/></svg> Review queue <span class="badge">7</span></div>
+      <div class="navlink" data-app="admin" data-page="a-project"><svg><use href="#i-wallet"/></svg> India · The Guardian</div>
+      <div class="navlink" data-app="admin" data-page="a-analytics"><svg><use href="#i-chart"/></svg> Analytics</div>
+    </nav>
+    <div class="userbox"><div class="avatar">PA</div><div><div class="nm">Paula Ortega</div><div class="rl">Finance Admin</div></div></div>
+  </aside>
+  <main>
+
+    <!-- Admin: overview -->
+    <div class="page active" data-page="a-overview">
+      <div class="page-head" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px">
+        <div><h1>Overview</h1><p class="sub">All active projects and what's waiting on you.</p></div>
+        <button class="btn" onclick="openModal('m-project')"><svg><use href="#i-plus"/></svg> New project</button>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="k">Active projects</div><div class="v tabnum">4</div><div class="d">3 directors</div></div>
+        <div class="kpi"><div class="k">Awaiting review</div><div class="v warn tabnum">7</div><div class="d">across all projects</div></div>
+        <div class="kpi"><div class="k">Flagged items</div><div class="v crit tabnum">3</div><div class="d">1 high severity</div></div>
+        <div class="kpi"><div class="k">Funds outstanding</div><div class="v tabnum">$3,624.52</div><div class="d">unspent director balances</div></div>
+      </div>
+
+      <div class="sec-title">Projects</div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Project</th><th>Country</th><th>Director</th><th style="text-align:right">Received</th><th style="text-align:right">Verified spend</th><th style="text-align:right">Balance</th><th>To review</th></tr></thead>
+          <tbody>
+            <tr class="clk" onclick="go('admin','a-project')"><td style="font-weight:600">India · The Guardian 2026</td><td>India</td><td>Rahul Mehta</td><td class="tabnum" style="text-align:right">$1,500.00</td><td class="tabnum" style="text-align:right">$35.98</td><td class="tabnum amt" style="text-align:right">$1,464.02</td><td><span class="pill warn">3 pending</span></td></tr>
+            <tr class="clk" onclick="go('admin','a-review')"><td style="font-weight:600">Pakistan · Dawn 2026</td><td>Pakistan</td><td>Rahul Mehta</td><td class="tabnum" style="text-align:right">$1,000.00</td><td class="tabnum" style="text-align:right">$219.50</td><td class="tabnum amt" style="text-align:right">$780.50</td><td><span class="pill mut">Clear</span></td></tr>
+            <tr class="clk" onclick="go('admin','a-review')"><td style="font-weight:600">Georgia · El País 2026</td><td>Georgia</td><td>Ana Ruiz</td><td class="tabnum" style="text-align:right">$800.00</td><td class="tabnum" style="text-align:right">$410.00</td><td class="tabnum amt" style="text-align:right">$390.00</td><td><span class="pill warn">2 pending</span></td></tr>
+            <tr class="clk" onclick="go('admin','a-review')"><td style="font-weight:600">Armenia · Le Monde 2026</td><td>Armenia</td><td>Diego Torres</td><td class="tabnum" style="text-align:right">$1,200.00</td><td class="tabnum" style="text-align:right">$210.00</td><td class="tabnum amt" style="text-align:right">$990.00</td><td><span class="pill warn">2 pending</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Admin: review queue -->
+    <div class="page" data-page="a-review">
+      <div class="page-head"><h1>Review queue</h1><p class="sub">Logged expenses awaiting your decision. Receipt on the left, extracted data on the right — flags surfaced automatically.</p></div>
+
+      <!-- item 1: over-budget + weekend -->
+      <div class="card pad" style="margin-bottom:16px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px">
+          <div class="cellflex"><span class="pill info">India · Guardian</span><b>Taj hotel — 3 nights</b><span class="pill warn"><svg><use href="#i-clock"/></svg> Pending</span></div>
+          <div class="sub" style="font-size:12px">logged by Rahul Mehta · 16 Jul</div>
+        </div>
+        <div class="review">
+          <div class="receipt">
+            <div class="rc-h">TAJ RESIDENCY</div>
+            <div class="rc-l"><span>New Delhi, IN</span><span>#TR-88213</span></div>
+            <div class="rc-l"><span>Room ×3 nights</span><span>₹17,472</span></div>
+            <div class="rc-l"><span>Check-in</span><span>16 Jul</span></div>
+            <div class="rc-tot"><span>TOTAL</span><span>₹17,472</span></div>
+            <div class="stamp">photo · 1.2 MB</div>
+          </div>
+          <div>
+            <div class="fields">
+              <div class="field"><label>Concept</label><div class="val">Taj hotel — 3 nights</div></div>
+              <div class="field"><label>Category</label><div class="val">Accommodation</div></div>
+              <div class="field"><label>Date</label><div class="val">16 Jul 2026</div></div>
+              <div class="field"><label>Reference</label><div class="val">#TR-88213</div></div>
+              <div class="field"><label>Local amount</label><div class="val tabnum">₹17,472.00</div></div>
+              <div class="field"><label>USD (rate 83.20)</label><div class="val tabnum">$210.00</div></div>
+            </div>
+            <div style="margin-top:16px">
+              <div class="flagline warn"><svg><use href="#i-alert"/></svg><div class="ftxt"><b>Over daily budget — medium</b>$70/night × 3 = $210 exactly at the 1-person cap. Confirm it wasn't shared.</div></div>
+              <div class="flagline info"><svg><use href="#i-flag"/></svg><div class="ftxt"><b>Spans a weekend — info</b>Stay covers Sat 18 Jul. India has a Sun–Sat working pattern — check justification.</div></div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:16px">
+              <button class="btn ok" onclick="markDone(this,'Verified — balance updated')"><svg><use href="#i-check"/></svg> Verify &amp; deduct</button>
+              <button class="btn danger" onclick="openModal('m-reject')"><svg><use href="#i-x"/></svg> Reject with reason</button>
+              <button class="btn ghost">Add note</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- item 2: prior approval -->
+      <div class="card pad" style="margin-bottom:16px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px">
+          <div class="cellflex"><span class="pill info">India · Guardian</span><b>PR launch event</b><span class="pill warn"><svg><use href="#i-clock"/></svg> Pending</span></div>
+          <div class="sub" style="font-size:12px">logged by Rahul Mehta · 16 Jul</div>
+        </div>
+        <div class="review">
+          <div class="receipt">
+            <div class="rc-h">EVENTS INDIA PVT</div>
+            <div class="rc-l"><span>Venue + catering</span><span>₹39,936</span></div>
+            <div class="rc-l"><span>Invoice</span><span>INV-2211</span></div>
+            <div class="rc-l"><span>Date</span><span>16 Jul</span></div>
+            <div class="rc-tot"><span>TOTAL</span><span>₹39,936</span></div>
+            <div class="stamp">PDF · 240 KB</div>
+          </div>
+          <div>
+            <div class="fields">
+              <div class="field"><label>Concept</label><div class="val">PR launch event</div></div>
+              <div class="field"><label>Category</label><div class="val">Other Services</div></div>
+              <div class="field"><label>Date</label><div class="val">16 Jul 2026</div></div>
+              <div class="field"><label>Reference</label><div class="val">INV-2211</div></div>
+              <div class="field"><label>Local amount</label><div class="val tabnum">₹39,936.00</div></div>
+              <div class="field"><label>USD (rate 83.20)</label><div class="val tabnum">$480.00</div></div>
+            </div>
+            <div style="margin-top:16px">
+              <div class="flagline crit"><svg><use href="#i-alert"/></svg><div class="ftxt"><b>Requires prior approval — high</b>“Other Services” (PR) must be signed off by Rafa or Mary before reimbursement. No approval on file.</div></div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:16px">
+              <button class="btn ok" onclick="markDone(this,'Verified — balance updated')"><svg><use href="#i-check"/></svg> Verify &amp; deduct</button>
+              <button class="btn danger" onclick="openModal('m-reject')"><svg><use href="#i-x"/></svg> Reject with reason</button>
+              <button class="btn ghost">Request approval</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- item 3: duplicate -->
+      <div class="card pad">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px">
+          <div class="cellflex"><span class="pill info">India · Guardian</span><b>Yandex taxi — airport</b><span class="pill warn"><svg><use href="#i-clock"/></svg> Pending</span></div>
+          <div class="sub" style="font-size:12px">logged by Ana Ruiz · 13 Jul</div>
+        </div>
+        <div class="review">
+          <div class="receipt">
+            <div class="rc-h">YANDEX GO</div>
+            <div class="rc-l"><span>Airport → Hotel</span><span>₹830</span></div>
+            <div class="rc-l"><span>Trip</span><span>13 Jul 09:14</span></div>
+            <div class="rc-tot"><span>TOTAL</span><span>₹830</span></div>
+            <div class="stamp">screenshot</div>
+          </div>
+          <div>
+            <div class="fields">
+              <div class="field"><label>Concept</label><div class="val">Yandex taxi — airport</div></div>
+              <div class="field"><label>Category</label><div class="val">Transport</div></div>
+              <div class="field"><label>Date</label><div class="val low">13 Jul 2026 <span style="font-weight:600">?</span></div><div class="hint">Low confidence — date partly cropped</div></div>
+              <div class="field"><label>Reference</label><div class="val low">—</div><div class="hint">No trip ID detected</div></div>
+              <div class="field"><label>Local amount</label><div class="val tabnum">₹830.00</div></div>
+              <div class="field"><label>USD (rate 83.20)</label><div class="val tabnum">$10.00</div></div>
+            </div>
+            <div style="margin-top:16px">
+              <div class="flagline crit"><svg><use href="#i-copy"/></svg><div class="ftxt"><b>Possible duplicate — high</b>Same amount &amp; route as a 14 Jul taxi already logged by Rahul Mehta. Verify both are real trips.</div></div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:16px">
+              <button class="btn ok" onclick="markDone(this,'Verified — balance updated')"><svg><use href="#i-check"/></svg> Verify &amp; deduct</button>
+              <button class="btn danger" onclick="openModal('m-reject')"><svg><use href="#i-x"/></svg> Reject with reason</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin: project detail + funding -->
+    <div class="page" data-page="a-project">
+      <div class="page-head">
+        <div class="crumb"><a onclick="go('admin','a-overview')">Overview</a> <svg style="width:13px;height:13px;color:var(--faint)"><use href="#i-chev"/></svg> India · The Guardian 2026</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px">
+          <div><h1>India · The Guardian 2026</h1><p class="sub">India · settlement USD · rate 83.20 INR/USD · Director Rahul Mehta</p></div>
+          <button class="btn" onclick="openModal('m-funds')"><svg><use href="#i-wallet"/></svg> Send funds</button>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="k">Funds received</div><div class="v tabnum">$1,500.00</div><div class="d">2 transfers</div></div>
+        <div class="kpi"><div class="k">Verified spend</div><div class="v tabnum">$35.98</div></div>
+        <div class="kpi"><div class="k">Balance</div><div class="v ok tabnum">$1,464.02</div></div>
+        <div class="kpi"><div class="k">Team</div><div class="v" style="font-size:16px; margin-top:10px">1 director · 2 reps</div></div>
+      </div>
+
+      <div class="sec-title">Balance ledger</div>
+      <div class="card ledger">
+        <table>
+          <thead><tr><th>Date</th><th>Entry</th><th>Evidence</th><th style="text-align:right">In</th><th style="text-align:right">Out</th><th style="text-align:right">Balance</th></tr></thead>
+          <tbody>
+            <tr><td class="tabnum">12 Jul</td><td>Opening advance → Rahul Mehta</td><td><span class="pill mut">📎 proof.jpg</span></td><td class="tabnum" style="text-align:right"><span class="in">+$1,000.00</span></td><td style="text-align:right">—</td><td class="tabnum amt" style="text-align:right">$1,000.00</td></tr>
+            <tr><td class="tabnum">14 Jul</td><td>Verified · Yandex taxi</td><td class="sub" style="font-size:12px">Transport</td><td style="text-align:right">—</td><td class="tabnum" style="text-align:right"><span class="out">−$9.98</span></td><td class="tabnum amt" style="text-align:right">$990.02</td></tr>
+            <tr><td class="tabnum">14 Jul</td><td>Verified · Airtel SIM</td><td class="sub" style="font-size:12px">Communications</td><td style="text-align:right">—</td><td class="tabnum" style="text-align:right"><span class="out">−$20.00</span></td><td class="tabnum amt" style="text-align:right">$970.02</td></tr>
+            <tr><td class="tabnum">15 Jul</td><td>Top-up transfer → Rahul Mehta</td><td><span class="pill mut">📎 proof.jpg</span></td><td class="tabnum" style="text-align:right"><span class="in">+$500.00</span></td><td style="text-align:right">—</td><td class="tabnum amt" style="text-align:right">$1,470.02</td></tr>
+            <tr><td class="tabnum">15 Jul</td><td>Verified · Printing</td><td class="sub" style="font-size:12px">Printing / Office</td><td style="text-align:right">—</td><td class="tabnum" style="text-align:right"><span class="out">−$6.00</span></td><td class="tabnum amt" style="text-align:right">$1,464.02</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="sec-title">Team</div>
+      <div class="card pad">
+        <div style="display:flex; gap:26px; flex-wrap:wrap">
+          <div class="cellflex"><div class="avatar" style="background:#e7e4de;color:#444">RM</div><div><div style="font-weight:600;font-size:13.5px">Rahul Mehta</div><div class="sub" style="font-size:12px">Director · accountable</div></div></div>
+          <div class="cellflex"><div class="avatar" style="background:#e7e4de;color:#444">AR</div><div><div style="font-weight:600;font-size:13.5px">Ana Ruiz</div><div class="sub" style="font-size:12px">Sales rep</div></div></div>
+          <div class="cellflex"><div class="avatar" style="background:#e7e4de;color:#444">DT</div><div><div style="font-weight:600;font-size:13.5px">Diego Torres</div><div class="sub" style="font-size:12px">Sales rep</div></div></div>
+          <button class="btn ghost sm" style="margin-left:auto" onclick="alert('Prototype: pick from finance-enabled accounts')"><svg><use href="#i-plus"/></svg> Add member</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin: analytics -->
+    <div class="page" data-page="a-analytics">
+      <div class="page-head"><h1>Analytics</h1><p class="sub">Spend across projects · this month.</p></div>
+      <div class="kpis">
+        <div class="kpi"><div class="k">Total verified spend</div><div class="v tabnum">$875.48</div></div>
+        <div class="kpi"><div class="k">Receipts processed</div><div class="v tabnum">42</div></div>
+        <div class="kpi"><div class="k">Flag rate</div><div class="v tabnum">17%</div><div class="d">7 of 42 flagged</div></div>
+        <div class="kpi"><div class="k">AI cost (this mo.)</div><div class="v tabnum">$2.14</div><div class="d">logged to usage ledger</div></div>
+      </div>
+
+      <div class="row">
+        <div class="card pad" style="flex:1; min-width:320px">
+          <div class="sec-title" style="margin-top:0">Spend by category</div>
+          <div style="display:flex; flex-direction:column; gap:14px; margin-top:6px">
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>Accommodation</span><span class="tabnum">$392.00</span></div><div class="bar"><span style="width:100%"></span></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>Transport</span><span class="tabnum">$248.50</span></div><div class="bar"><span style="width:63%"></span></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>Communications</span><span class="tabnum">$120.00</span></div><div class="bar"><span style="width:31%"></span></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>Other Services</span><span class="tabnum">$74.98</span></div><div class="bar"><span style="width:19%"></span></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>Printing / Office</span><span class="tabnum">$28.00</span></div><div class="bar"><span style="width:7%"></span></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>Bank Charges</span><span class="tabnum">$12.00</span></div><div class="bar"><span style="width:3%"></span></div></div>
+          </div>
+        </div>
+        <div class="card pad" style="flex:1; min-width:320px">
+          <div class="sec-title" style="margin-top:0">Spend by project</div>
+          <div style="display:flex; flex-direction:column; gap:14px; margin-top:6px">
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>Georgia · El País</span><span class="tabnum">$410.00</span></div><div class="bar"><span style="width:100%"></span></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>Pakistan · Dawn</span><span class="tabnum">$219.50</span></div><div class="bar"><span style="width:54%"></span></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>Armenia · Le Monde</span><span class="tabnum">$210.00</span></div><div class="bar"><span style="width:51%"></span></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px"><span>India · Guardian</span><span class="tabnum">$35.98</span></div><div class="bar"><span style="width:9%"></span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ===================== MODALS ===================== -->
+
+<!-- Upload + AI extraction (field) -->
+<div class="modal-back" id="m-upload">
+  <div class="modal">
+    <div class="mh"><h3>Log an expense</h3><button class="xbtn" onclick="closeModal('m-upload')"><svg style="width:18px;height:18px"><use href="#i-x"/></svg></button></div>
+    <div class="mb">
+      <div id="upl-step1">
+        <div class="drop"><svg><use href="#i-upload"/></svg><div style="margin-top:8px">Take a photo or drop a receipt</div><div style="font-size:11.5px;color:var(--faint);margin-top:2px">JPG, PNG, PDF · photos, screenshots, ride-app history</div></div>
+        <button class="btn" style="width:100%; justify-content:center; margin-top:14px" onclick="runExtract()"><svg><use href="#i-receipt"/></svg> Simulate upload &amp; read receipt</button>
+      </div>
+      <div id="upl-step2" style="display:none">
+        <div class="note" style="margin-bottom:16px">✨ AI read the receipt. Check the highlighted field, then log the expense. Nothing is guessed — a missing field would ask you.</div>
+        <div class="fields">
+          <div class="field"><label>Concept</label><div class="val">Airtel SIM + data</div></div>
+          <div class="field"><label>Category (suggested)</label><div class="val">Communications</div></div>
+          <div class="field"><label>Date</label><div class="val">14 Jul 2026</div></div>
+          <div class="field"><label>Reference</label><div class="val low">RN-7781?</div><div class="hint">Low confidence — please confirm</div></div>
+          <div class="field"><label>Local amount</label><div class="val tabnum">₹1,664.00</div></div>
+          <div class="field"><label>USD (rate 83.20)</label><div class="val tabnum">$20.00</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn ghost" onclick="closeModal('m-upload')">Cancel</button>
+      <button class="btn" id="upl-log" style="display:none" onclick="closeModal('m-upload'); toast('Expense logged — now pending Finance review')"><svg><use href="#i-check"/></svg> Log expense</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reject with reason (admin) -->
+<div class="modal-back" id="m-reject">
+  <div class="modal">
+    <div class="mh"><h3>Reject expense</h3><button class="xbtn" onclick="closeModal('m-reject')"><svg style="width:18px;height:18px"><use href="#i-x"/></svg></button></div>
+    <div class="mb">
+      <label class="fl">Reason (shown to the field user)</label>
+      <textarea class="inp" rows="3" placeholder="e.g. Looks like a duplicate of the 14 Jul airport taxi — re-upload with trip time visible.">Looks like a duplicate of the 14 Jul airport taxi — re-upload with the trip time visible.</textarea>
+      <div class="note" style="margin-top:12px">The item returns to the director as “Rejected — needs fix”. Nothing is deducted from the balance.</div>
+    </div>
+    <div class="mf">
+      <button class="btn ghost" onclick="closeModal('m-reject')">Cancel</button>
+      <button class="btn danger" onclick="closeModal('m-reject'); toast('Rejected — director notified')"><svg><use href="#i-x"/></svg> Send rejection</button>
+    </div>
+  </div>
+</div>
+
+<!-- Send funds (admin) -->
+<div class="modal-back" id="m-funds">
+  <div class="modal">
+    <div class="mh"><h3>Send funds to director</h3><button class="xbtn" onclick="closeModal('m-funds')"><svg style="width:18px;height:18px"><use href="#i-x"/></svg></button></div>
+    <div class="mb">
+      <div class="form-grid">
+        <div><label class="fl">Amount (USD)</label><input class="inp" value="500.00" /></div>
+        <div><label class="fl">Date sent</label><input class="inp" value="15 Jul 2026" /></div>
+        <div class="full"><label class="fl">Recipient</label><input class="inp" value="Rahul Mehta · Director" /></div>
+        <div class="full"><label class="fl">Photographic evidence (required)</label><div class="drop" style="padding:18px"><svg><use href="#i-upload"/></svg><div style="margin-top:6px; font-size:12.5px">transfer-receipt.jpg</div></div></div>
+      </div>
+      <div class="note" style="margin-top:12px">This adds to the project's received funds and appears in the balance ledger. Only Finance can record funding.</div>
+    </div>
+    <div class="mf">
+      <button class="btn ghost" onclick="closeModal('m-funds')">Cancel</button>
+      <button class="btn" onclick="closeModal('m-funds'); toast('$500.00 logged — balance updated')"><svg><use href="#i-check"/></svg> Record transfer</button>
+    </div>
+  </div>
+</div>
+
+<!-- New project (admin) -->
+<div class="modal-back" id="m-project">
+  <div class="modal">
+    <div class="mh"><h3>New project</h3><button class="xbtn" onclick="closeModal('m-project')"><svg style="width:18px;height:18px"><use href="#i-x"/></svg></button></div>
+    <div class="mb">
+      <div class="form-grid">
+        <div class="full"><label class="fl">Project name</label><input class="inp" value="India · The Guardian 2026" /></div>
+        <div><label class="fl">Country</label><input class="inp" value="India" /></div>
+        <div><label class="fl">Settlement currency</label><input class="inp" value="USD" /></div>
+        <div><label class="fl">Exchange rate</label><input class="inp" value="83.20 INR / USD" /></div>
+        <div><label class="fl">Media / publication</label><input class="inp" value="The Guardian" /></div>
+        <div class="full"><label class="fl">Director (financially accountable)</label><input class="inp" value="Rahul Mehta" /></div>
+      </div>
+      <div class="note" style="margin-top:12px">One country per project (tax requirement). You can add sales reps after creating it.</div>
+    </div>
+    <div class="mf">
+      <button class="btn ghost" onclick="closeModal('m-project')">Cancel</button>
+      <button class="btn" onclick="closeModal('m-project'); toast('Project created')"><svg><use href="#i-plus"/></svg> Create project</button>
+    </div>
+  </div>
+</div>
+
+<!-- toast -->
+<div id="toast" style="position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px); background:#111; color:#fff; padding:11px 18px; border-radius:10px; font-size:13px; z-index:120; opacity:0; transition:all .25s; box-shadow:0 10px 30px rgba(0,0,0,.3); pointer-events:none; display:flex; gap:8px; align-items:center"></div>
+
+<script>
+  function setPersona(p){
+    document.body.dataset.persona = p;
+    document.getElementById('app-field').classList.toggle('active', p==='field');
+    document.getElementById('app-admin').classList.toggle('active', p==='admin');
+    document.getElementById('sw-field').classList.toggle('active', p==='field');
+    document.getElementById('sw-admin').classList.toggle('active', p==='admin');
+  }
+  function go(app, page){
+    const root = document.getElementById('app-'+app);
+    root.querySelectorAll('.navlink').forEach(n => n.classList.toggle('active', n.dataset.page===page));
+    root.querySelectorAll('.page').forEach(pg => pg.classList.toggle('active', pg.dataset.page===page));
+    root.querySelector('main').scrollTop = 0;
+  }
+  document.querySelectorAll('.navlink[data-page]').forEach(link => {
+    link.addEventListener('click', () => go(link.dataset.app, link.dataset.page));
+  });
+
+  function openModal(id){ document.getElementById(id).classList.add('open'); if(id==='m-upload'){ resetUpload(); } }
+  function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+  document.querySelectorAll('.modal-back').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
+
+  function resetUpload(){
+    document.getElementById('upl-step1').style.display='block';
+    document.getElementById('upl-step2').style.display='none';
+    document.getElementById('upl-log').style.display='none';
+  }
+  function runExtract(){
+    const s1=document.getElementById('upl-step1');
+    s1.innerHTML='<div class="drop" style="border-style:solid"><svg style="animation:spin 1s linear infinite"><use href="#i-receipt"/></svg><div style="margin-top:8px">Reading receipt…</div></div>';
+    setTimeout(()=>{
+      document.getElementById('upl-step1').style.display='none';
+      document.getElementById('upl-step2').style.display='block';
+      document.getElementById('upl-log').style.display='inline-flex';
+    }, 900);
+  }
+
+  function markDone(btn, msg){
+    const card = btn.closest('.card');
+    card.style.transition='opacity .3s'; card.style.opacity='.45';
+    btn.closest('.review').querySelectorAll('.btn').forEach(b=>b.disabled=true);
+    toast(msg);
+  }
+
+  let toastT;
+  function toast(msg){
+    const t=document.getElementById('toast');
+    t.innerHTML='<svg style="width:15px;height:15px"><use href="#i-check"/></svg> '+msg;
+    t.style.opacity='1'; t.style.transform='translateX(-50%) translateY(0)';
+    clearTimeout(toastT);
+    toastT=setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(-50%) translateY(20px)'; }, 2400);
+  }
+
+  const style=document.createElement('style');
+  style.textContent='@keyframes spin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(style);
+
+  setPersona('field');
+</script>
+</body>
+</html>

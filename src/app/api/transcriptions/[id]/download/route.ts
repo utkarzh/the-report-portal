@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
+import { Document, Packer, Paragraph, HeadingLevel } from 'docx'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { letterheadHeaderFooter, markdownToParagraphs } from '@/lib/docx-render'
 
 // GET /api/transcriptions/[id]/download?variant=raw|refined
 // Returns the chosen transcript as a Word (.docx) attachment. Owner or admin.
@@ -52,9 +53,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   const doc = new Document({
     sections: [
       {
+        ...letterheadHeaderFooter(),
         children: [
           new Paragraph({ text: heading, heading: HeadingLevel.HEADING_1 }),
-          ...toParagraphs(text),
+          // Highlight [[ … ]] client-confirmation spans yellow on the refined variant.
+          ...markdownToParagraphs(text, { highlightConfirm: variant === 'refined' }),
         ],
       },
     ],
@@ -70,68 +73,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       'Cache-Control': 'no-store',
     },
   })
-}
-
-// Converts transcript text (plain or light markdown, with "Speaker A:" labels)
-// into docx paragraphs. Headings, bullets, **bold**, and bold speaker labels
-// are handled; everything else is a plain paragraph.
-function toParagraphs(text: string): Paragraph[] {
-  const paras: Paragraph[] = []
-  const blocks = text.replace(/\r\n/g, '\n').split(/\n{2,}/)
-
-  for (const block of blocks) {
-    for (const rawLine of block.split('\n')) {
-      const line = rawLine.trim()
-      if (!line) continue
-
-      const h = /^(#{1,3})\s+(.*)$/.exec(line)
-      if (h) {
-        const level = h[1].length
-        paras.push(
-          new Paragraph({
-            text: h[2],
-            heading:
-              level === 1 ? HeadingLevel.HEADING_1
-              : level === 2 ? HeadingLevel.HEADING_2
-              : HeadingLevel.HEADING_3,
-          }),
-        )
-        continue
-      }
-
-      const li = /^[-*]\s+(.*)$/.exec(line)
-      if (li) {
-        paras.push(new Paragraph({ children: inlineRuns(li[1]), bullet: { level: 0 } }))
-        continue
-      }
-
-      const sp = /^(Speaker\s+[^:]{1,40}:)\s*(.*)$/.exec(line)
-      if (sp) {
-        paras.push(
-          new Paragraph({
-            children: [new TextRun({ text: `${sp[1]} `, bold: true }), ...inlineRuns(sp[2])],
-            spacing: { after: 160 },
-          }),
-        )
-        continue
-      }
-
-      paras.push(new Paragraph({ children: inlineRuns(line), spacing: { after: 120 } }))
-    }
-  }
-
-  return paras.length > 0 ? paras : [new Paragraph('')]
-}
-
-// Splits a line on **bold** spans into styled runs.
-function inlineRuns(text: string): TextRun[] {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean)
-  if (parts.length === 0) return [new TextRun('')]
-  return parts.map((p) =>
-    p.startsWith('**') && p.endsWith('**')
-      ? new TextRun({ text: p.slice(2, -2), bold: true })
-      : new TextRun(p),
-  )
 }
 
 function slugify(s: string): string {

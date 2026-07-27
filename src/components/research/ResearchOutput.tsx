@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { marked } from 'marked'
-import { Download, MessagesSquare, FileText, ListChecks, Sparkles, WandSparkles, Copy, Check, ArrowLeft } from 'lucide-react'
+import { Download, MessagesSquare, FileText, ListChecks, Sparkles, WandSparkles, Copy, Check, ArrowLeft, Paperclip } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
 import DeleteInterviewButton from '@/components/research/DeleteInterviewButton'
 import type { ResearchSession } from '@/types'
@@ -13,13 +13,21 @@ marked.use({ gfm: true, breaks: true })
 
 type StreamStatus = 'idle' | 'generating' | 'searching'
 
+interface AttachedDoc {
+  id: string
+  filename: string
+  char_count?: number
+  truncated?: boolean
+}
+
 interface Props {
   session: ResearchSession
+  documents?: AttachedDoc[]
   isGenerating: boolean
   isAdmin?: boolean
 }
 
-export default function ResearchOutput({ session, isGenerating, isAdmin = false }: Props) {
+export default function ResearchOutput({ session, documents = [], isGenerating, isAdmin = false }: Props) {
   const router = useRouter()
 
   const [output, setOutput] = useState<string>(session.initial_output || '')
@@ -290,6 +298,22 @@ export default function ResearchOutput({ session, isGenerating, isAdmin = false 
             <InfoRow label="Publication" value={session.publication} />
             <InfoRow label="Partner Country" value={session.media_partner_country} />
           </div>
+
+          {documents.length > 0 && (
+            <div className="mt-6 border-t border-[#e5e3df] pt-4">
+              <p className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                <Paperclip size={11} /> Documents
+              </p>
+              <ul className="space-y-1.5">
+                {documents.map((d) => (
+                  <li key={d.id} className="flex items-start gap-1.5 text-[11px] leading-snug text-gray-600">
+                    <FileText size={12} className="mt-0.5 flex-shrink-0 text-gray-400" />
+                    <span className="min-w-0 break-words">{d.filename}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {usage.tokens_total > 0 && (
             <div className="mt-6 border-t border-[#e5e3df] pt-4">

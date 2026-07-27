@@ -20,6 +20,8 @@ const defaultForm = {
   tokenLimit: '2000000',
   canAccessInterview: true,
   canAccessTranscriptions: false,
+  canAccessBusinessCases: false,
+  canAccessEditorialBriefs: false,
 }
 
 // Admins get an invite link (they set a password on signup). Normal users have
@@ -77,6 +79,8 @@ export default function InviteUserModal({ open, onClose }: Props) {
           tokenLimit: parseInt(form.tokenLimit),
           canAccessInterview: form.canAccessInterview,
           canAccessTranscriptions: form.canAccessTranscriptions,
+          canAccessBusinessCases: form.canAccessBusinessCases,
+          canAccessEditorialBriefs: form.canAccessEditorialBriefs,
         }),
       }),
     })
@@ -305,6 +309,16 @@ export default function InviteUserModal({ open, onClose }: Props) {
                       label="Transcriptions"
                       checked={form.canAccessTranscriptions}
                       onChange={(v) => setForm(p => ({ ...p, canAccessTranscriptions: v }))}
+                    />
+                    <ModuleCheckbox
+                      label="Business Cases"
+                      checked={form.canAccessBusinessCases}
+                      onChange={(v) => setForm(p => ({ ...p, canAccessBusinessCases: v }))}
+                    />
+                    <ModuleCheckbox
+                      label="Editorial Briefs"
+                      checked={form.canAccessEditorialBriefs}
+                      onChange={(v) => setForm(p => ({ ...p, canAccessEditorialBriefs: v }))}
                     />
                   </div>
                 </div>

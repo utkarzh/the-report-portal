@@ -14,6 +14,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       userName={profile.full_name}
       canAccessInterview={profile.can_access_interview}
       canAccessTranscriptions={profile.can_access_transcriptions}
+      canAccessBusinessCases={profile.can_access_business_cases}
+      canAccessEditorialBriefs={profile.can_access_editorial_briefs}
     >
       {children}
     </AppShell>

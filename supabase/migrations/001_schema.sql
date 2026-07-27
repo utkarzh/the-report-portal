@@ -37,6 +37,9 @@ CREATE TABLE public.profiles (
     -- the transcriptions module is off until an admin enables it.
     can_access_interview      BOOLEAN NOT NULL DEFAULT TRUE,
     can_access_transcriptions BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Business Cases / Editorial Briefs modules — off until an admin enables them.
+    can_access_business_cases   BOOLEAN NOT NULL DEFAULT FALSE,
+    can_access_editorial_briefs BOOLEAN NOT NULL DEFAULT FALSE,
     -- One-device-one-login: the id of the currently-authorised device session.
     -- Set to a fresh UUID on every successful sign-in; the browser stores the
     -- same value in the `device_session` cookie. Middleware signs out any device
@@ -76,6 +79,8 @@ CREATE TABLE public.invitations (
     -- Module access carried onto the profile by handle_new_user (see below).
     can_access_interview      BOOLEAN NOT NULL DEFAULT TRUE,
     can_access_transcriptions BOOLEAN NOT NULL DEFAULT FALSE,
+    can_access_business_cases   BOOLEAN NOT NULL DEFAULT FALSE,
+    can_access_editorial_briefs BOOLEAN NOT NULL DEFAULT FALSE,
     token       TEXT        NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
     status      invite_status NOT NULL DEFAULT 'pending',
     invited_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -346,7 +351,8 @@ BEGIN
 
     INSERT INTO public.profiles (
         id, email, full_name, role, token_limit, status,
-        can_access_interview, can_access_transcriptions
+        can_access_interview, can_access_transcriptions,
+        can_access_business_cases, can_access_editorial_briefs
     )
     VALUES (
         NEW.id,
@@ -361,7 +367,11 @@ BEGIN
         CASE WHEN v_role = 'admin' THEN TRUE
              ELSE COALESCE(v_invite.can_access_interview, TRUE) END,
         CASE WHEN v_role = 'admin' THEN TRUE
-             ELSE COALESCE(v_invite.can_access_transcriptions, FALSE) END
+             ELSE COALESCE(v_invite.can_access_transcriptions, FALSE) END,
+        CASE WHEN v_role = 'admin' THEN TRUE
+             ELSE COALESCE(v_invite.can_access_business_cases, FALSE) END,
+        CASE WHEN v_role = 'admin' THEN TRUE
+             ELSE COALESCE(v_invite.can_access_editorial_briefs, FALSE) END
     );
 
     IF v_invite.id IS NOT NULL THEN
@@ -532,5 +542,215 @@ CREATE POLICY "Admins read all transcription audio"
     ON storage.objects FOR SELECT TO authenticated
     USING (
         bucket_id = 'transcription-audio'
+        AND public.user_role() = 'admin'
+    );
+
+-- ============================================================
+-- BUSINESS CASES & EDITORIAL BRIEFS MODULES
+-- ============================================================
+-- Generic engine keyed by doc_type ('business_case' | 'editorial_brief').
+-- Permission flags live on profiles/invitations above; handle_new_user copies
+-- them. usage_events.workflow is plain TEXT, so 'business_case' /
+-- 'editorial_brief' workflow values need no schema change.
+
+-- Detailed prompt (one singleton row per doc_type).
+CREATE TABLE IF NOT EXISTS public.document_prompt (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    doc_type    TEXT        NOT NULL UNIQUE
+        CHECK (doc_type IN ('business_case', 'editorial_brief')),
+    prompt_text TEXT        NOT NULL DEFAULT '',
+    updated_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO public.document_prompt (doc_type, prompt_text)
+SELECT 'business_case', $seed$You are a senior research analyst at The Report Company. Produce a concise, decision-ready BUSINESS CASE of roughly 8-10 pages.
+
+Requirements:
+- Use STRICTLY RECENT data. Verify current facts with web search; treat anything older than last year as stale unless clearly labelled historical background.
+- Structure: executive summary, market context, opportunity, competitive landscape, risks, financials/outlook, and a clear recommendation.
+- Cite source URLs (with publication dates where available) for every factual claim about the current situation.
+- Where a sample business case has been provided, match its structure, depth, and tone.$seed$
+WHERE NOT EXISTS (SELECT 1 FROM public.document_prompt WHERE doc_type = 'business_case');
+
+INSERT INTO public.document_prompt (doc_type, prompt_text)
+SELECT 'editorial_brief', $seed$You are a senior editor at The Report Company. Produce a LONG, DETAILED EDITORIAL BRIEF of roughly 20-30 pages.
+
+Requirements:
+- Be comprehensive and well-structured: background, context, key themes, stakeholders, angles to pursue, supporting evidence, and recommended editorial direction.
+- Use recent data where relevant and verify current facts with web search; cite source URLs with dates for current claims.
+- Write in a professional editorial voice with clear section headings and depth in each section.
+- Where a sample editorial brief has been provided, match its structure, depth, and tone.$seed$
+WHERE NOT EXISTS (SELECT 1 FROM public.document_prompt WHERE doc_type = 'editorial_brief');
+
+CREATE TABLE IF NOT EXISTS public.document_prompt_versions (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    doc_type    TEXT        NOT NULL
+        CHECK (doc_type IN ('business_case', 'editorial_brief')),
+    prompt_text TEXT        NOT NULL,
+    saved_by    UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_document_prompt_versions_type_created
+    ON public.document_prompt_versions(doc_type, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.document_samples (
+    id             UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    doc_type       TEXT        NOT NULL
+        CHECK (doc_type IN ('business_case', 'editorial_brief')),
+    filename       TEXT        NOT NULL,
+    storage_path   TEXT        NOT NULL,
+    mime           TEXT,
+    size_bytes     BIGINT,
+    extracted_text TEXT        NOT NULL DEFAULT '',
+    char_count     INTEGER     DEFAULT 0,
+    truncated      BOOLEAN     NOT NULL DEFAULT FALSE,
+    uploaded_by    UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_document_samples_type
+    ON public.document_samples(doc_type, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.document_sessions (
+    id                 UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id            UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    doc_type           TEXT        NOT NULL
+        CHECK (doc_type IN ('business_case', 'editorial_brief')),
+    title              TEXT        NOT NULL DEFAULT 'Untitled',
+    project_country    TEXT,
+    media_partner      TEXT,
+    media_country      TEXT,
+    additional_context TEXT,
+    output             TEXT,
+    prompt_snapshot    TEXT,
+    tokens_input       INTEGER     DEFAULT 0,
+    tokens_output      INTEGER     DEFAULT 0,
+    tokens_total       INTEGER     DEFAULT 0,
+    web_searches       INTEGER     DEFAULT 0,
+    cost_usd           NUMERIC(10, 6) DEFAULT 0,
+    status             TEXT        NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'generating', 'complete', 'failed')),
+    error              TEXT,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_document_sessions_user_id
+    ON public.document_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_document_sessions_type_created
+    ON public.document_sessions(doc_type, created_at DESC);
+
+DROP TRIGGER IF EXISTS document_sessions_updated_at ON public.document_sessions;
+CREATE TRIGGER document_sessions_updated_at
+    BEFORE UPDATE ON public.document_sessions
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.document_prompt          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.document_prompt_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.document_samples         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.document_sessions        ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can read document prompt" ON public.document_prompt;
+CREATE POLICY "Authenticated users can read document prompt"
+    ON public.document_prompt FOR SELECT TO authenticated USING (TRUE);
+DROP POLICY IF EXISTS "Admins can update document prompt" ON public.document_prompt;
+CREATE POLICY "Admins can update document prompt"
+    ON public.document_prompt FOR UPDATE USING (public.user_role() = 'admin');
+
+DROP POLICY IF EXISTS "Admins can manage document prompt versions" ON public.document_prompt_versions;
+CREATE POLICY "Admins can manage document prompt versions"
+    ON public.document_prompt_versions FOR ALL USING (public.user_role() = 'admin');
+
+DROP POLICY IF EXISTS "Admins can manage document samples" ON public.document_samples;
+CREATE POLICY "Admins can manage document samples"
+    ON public.document_samples FOR ALL USING (public.user_role() = 'admin');
+
+DROP POLICY IF EXISTS "Users can read own document sessions" ON public.document_sessions;
+CREATE POLICY "Users can read own document sessions"
+    ON public.document_sessions FOR SELECT USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Admins can read all document sessions" ON public.document_sessions;
+CREATE POLICY "Admins can read all document sessions"
+    ON public.document_sessions FOR SELECT USING (public.user_role() = 'admin');
+DROP POLICY IF EXISTS "Users can insert own document sessions" ON public.document_sessions;
+CREATE POLICY "Users can insert own document sessions"
+    ON public.document_sessions FOR INSERT WITH CHECK (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users can update own document sessions" ON public.document_sessions;
+CREATE POLICY "Users can update own document sessions"
+    ON public.document_sessions FOR UPDATE USING (user_id = auth.uid());
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('document-samples', 'document-samples', FALSE)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Users manage own document samples" ON storage.objects;
+CREATE POLICY "Users manage own document samples"
+    ON storage.objects FOR ALL TO authenticated
+    USING (
+        bucket_id = 'document-samples'
+        AND (storage.foldername(name))[1] = auth.uid()::text
+    )
+    WITH CHECK (
+        bucket_id = 'document-samples'
+        AND (storage.foldername(name))[1] = auth.uid()::text
+    );
+
+DROP POLICY IF EXISTS "Admins read all document samples" ON storage.objects;
+CREATE POLICY "Admins read all document samples"
+    ON storage.objects FOR SELECT TO authenticated
+    USING (
+        bucket_id = 'document-samples'
+        AND public.user_role() = 'admin'
+    );
+
+-- ============================================================
+-- INTERVIEW COMPANY DOCUMENTS (migration 013)
+-- ============================================================
+-- Company documents (annual/sustainability reports, etc.) attached on the
+-- "new interview" details screen and fed to Claude as supporting context.
+CREATE TABLE IF NOT EXISTS public.research_documents (
+    id             UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id     UUID        NOT NULL REFERENCES public.research_sessions(id) ON DELETE CASCADE,
+    user_id        UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    filename       TEXT        NOT NULL,
+    storage_path   TEXT        NOT NULL,
+    mime           TEXT,
+    size_bytes     BIGINT,
+    extracted_text TEXT        NOT NULL DEFAULT '',
+    char_count     INTEGER     DEFAULT 0,
+    truncated      BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_research_documents_session
+    ON public.research_documents(session_id, created_at);
+
+ALTER TABLE public.research_documents ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage own research documents" ON public.research_documents;
+CREATE POLICY "Users manage own research documents"
+    ON public.research_documents FOR ALL USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Admins read all research documents" ON public.research_documents;
+CREATE POLICY "Admins read all research documents"
+    ON public.research_documents FOR SELECT USING (public.user_role() = 'admin');
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('research-documents', 'research-documents', FALSE)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Users manage own research documents storage" ON storage.objects;
+CREATE POLICY "Users manage own research documents storage"
+    ON storage.objects FOR ALL TO authenticated
+    USING (
+        bucket_id = 'research-documents'
+        AND (storage.foldername(name))[1] = auth.uid()::text
+    )
+    WITH CHECK (
+        bucket_id = 'research-documents'
+        AND (storage.foldername(name))[1] = auth.uid()::text
+    );
+
+DROP POLICY IF EXISTS "Admins read all research documents storage" ON storage.objects;
+CREATE POLICY "Admins read all research documents storage"
+    ON storage.objects FOR SELECT TO authenticated
+    USING (
+        bucket_id = 'research-documents'
         AND public.user_role() = 'admin'
     );

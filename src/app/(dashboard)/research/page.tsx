@@ -40,6 +40,7 @@ export default async function ResearchPage() {
             <ResearchForm
               categories={(categories || []) as Category[]}
               isAtLimit={isAtLimit}
+              userId={profile.id}
             />
           )}
         </div>

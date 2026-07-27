@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { email, role, tokenLimit, fullName, canAccessInterview, canAccessTranscriptions } = body
+  const { email, role, tokenLimit, fullName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs } = body
 
   if (!email || !role) {
     return NextResponse.json({ error: 'email and role are required' }, { status: 400 })
@@ -75,6 +75,8 @@ export async function POST(request: NextRequest) {
       // the admin selected (interview defaults on, transcriptions off).
       can_access_interview: role === 'admin' ? true : canAccessInterview !== false,
       can_access_transcriptions: role === 'admin' ? true : canAccessTranscriptions === true,
+      can_access_business_cases: role === 'admin' ? true : canAccessBusinessCases === true,
+      can_access_editorial_briefs: role === 'admin' ? true : canAccessEditorialBriefs === true,
       invited_by: user.id,
     })
     .select('id, token')

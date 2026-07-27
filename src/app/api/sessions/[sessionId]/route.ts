@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { RESEARCH_DOCS_BUCKET } from '@/lib/research-docs'
 
 // GET /api/sessions/[sessionId] — lightweight status + output poll. Used when a
 // user returns to a session that is still generating (the original streaming
@@ -70,12 +71,31 @@ export async function DELETE(_request: NextRequest, { params }: { params: { sess
 
   if (!row) return NextResponse.json({ error: 'Interview not found' }, { status: 404 })
 
+  // Collect any attached company-document storage objects BEFORE deleting the
+  // session (the research_documents rows cascade with it). Removing the objects
+  // is best-effort — an orphaned file must not block deleting the interview.
+  const { data: docs } = await supabaseAdmin
+    .from('research_documents')
+    .select('storage_path')
+    .eq('session_id', row.id)
+  const paths = (docs || [])
+    .map((d) => d.storage_path)
+    .filter((p): p is string => Boolean(p))
+
   const { error } = await supabaseAdmin
     .from('research_sessions')
     .delete()
     .eq('id', row.id)
 
   if (error) return NextResponse.json({ error: 'Failed to delete interview' }, { status: 500 })
+
+  if (paths.length > 0) {
+    const { error: storageError } = await supabaseAdmin
+      .storage
+      .from(RESEARCH_DOCS_BUCKET)
+      .remove(paths)
+    if (storageError) console.error('Failed to remove research documents:', storageError)
+  }
 
   return NextResponse.json({ success: true })
 }

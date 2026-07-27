@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import type { PromptVersion, CategoryPromptVersion } from '@/types'
+import type { PromptVersion, CategoryPromptVersion, DocType } from '@/types'
 
 type Version = PromptVersion | CategoryPromptVersion
 
 interface Props {
-  type: 'general' | 'category' | 'transcript'
+  type: 'general' | 'category' | 'transcript' | 'document'
   categoryId?: string
+  // Required when type === 'document' — selects which module's prompt history.
+  docType?: DocType
   currentPromptText?: string
   refreshKey?: number
   onRestore: (promptText: string) => void
@@ -20,7 +22,20 @@ function formatDate(iso: string) {
   })
 }
 
-export default function PromptVersionHistory({ type, categoryId, currentPromptText, refreshKey, onRestore }: Props) {
+export default function PromptVersionHistory({ type, categoryId, docType, currentPromptText, refreshKey, onRestore }: Props) {
+  // Endpoints per prompt type. For 'document', the list is filtered by docType;
+  // restore/delete target a version id directly (the row carries its doc_type).
+  const listUrl =
+    type === 'general' ? '/api/prompts/versions'
+    : type === 'transcript' ? '/api/transcript-prompt/versions'
+    : type === 'document' ? `/api/document-prompt/versions?docType=${docType}`
+    : `/api/categories/${categoryId}/versions`
+  const itemUrl = (id: string) =>
+    type === 'general' ? `/api/prompts/versions/${id}`
+    : type === 'transcript' ? `/api/transcript-prompt/versions/${id}`
+    : type === 'document' ? `/api/document-prompt/versions/${id}`
+    : `/api/categories/${categoryId}/versions/${id}`
+
   const [open, setOpen] = useState(false)
   const [versions, setVersions] = useState<Version[]>([])
   const [loading, setLoading] = useState(false)
@@ -33,12 +48,7 @@ export default function PromptVersionHistory({ type, categoryId, currentPromptTe
   const fetchVersions = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const url = type === 'general'
-      ? '/api/prompts/versions'
-      : type === 'transcript'
-        ? '/api/transcript-prompt/versions'
-        : `/api/categories/${categoryId}/versions`
-    const res = await fetch(url)
+    const res = await fetch(listUrl)
     const data = await res.json()
     if (!res.ok) {
       setError(data.error || 'Failed to load versions')
@@ -46,7 +56,7 @@ export default function PromptVersionHistory({ type, categoryId, currentPromptTe
       setVersions(data.versions || [])
     }
     setLoading(false)
-  }, [type, categoryId])
+  }, [listUrl])
 
   useEffect(() => {
     if (open && refreshKey !== undefined && refreshKey > 0) {
@@ -66,13 +76,7 @@ export default function PromptVersionHistory({ type, categoryId, currentPromptTe
     setRestoring(true)
     setError(null)
 
-    const url = type === 'general'
-      ? `/api/prompts/versions/${selected.id}`
-      : type === 'transcript'
-        ? `/api/transcript-prompt/versions/${selected.id}`
-        : `/api/categories/${categoryId}/versions/${selected.id}`
-
-    const res = await fetch(url, { method: 'POST' })
+    const res = await fetch(itemUrl(selected.id), { method: 'POST' })
     const data = await res.json()
 
     if (!res.ok) {
@@ -88,12 +92,7 @@ export default function PromptVersionHistory({ type, categoryId, currentPromptTe
   async function handleDelete(id: string) {
     setDeletingId(id)
     setError(null)
-    const url = type === 'general'
-      ? `/api/prompts/versions/${id}`
-      : type === 'transcript'
-        ? `/api/transcript-prompt/versions/${id}`
-        : `/api/categories/${categoryId}/versions/${id}`
-    const res = await fetch(url, { method: 'DELETE' })
+    const res = await fetch(itemUrl(id), { method: 'DELETE' })
     const data = await res.json()
     if (!res.ok) {
       setError(data.error || 'Failed to delete version')
