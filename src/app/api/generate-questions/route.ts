@@ -7,6 +7,10 @@ import { logUsageEvent } from '@/lib/claude/usage'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
+// Long-running streamed generation — raise the serverless ceiling so the final
+// persist runs (300s = Vercel Pro max; Hobby still caps at 60s).
+export const maxDuration = 300
+
 export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()

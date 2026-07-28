@@ -5,6 +5,10 @@ import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE, SONNET_PRICING } from '@/lib/claude/tokens'
 
 const TRANSLATE_MODEL = 'claude-sonnet-4-6'
+
+// Translating a long transcript on Sonnet is output-heavy and slow — raise the
+// serverless ceiling so the final persist runs (300s = Pro max; Hobby caps 60s).
+export const maxDuration = 300
 import { isTranslationLanguage } from '@/lib/transcriptions'
 import { logUsageEvent } from '@/lib/claude/usage'
 

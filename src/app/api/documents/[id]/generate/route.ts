@@ -9,6 +9,13 @@ import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
+// Long-running route: a web-searched, multi-thousand-token document (the
+// Editorial Brief allows 32k output tokens + 10 searches) can take several
+// minutes. Without this, Vercel's low default timeout kills the function before
+// the final "persist output + status:complete" step runs, losing the result.
+// 300s is the max on Vercel Pro; Hobby still caps at 60s (see notes to user).
+export const maxDuration = 300
+
 // Same 1h cache TTL used by /api/generate — keeps the (shared, stable) prompt +
 // sample docs hot across generations of the same type.
 const CACHE_1H = { type: 'ephemeral' as const, ttl: '1h' as const }

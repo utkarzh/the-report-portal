@@ -9,6 +9,10 @@ import { logUsageEvent } from '@/lib/claude/usage'
 // the highest-quality cleanup (punctuation, speaker labels preserved).
 const REFINE_MODEL = 'claude-sonnet-4-6'
 
+// Refining a long transcript on Sonnet is output-heavy and slow — raise the
+// serverless ceiling so the final persist runs (300s = Pro max; Hobby caps 60s).
+export const maxDuration = 300
+
 // POST /api/transcriptions/[id]/refine — streams a cleaned, publication-ready
 // version of the raw transcript from Claude, using the admin-managed refining
 // prompt. Mirrors /api/generate: pre-flight token gate, SSE streaming, persist
