@@ -19,8 +19,8 @@ export const MAX_SAMPLES = 5
 export const MAX_SAMPLE_CHARS = 60_000
 
 // Accepted sample upload formats.
-export const SAMPLE_ACCEPT = '.docx,.pdf,.txt,.md,.markdown'
-export const SAMPLE_EXT_RE = /\.(docx|pdf|txt|md|markdown)$/i
+export const SAMPLE_ACCEPT = '.docx,.pdf,.xlsx,.xls,.txt,.md,.markdown'
+export const SAMPLE_EXT_RE = /\.(docx|pdf|xlsx|xls|txt|md|markdown)$/i
 
 export interface DocTypeConfig {
   type: DocType

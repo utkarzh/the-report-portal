@@ -60,7 +60,7 @@ export default function DocumentSamplesManager({ docType, label, userId, initial
           break
         }
         if (!SAMPLE_EXT_RE.test(file.name)) {
-          setError(`"${file.name}" is not a supported format (.docx, .pdf, .txt, .md).`)
+          setError(`"${file.name}" is not a supported format (.docx, .pdf, .xlsx, .xls, .txt, .md).`)
           continue
         }
         if (file.size > MAX_SAMPLE_BYTES) {
@@ -126,7 +126,7 @@ export default function DocumentSamplesManager({ docType, label, userId, initial
       <div className="px-5 sm:px-6 py-4 border-b border-[#e5e3df]">
         <h3 className="text-sm font-semibold text-gray-900">Sample {label}s</h3>
         <p className="text-xs text-gray-500 mt-0.5">
-          Upload up to {MAX_SAMPLES} example documents (.docx, .pdf, .txt, .md). Claude uses these to shape the structure, depth, and tone of every generated {label.toLowerCase()}.
+          Upload up to {MAX_SAMPLES} example documents (.docx, .pdf, .xlsx, .xls, .txt, .md). Claude uses these to shape the structure, depth, and tone of every generated {label.toLowerCase()}.
         </p>
       </div>
 
