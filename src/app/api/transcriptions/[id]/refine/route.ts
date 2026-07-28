@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE, HAIKU_PRICING } from '@/lib/claude/tokens'
+import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE, SONNET_PRICING } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
 
-// Refine is mechanical cleanup (fix punctuation, keep speaker labels) — Haiku is
-// ~3x cheaper on output than Sonnet and handles it well.
-const REFINE_MODEL = 'claude-haiku-4-5'
+// Refine uses Sonnet 4.6 — the same model as research/question generation — for
+// the highest-quality cleanup (punctuation, speaker labels preserved).
+const REFINE_MODEL = 'claude-sonnet-4-6'
 
 // POST /api/transcriptions/[id]/refine — streams a cleaned, publication-ready
 // version of the raw transcript from Claude, using the admin-managed refining
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         const usage = parseUsage(finalMsg.usage, 0)
         const promptTokens = totalPromptTokens(usage)
         const opTokens = promptTokens + usage.outputTokens
-        const opCost = calculateCost(usage, HAIKU_PRICING)
+        const opCost = calculateCost(usage, SONNET_PRICING)
 
         // Accumulate onto the transcript's running Claude totals (refine and
         // translate both count). Persist FIRST — must never be skipped even if

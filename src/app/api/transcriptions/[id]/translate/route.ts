@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE, HAIKU_PRICING } from '@/lib/claude/tokens'
+import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE, SONNET_PRICING } from '@/lib/claude/tokens'
 
-const TRANSLATE_MODEL = 'claude-haiku-4-5'
+const TRANSLATE_MODEL = 'claude-sonnet-4-6'
 import { isTranslationLanguage } from '@/lib/transcriptions'
 import { logUsageEvent } from '@/lib/claude/usage'
 
@@ -110,7 +110,7 @@ Rules:
         const usage = parseUsage(finalMsg.usage, 0)
         const promptTokens = totalPromptTokens(usage)
         const opTokens = promptTokens + usage.outputTokens
-        const opCost = calculateCost(usage, HAIKU_PRICING)
+        const opCost = calculateCost(usage, SONNET_PRICING)
 
         // Accumulate onto the transcription's running Claude totals (translation
         // and refine both count toward this transcript's spend). Persist FIRST —
