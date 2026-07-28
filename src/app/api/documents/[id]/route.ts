@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { reconcileDocumentStatus } from '@/lib/documents-reconcile'
 
 // GET /api/documents/[id] — poll endpoint used by the output page when a run was
 // started elsewhere (can't re-attach the SSE stream).
@@ -17,7 +18,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
   const { data: row } = await supabaseAdmin
     .from('document_sessions')
-    .select('id, user_id, status, output, tokens_total, web_searches, cost_usd')
+    .select('id, user_id, status, output, updated_at, tokens_total, web_searches, cost_usd')
     .eq('id', params.id)
     .single()
 
@@ -26,8 +27,12 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Heal a run whose final persist was dropped on client disconnect, so a
+  // polling reconnect settles (to complete/failed) instead of spinning forever.
+  const status = await reconcileDocumentStatus(row)
+
   return NextResponse.json({
-    status: row.status,
+    status,
     output: row.output,
     usage: {
       tokens_total: row.tokens_total,

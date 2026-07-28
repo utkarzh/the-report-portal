@@ -3,6 +3,7 @@ import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import DocumentOutput from '@/components/documents/DocumentOutput'
 import { getDocConfig } from '@/lib/documents'
+import { reconcileDocumentStatus } from '@/lib/documents-reconcile'
 import type { DocType, DocumentSession } from '@/types'
 
 // Shared detail/output view. Mirrors research/[sessionId]/page.tsx. Verifies the
@@ -33,6 +34,10 @@ export default async function DocumentDetailView({
   if (session.user_id !== profile.id && profile.role !== 'admin') {
     redirect(`/${config.slug}`)
   }
+
+  // Heal a row whose final persist was dropped when the client disconnected
+  // (serverless), so it doesn't show "generating…" forever.
+  session.status = await reconcileDocumentStatus(session)
 
   return (
     <DocumentOutput

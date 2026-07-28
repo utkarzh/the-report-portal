@@ -46,7 +46,9 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
     if (isGenerating && !session.output) {
       hasStartedRef.current = true
       startGeneration()
-    } else if (!isGenerating && session.status === 'generating') {
+    } else if (!isGenerating && session.status === 'generating' && !session.output) {
+      // Only reconnect when there's genuinely nothing yet. If output already
+      // exists, the run finished — show it (never spin on a completed doc).
       hasStartedRef.current = true
       startReconnect()
     }
