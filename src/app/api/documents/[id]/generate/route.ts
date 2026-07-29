@@ -53,7 +53,7 @@ export async function POST(
 
   const { data: session } = await supabaseAdmin
     .from('document_sessions')
-    .select('id, user_id, doc_type, project_country, media_partner, media_country, additional_context, prompt_snapshot')
+    .select('id, user_id, doc_type, project_country, media_partner, media_country, additional_context, prompt_snapshot, output, tokens_input, tokens_output, tokens_total, web_searches, cost_usd')
     .eq('id', params.id)
     .single()
 
@@ -81,6 +81,26 @@ export async function POST(
   const body = await request.json().catch(() => ({}))
   const extra = ((body as { additionalPrompt?: string }).additionalPrompt || '').trim()
 
+  // Chunked generation (Vercel Hobby has a hard 60s function cap). Each POST
+  // generates ONE bounded chunk that finishes well under the limit; the browser
+  // loops calls until the document is complete. `continue: true` resumes from
+  // the document persisted so far (assistant-prefill continuation); otherwise
+  // this is a fresh start (or regenerate) and we reset the accumulators.
+  const isContinuation = (body as { continue?: boolean }).continue === true
+  const accumulated = isContinuation ? (session?.output || '') : ''
+  const baseTokensInput = isContinuation ? (session?.tokens_input || 0) : 0
+  const baseTokensOutput = isContinuation ? (session?.tokens_output || 0) : 0
+  const baseTokensTotal = isContinuation ? (session?.tokens_total || 0) : 0
+  const baseSearches = isContinuation ? (session?.web_searches || 0) : 0
+  const baseCost = isContinuation ? Number(session?.cost_usd || 0) : 0
+
+  // Per-chunk caps sized to finish under Hobby's 60s ceiling. A chunk that does
+  // overrun and gets killed simply isn't persisted, so the next call retries
+  // from the last saved point — no lost progress.
+  const ROUND_MAX_TOKENS = 2500
+  const ROUND_MAX_SEARCHES = 2
+  const DONE_MARKER = '<<<DOCUMENT_COMPLETE>>>'
+
   // Sample documents that shape the output (admin-managed, shared per type).
   const { data: samples } = await supabaseAdmin
     .from('document_samples')
@@ -88,11 +108,14 @@ export async function POST(
     .eq('doc_type', session.doc_type)
     .order('created_at', { ascending: true })
 
-  const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
-    type: 'web_search_20250305',
-    name: 'web_search',
-    max_uses: config.maxWebSearches,
-  }
+  // Allow a couple of searches per chunk, but never exceed the doc's total
+  // search budget across all chunks (early chunks do most of the research).
+  const remainingSearches = Math.max(0, config.maxWebSearches - baseSearches)
+  const roundSearchCap = Math.min(ROUND_MAX_SEARCHES, remainingSearches)
+  const roundTools: WebSearchTool20250305[] =
+    roundSearchCap > 0
+      ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: roundSearchCap }]
+      : []
 
   const now = new Date()
   const currentYear = now.getFullYear()
@@ -119,7 +142,11 @@ Therefore:
 - Output ONLY the finished document content, in Markdown. Do not produce two versions of anything.
 - Do NOT narrate your process or announce steps. Never write preamble, sign-offs, or commentary such as "Now I will build the Word document", "I will now research…", "Here is the brief", "Let me…", or similar — not before, between, or after the document.
 - Begin directly with the document's first line (e.g. the cover-page title) and end with its final content line.
-- Use Markdown tables for every table and Markdown links [domain.com](https://full-url) for citations.`
+- Use Markdown tables for every table and Markdown links [domain.com](https://full-url) for citations.
+
+--- LENGTH & CONTINUATION ---
+The document is produced in segments. Keep writing continuously; if you run out of room in this segment you will be asked to continue, so DO NOT rush, summarise, or cut sections short to finish early — produce every section and appendix at full, specified depth.
+When (and ONLY when) the ENTIRE document is complete — every section AND every appendix fully written — output the marker ${DONE_MARKER} on its very last line. Never output that marker while any part remains unwritten.`
 
   const systemBlocks = [
     { type: 'text' as const, text: SEARCH_POLICY },
@@ -160,134 +187,111 @@ ${inputs || '(no structured inputs provided)'}${
   ]
 
   const anthropic = getAnthropicClient()
-  const encoder = new TextEncoder()
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      let fullText = ''
-      let seenToolUse = false
-      let webSearchCount = 0
-      let clientConnected = true
-      const sendRaw = (data: string) => {
-        if (!clientConnected) return
-        try {
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`))
-        } catch {
-          clientConnected = false
-        }
-      }
-      const send = (payload: unknown) => sendRaw(JSON.stringify(payload))
+  // Assistant-prefill continuation: on a continuation call, the document so far
+  // is fed back as the assistant turn and the model keeps writing from exactly
+  // where it stopped. (Prefill must not end in whitespace.)
+  const prior = accumulated.replace(/[\s]+$/, '')
 
-      try {
-        await supabaseAdmin
-          .from('document_sessions')
-          .update({ status: 'generating' })
-          .eq('id', session!.id)
+  try {
+    await supabaseAdmin
+      .from('document_sessions')
+      .update({ status: 'generating' })
+      .eq('id', session!.id)
 
-        const claudeStream = anthropic.messages.stream({
-          model: CLAUDE_MODEL,
-          max_tokens: config.maxTokens,
-          system: systemBlocks,
-          messages: [{ role: 'user', content: userContentBlocks }],
-          tools: [WEB_SEARCH_TOOL],
-        })
+    const msg = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: ROUND_MAX_TOKENS,
+      system: systemBlocks,
+      messages: [
+        { role: 'user', content: userContentBlocks },
+        ...(prior ? [{ role: 'assistant' as const, content: prior }] : []),
+      ],
+      ...(roundTools.length ? { tools: roundTools } : {}),
+    })
 
-        for await (const event of claudeStream) {
-          if (event.type === 'content_block_start') {
-            if (event.content_block.type === 'tool_use') {
-              seenToolUse = true
-              if (event.content_block.name === 'web_search') webSearchCount += 1
-              send({ status: 'web_search_start' })
-            } else if (event.content_block.type === 'text' && seenToolUse) {
-              send({ status: 'generating' })
-            }
-          }
-          if (
-            event.type === 'content_block_delta' &&
-            event.delta.type === 'text_delta'
-          ) {
-            fullText += event.delta.text
-            send({ text: event.delta.text })
-          }
-        }
+    // Text this chunk produced (skip web_search tool blocks).
+    const chunkText = msg.content
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('')
 
-        const finalMsg = await claudeStream.finalMessage()
-        const reportedSearches =
-          (finalMsg.usage as { server_tool_use?: { web_search_requests?: number } })
-            .server_tool_use?.web_search_requests
-        const searches = reportedSearches ?? webSearchCount
+    const roundSearches =
+      (msg.usage as { server_tool_use?: { web_search_requests?: number } })
+        .server_tool_use?.web_search_requests ?? 0
 
-        const usage = parseUsage(finalMsg.usage, searches)
-        const promptTokens = totalPromptTokens(usage)
-        const totalTokens = promptTokens + usage.outputTokens
-        const cost = calculateCost(usage)
+    const usage = parseUsage(msg.usage, roundSearches)
+    const promptTokens = totalPromptTokens(usage)
+    const roundTokens = promptTokens + usage.outputTokens
+    const roundCost = calculateCost(usage)
 
-        // Persist FIRST — must never be skipped even if the client is gone.
-        await supabaseAdmin
-          .from('document_sessions')
-          .update({
-            output: stripNarration(fullText),
-            tokens_input: promptTokens,
-            tokens_output: usage.outputTokens,
-            tokens_total: totalTokens,
-            web_searches: searches,
-            cost_usd: cost,
-            status: 'complete',
-          })
-          .eq('id', session!.id)
+    // Done when the model emits the completion marker, or ends its turn on its
+    // own. stop_reason 'max_tokens' means it was truncated by our per-chunk cap
+    // → more to write, keep looping.
+    let combined = prior + chunkText
+    const hasMarker = combined.includes(DONE_MARKER)
+    if (hasMarker) combined = combined.slice(0, combined.indexOf(DONE_MARKER))
+    // An empty non-final chunk would loop forever — treat it as finished.
+    const stalled = !hasMarker && msg.stop_reason === 'max_tokens' && chunkText.trim().length === 0
+    const done = hasMarker || msg.stop_reason !== 'max_tokens' || stalled
+    const cleanOutput = done ? stripNarration(combined) : combined
 
-        await supabaseAdmin.rpc('increment_user_tokens', {
-          p_user_id: user!.id,
-          p_tokens: totalTokens,
-        })
+    const newTokensTotal = baseTokensTotal + roundTokens
+    const newSearches = baseSearches + roundSearches
+    const newCost = baseCost + roundCost
 
-        await logUsageEvent({
-          userId: user!.id,
-          workflow: session!.doc_type,
-          sourceId: session!.id,
-          model: CLAUDE_MODEL,
-          tokensInput: promptTokens,
-          tokensOutput: usage.outputTokens,
-          tokensTotal: totalTokens,
-          webSearches: searches,
-          costUsd: cost,
-        })
+    await supabaseAdmin
+      .from('document_sessions')
+      .update({
+        output: cleanOutput,
+        tokens_input: baseTokensInput + promptTokens,
+        tokens_output: baseTokensOutput + usage.outputTokens,
+        tokens_total: newTokensTotal,
+        web_searches: newSearches,
+        cost_usd: newCost,
+        status: done ? 'complete' : 'generating',
+      })
+      .eq('id', session!.id)
 
-        send({
-          usage: {
-            tokens_total: totalTokens,
-            web_searches: searches,
-            cost_usd: cost,
-          },
-        })
-        sendRaw('[DONE]')
-      } catch (err) {
-        console.error('Claude document stream error:', err)
-        await supabaseAdmin
-          .from('document_sessions')
-          .update({ status: 'failed' })
-          .eq('id', session!.id)
-        await logUsageEvent({
-          userId: user!.id,
-          workflow: session!.doc_type,
-          sourceId: session!.id,
-          model: CLAUDE_MODEL,
-          status: 'error',
-          error: err instanceof Error ? err.message : 'Generation failed',
-        })
-        send({ error: 'Generation failed' })
-      } finally {
-        try {
-          controller.close()
-        } catch {}
-      }
-    },
-  })
+    await supabaseAdmin.rpc('increment_user_tokens', {
+      p_user_id: user!.id,
+      p_tokens: roundTokens,
+    })
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-    },
-  })
+    await logUsageEvent({
+      userId: user!.id,
+      workflow: session!.doc_type,
+      sourceId: session!.id,
+      model: CLAUDE_MODEL,
+      tokensInput: promptTokens,
+      tokensOutput: usage.outputTokens,
+      tokensTotal: roundTokens,
+      webSearches: roundSearches,
+      costUsd: roundCost,
+    })
+
+    return NextResponse.json({
+      done,
+      output: cleanOutput,
+      usage: { tokens_total: newTokensTotal, web_searches: newSearches, cost_usd: newCost },
+    })
+  } catch (err) {
+    console.error('Claude document chunk error:', err)
+    // Keep whatever is already saved so the client can retry this chunk; only
+    // hard-fail when nothing has been produced yet.
+    if (!accumulated) {
+      await supabaseAdmin
+        .from('document_sessions')
+        .update({ status: 'failed' })
+        .eq('id', session!.id)
+    }
+    await logUsageEvent({
+      userId: user!.id,
+      workflow: session!.doc_type,
+      sourceId: session!.id,
+      model: CLAUDE_MODEL,
+      status: 'error',
+      error: err instanceof Error ? err.message : 'Generation failed',
+    })
+    return NextResponse.json({ error: 'Generation failed. Please try again.' }, { status: 500 })
+  }
 }

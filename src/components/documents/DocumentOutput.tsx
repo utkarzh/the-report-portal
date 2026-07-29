@@ -27,9 +27,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   const [output, setOutput] = useState<string>(session.output || '')
   const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [reconnecting, setReconnecting] = useState(false)
   const hasStartedRef = useRef(false)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const [usage, setUsage] = useState({
@@ -44,16 +42,13 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   useEffect(() => {
     if (hasStartedRef.current) return
     if (isGenerating && !session.output) {
+      // Fresh generation kicked off from the "new" flow.
       hasStartedRef.current = true
-      startGeneration()
-    } else if (!isGenerating && session.status === 'generating' && !session.output) {
-      // Only reconnect when there's genuinely nothing yet. If output already
-      // exists, the run finished — show it (never spin on a completed doc).
+      runChunked('fresh')
+    } else if (!isGenerating && session.status === 'generating') {
+      // Opened/reloaded mid-run — resume the chunk loop from whatever is saved.
       hasStartedRef.current = true
-      startReconnect()
-    }
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
+      runChunked('resume')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -62,106 +57,73 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [output])
 
-  async function startGeneration(extraOverride?: string) {
+  // Chunked generation. A full document exceeds Vercel Hobby's 60s function
+  // cap, so the server produces ONE bounded chunk per call and the browser
+  // loops until it reports the document is done. Each chunk is persisted, so a
+  // chunk that errors or times out is simply retried from the last saved point.
+  async function runChunked(mode: 'fresh' | 'resume' | 'regenerate') {
+    const MAX_ROUNDS = 40
     setError(null)
     setStreamStatus('generating')
-    setOutput('')
     setShowForm(false)
-    const additionalPrompt = (extraOverride || '').trim()
+    if (mode !== 'resume') setOutput('')
+    // 'resume' continues from saved output; fresh/regenerate begin a new doc.
+    let cont = mode === 'resume'
+    const additionalPrompt = mode === 'regenerate' ? extra.trim() : ''
 
     try {
-      const res = await fetch(`/api/documents/${session.id}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ additionalPrompt }),
-      })
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        let data: { done?: boolean; output?: string; usage?: typeof usage; error?: string } | null = null
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setError(data.error || 'Generation failed. Please try again.')
-        setStreamStatus('idle')
-        return
-      }
-
-      const reader = res.body?.getReader()
-      const decoder = new TextDecoder()
-      let accumulated = ''
-
-      while (reader) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const rawData = line.slice(6).trim()
-          if (rawData === '[DONE]') break
+        for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const parsed = JSON.parse(rawData)
-            if (parsed.error) {
-              setError(parsed.error)
-              setStreamStatus('idle')
-              return
+            const res = await fetch(`/api/documents/${session.id}/generate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ continue: cont, additionalPrompt: round === 0 ? additionalPrompt : '' }),
+            })
+            if (!res.ok) {
+              const d = await res.json().catch(() => ({}))
+              // Budget / permission problems: surface immediately, don't retry.
+              if (res.status === 402 || res.status === 403) {
+                setError(d.error || 'Generation is not available.')
+                setStreamStatus('idle')
+                return
+              }
+              throw new Error(d.error || 'Generation failed')
             }
-            if (parsed.status === 'web_search_start') {
-              setStreamStatus('searching')
-            } else if (parsed.status === 'generating') {
-              setStreamStatus('generating')
-            } else if (parsed.usage) {
-              setUsage(parsed.usage)
-            } else if (parsed.text) {
-              accumulated += parsed.text
-              setOutput(accumulated)
-            }
-          } catch {}
+            data = await res.json()
+            break
+          } catch (e) {
+            if (attempt === 2) throw e
+            await sleep(1500) // brief backoff, then retry this same chunk
+          }
+        }
+
+        if (!data) throw new Error('Generation failed')
+        if (typeof data.output === 'string') setOutput(data.output)
+        if (data.usage) setUsage(data.usage)
+        cont = true // every chunk after the first continues from saved output
+
+        if (data.done) {
+          setStreamStatus('idle')
+          setExtra('')
+          router.refresh()
+          return
         }
       }
-
-      router.replace(`/${config.slug}/${session.id}`)
-      setExtra('')
-    } catch {
-      setError('Network error. Please try again.')
-    } finally {
+      // Safety cap reached — the partial document is saved either way.
+      setError('This document is taking an unusually long time. What’s generated so far is saved — click Regenerate to continue.')
+      setStreamStatus('idle')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Generation failed. Please try again.')
       setStreamStatus('idle')
     }
   }
 
-  function startReconnect() {
-    setReconnecting(true)
-    setStreamStatus('generating')
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/documents/${session.id}`)
-        if (!res.ok) return
-        const data = await res.json()
-        if (data.usage) setUsage(data.usage)
-        if (data.status === 'complete') {
-          if (data.output) setOutput(data.output)
-          stopReconnect()
-        } else if (data.status === 'failed') {
-          setError('Generation failed. Please try again.')
-          stopReconnect()
-        }
-      } catch {
-        /* transient — keep polling */
-      }
-    }
-    poll()
-    pollRef.current = setInterval(poll, 3000)
-  }
-
-  function stopReconnect() {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-    setReconnecting(false)
-    setStreamStatus('idle')
-  }
-
   const isProcessing = streamStatus !== 'idle'
   const done = Boolean(output) && !isProcessing
-  const streamingLabel = streamStatus === 'searching' ? 'Searching…' : 'Generating…'
+  const streamingLabel = 'Generating…'
 
   return (
     <div className="flex h-full bg-[#f0efec]">
@@ -275,13 +237,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                 </>
               ) : isProcessing ? (
                 <div className="flex items-center gap-2 py-6 text-sm text-gray-400">
-                  {reconnecting ? (
-                    <span>This {config.label.toLowerCase()} is generating in the background — it will appear here automatically…</span>
-                  ) : streamStatus === 'searching' ? (
-                    <span>Searching the web for the latest information…</span>
-                  ) : (
-                    <span>Generating the {config.label.toLowerCase()}…</span>
-                  )}
+                  <span>Generating the {config.label.toLowerCase()} — a full document builds in stages and can take a few minutes…</span>
                   <span className="cursor-blink select-none">▋</span>
                 </div>
               ) : (
@@ -291,7 +247,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                   </div>
                   <p className="text-sm text-gray-500">Ready to generate this {config.label.toLowerCase()}.</p>
                   <button
-                    onClick={() => startGeneration()}
+                    onClick={() => runChunked('fresh')}
                     className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
                   >
                     <Sparkles size={15} />
@@ -323,7 +279,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                       />
                       <div className="mt-4 flex gap-3">
                         <button
-                          onClick={() => startGeneration(extra)}
+                          onClick={() => runChunked('regenerate')}
                           className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-900"
                         >
                           <WandSparkles size={15} />
@@ -341,17 +297,15 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                 </div>
               )}
 
-              {error && (
+              {error && !isProcessing && (
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   <span>{error}</span>
-                  {!output && (
-                    <button
-                      onClick={() => { setError(null); startGeneration() }}
-                      className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
-                    >
-                      Try again
-                    </button>
-                  )}
+                  <button
+                    onClick={() => { setError(null); runChunked(output ? 'resume' : 'fresh') }}
+                    className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
+                  >
+                    {output ? 'Continue' : 'Try again'}
+                  </button>
                 </div>
               )}
             </div>
@@ -385,6 +339,10 @@ function CopyButton({ text }: { text: string }) {
       <span>{copied ? 'Copied' : 'Copy'}</span>
     </button>
   )
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function InfoRow({ label, value }: { label: string; value: string | null }) {

@@ -1,18 +1,16 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
-// Document generation streams from Claude and persists status:'complete' + the
-// output only at the very end. On serverless, a client disconnect can kill the
-// function before that final write runs — leaving the row stuck at 'generating'
-// (sometimes with the finished output already saved from a prior run, sometimes
-// with nothing). This heals such a row on page load, independent of any tab:
+// Documents are generated in chunks: each chunk persists progress and the final
+// chunk sets status:'complete'. A row can therefore be legitimately 'generating'
+// with PARTIAL output in between chunks — so we must NOT treat "has output" as
+// "done" (that would prematurely finalise an in-progress doc). The client resumes
+// the chunk loop whenever it opens a 'generating' row.
 //
-//   • output present  → the run really produced a document → mark 'complete'.
-//   • no output, stale → the run is dead and unrecoverable   → mark 'failed'
-//     (so the UI offers "generate" again instead of spinning forever).
-//   • no output, fresh → might still be running → leave as 'generating'.
-//
-// Returns the (possibly updated) status so the caller can render accordingly.
-const STALE_MS = 5 * 60 * 1000 // 5 min — safely longer than a real generation
+// This heals only the genuinely-dead case: a run that produced NOTHING and has
+// gone stale (client vanished before the first chunk landed). Those are marked
+// 'failed' so the UI offers a fresh "Generate" instead of spinning forever.
+// A stale row WITH partial output is left as 'generating' so reopening resumes it.
+const STALE_MS = 5 * 60 * 1000 // 5 min — safely longer than one chunk
 
 export async function reconcileDocumentStatus(row: {
   id: string
@@ -22,16 +20,15 @@ export async function reconcileDocumentStatus(row: {
 }): Promise<string> {
   if (row.status !== 'generating') return row.status
 
-  if (row.output && row.output.trim()) {
-    await supabaseAdmin.from('document_sessions').update({ status: 'complete' }).eq('id', row.id)
-    return 'complete'
-  }
-
+  const hasOutput = Boolean(row.output && row.output.trim())
   const age = Date.now() - new Date(row.updated_at).getTime()
-  if (age > STALE_MS) {
+
+  // Dead run, nothing produced, and no chunk has landed in a while → failed.
+  if (!hasOutput && age > STALE_MS) {
     await supabaseAdmin.from('document_sessions').update({ status: 'failed' }).eq('id', row.id)
     return 'failed'
   }
 
+  // Otherwise leave it generating — the client resumes chunking on open.
   return 'generating'
 }
