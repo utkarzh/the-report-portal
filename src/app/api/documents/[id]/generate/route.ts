@@ -188,10 +188,20 @@ ${inputs || '(no structured inputs provided)'}${
 
   const anthropic = getAnthropicClient()
 
-  // Assistant-prefill continuation: on a continuation call, the document so far
-  // is fed back as the assistant turn and the model keeps writing from exactly
-  // where it stopped. (Prefill must not end in whitespace.)
+  // Continuation. Sonnet 4.6 does NOT support assistant-message prefill (the
+  // conversation must end with a user message), so we feed the document-so-far
+  // back as USER content and ask the model to continue from where it stops.
   const prior = accumulated.replace(/[\s]+$/, '')
+  const continuationBlocks = prior
+    ? [{
+        type: 'text' as const,
+        text:
+          `--- DOCUMENT SO FAR (already written — do NOT repeat any of it) ---\n${prior}\n\n` +
+          `--- CONTINUE ---\nOutput ONLY the next part of the document that comes immediately after the text above. ` +
+          `Do not repeat it, do not restart, do not add a preamble or re-emit a heading you already wrote — just keep writing seamlessly from exactly where it stops. ` +
+          `Emit ${DONE_MARKER} only once the ENTIRE document (every section and appendix) is finished.`,
+      }]
+    : []
 
   try {
     await supabaseAdmin
@@ -204,8 +214,7 @@ ${inputs || '(no structured inputs provided)'}${
       max_tokens: ROUND_MAX_TOKENS,
       system: systemBlocks,
       messages: [
-        { role: 'user', content: userContentBlocks },
-        ...(prior ? [{ role: 'assistant' as const, content: prior }] : []),
+        { role: 'user', content: [...userContentBlocks, ...continuationBlocks] },
       ],
       ...(roundTools.length ? { tools: roundTools } : {}),
     })
