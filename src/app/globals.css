@@ -204,10 +204,22 @@ body {
 }
 .prose-research a:hover { color: #a07530; }
 .prose-research table {
-  width: 100%;
+  /* Wide multi-column tables (e.g. editorial-brief landscape tables) must not
+     overflow the card. display:block + overflow-x lets the table scroll
+     horizontally within its container instead of breaking the layout. */
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   margin-bottom: 0.75rem;
   font-size: 0.8125rem;
+  -webkit-overflow-scrolling: touch;
+}
+.prose-research th,
+.prose-research td {
+  /* Keep columns readable — don't let a single long column collapse or stretch
+     the whole table absurdly wide. */
+  min-width: 7rem;
 }
 .prose-research th {
   background: #f3f2ef;
