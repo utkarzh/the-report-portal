@@ -9,6 +9,19 @@ import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
+// Defensive cleanup: strip a trailing process-narration line the model may still
+// emit despite the output contract (e.g. "Now I will build the Word document.").
+// Only touches a trailing standalone sentence that clearly announces building/
+// creating the document — never mid-document content.
+function stripNarration(text: string): string {
+  return text
+    .replace(
+      /\n+\s*(now\s+)?(i['’]?ll|i\s+will|let\s+me|i\s+am\s+going\s+to|i['’]?m\s+going\s+to)\s+(now\s+)?(build|create|generate|produce|prepare|assemble|put\s+together)\b[^\n]*$/i,
+      '',
+    )
+    .trim()
+}
+
 // Long-running route: a web-searched, multi-thousand-token document (the
 // Editorial Brief allows 32k output tokens + 10 searches) can take several
 // minutes. Without this, Vercel's low default timeout kills the function before
@@ -93,11 +106,27 @@ RECENCY IS A TOP PRIORITY. Prefer ${currentYear} information; treat unverified f
 
 You have a budget of ${config.maxWebSearches} web searches — spend them on the highest-value facts (current figures, recent developments, ${lastYear}-${currentYear} news, regulatory/market shifts relevant to the project and media context). Cite source URLs (with publication dates where available) for every current-situation claim. If something cannot be verified, say so rather than guessing.`
 
+  // App-level output contract. Placed LAST so it overrides any conflicting
+  // instruction in the admin prompt — several admin prompts describe a
+  // Claude.ai-style "write it in chat, then build a Word document" flow, which
+  // makes the model narrate ("Now I will build the Word document…"). In THIS
+  // app there is no separate step: the Markdown output is converted to .docx on
+  // download. This block forces a single, clean document with no narration.
+  const OUTPUT_CONTRACT = `--- OUTPUT FORMAT (OVERRIDES ANY CONFLICTING INSTRUCTION ABOVE) ---
+You are generating ONE document as Markdown, and nothing else. This application automatically converts your Markdown into the final Word (.docx) file — you do NOT build, create, or attach a Word document yourself, and there is no separate "chat" copy to produce.
+
+Therefore:
+- Output ONLY the finished document content, in Markdown. Do not produce two versions of anything.
+- Do NOT narrate your process or announce steps. Never write preamble, sign-offs, or commentary such as "Now I will build the Word document", "I will now research…", "Here is the brief", "Let me…", or similar — not before, between, or after the document.
+- Begin directly with the document's first line (e.g. the cover-page title) and end with its final content line.
+- Use Markdown tables for every table and Markdown links [domain.com](https://full-url) for citations.`
+
   const systemBlocks = [
     { type: 'text' as const, text: SEARCH_POLICY },
     ...(session.prompt_snapshot
       ? [{ type: 'text' as const, text: session.prompt_snapshot, cache_control: CACHE_1H }]
       : []),
+    { type: 'text' as const, text: OUTPUT_CONTRACT },
   ]
 
   const sampleText = (samples || [])
@@ -197,7 +226,7 @@ ${inputs || '(no structured inputs provided)'}${
         await supabaseAdmin
           .from('document_sessions')
           .update({
-            output: fullText,
+            output: stripNarration(fullText),
             tokens_input: promptTokens,
             tokens_output: usage.outputTokens,
             tokens_total: totalTokens,
