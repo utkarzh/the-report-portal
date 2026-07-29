@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Document, Packer, Paragraph, HeadingLevel } from 'docx'
+import { Packer } from 'docx'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { letterheadHeaderFooter, markdownToParagraphs } from '@/lib/docx-render'
+import { getTemplate } from '@/lib/download-templates/registry'
+import { buildTemplatedDocx } from '@/lib/download-templates/docx'
+import { renderTemplatedPdf } from '@/lib/download-templates/pdf'
 
-// GET /api/transcriptions/[id]/download?variant=raw|refined
-// Returns the chosen transcript as a Word (.docx) attachment. Owner or admin.
+export const runtime = 'nodejs'
+
+// GET /api/transcriptions/[id]/download?variant=raw|refined|translated&template=&format=
+// Returns the chosen transcript styled to a branded template, as PDF or Word.
+// Owner or admin.
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -23,6 +28,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
   const v = request.nextUrl.searchParams.get('variant')
   const variant = v === 'refined' ? 'refined' : v === 'translated' ? 'translated' : 'raw'
+  const format = request.nextUrl.searchParams.get('format') === 'pdf' ? 'pdf' : 'docx'
+  const template = getTemplate(request.nextUrl.searchParams.get('template'))
 
   const { data: row } = await supabaseAdmin
     .from('transcriptions')
@@ -50,25 +57,23 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     : 'Raw'
   const heading = `${title} — ${label} transcript`
 
-  const doc = new Document({
-    sections: [
-      {
-        ...letterheadHeaderFooter(),
-        children: [
-          new Paragraph({ text: heading, heading: HeadingLevel.HEADING_1 }),
-          // Highlight [[ … ]] client-confirmation spans yellow on the refined variant.
-          ...markdownToParagraphs(text, { highlightConfirm: variant === 'refined' }),
-        ],
-      },
-    ],
-  })
+  let body: BodyInit
+  let contentType: string
+  if (format === 'pdf') {
+    body = new Uint8Array(await renderTemplatedPdf({ markdown: text, heading, template })) as BodyInit
+    contentType = 'application/pdf'
+  } else {
+    // Highlight [[ … ]] client-confirmation spans yellow on the refined variant.
+    const doc = buildTemplatedDocx({ markdown: text, heading, template, highlightConfirm: variant === 'refined' })
+    body = new Uint8Array(await Packer.toBuffer(doc)) as BodyInit
+    contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  }
 
-  const buffer = await Packer.toBuffer(doc)
-  const filename = `${slugify(title)}-${variant}.docx`
+  const filename = `${slugify(title)}-${variant}.${format}`
 
-  return new NextResponse(new Uint8Array(buffer), {
+  return new NextResponse(body, {
     headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Type': contentType,
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Cache-Control': 'no-store',
     },

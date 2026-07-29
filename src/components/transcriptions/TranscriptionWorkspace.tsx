@@ -8,6 +8,8 @@ import type { Transcription } from '@/types'
 import { TRANSCRIPTION_PROVIDER, TRANSLATION_LANGUAGES, type TranslationLanguage } from '@/lib/transcriptions'
 import AudioPlayer from './AudioPlayer'
 import TranscribingLoader from './TranscribingLoader'
+import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
+import DownloadTemplateModal from '@/components/ui/DownloadTemplateModal'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -189,6 +191,8 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   const [rawCollapsed, setRawCollapsed] = useState(false)
   const [translatedCollapsed, setTranslatedCollapsed] = useState(false)
   const [refinedCollapsed, setRefinedCollapsed] = useState(false)
+  // Download picker — which transcript variant is being downloaded.
+  const [downloadVariant, setDownloadVariant] = useState<'raw' | 'translated' | 'refined' | null>(null)
   const rawScroll = useStickToBottom(raw)
   const translatedScroll = useStickToBottom(translated)
   const refinedScroll = useStickToBottom(refined)
@@ -356,8 +360,21 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   const hasRefined = Boolean(refined)
   const hasTranslation = Boolean(translated)
 
+  // Fact-checking reminder — pops whenever a Claude refine or translate starts.
+  const disclaimer = useAiDisclaimer(refining || translating)
+
   return (
     <div className="flex flex-col gap-6">
+      <AiDisclaimerModal open={disclaimer.open} onClose={disclaimer.dismiss} />
+      <DownloadTemplateModal
+        open={downloadVariant !== null}
+        onClose={() => setDownloadVariant(null)}
+        baseUrl={`/api/transcriptions/${transcription.id}/download`}
+        extraParams={{ variant: downloadVariant ?? 'raw' }}
+        filenameBase={`${transcription.title || 'Transcript'} — ${
+          downloadVariant === 'refined' ? 'Refined' : downloadVariant === 'translated' ? 'Translated' : 'Raw'
+        }`}
+      />
       {/* Header + audio */}
       <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4">
@@ -438,14 +455,14 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
             ) : raw ? (
               <>
                 <CopyButton text={raw} />
-                <a
-                  href={`/api/transcriptions/${transcription.id}/download?variant=raw`}
-                  title="Download raw transcript (.docx)"
+                <button
+                  onClick={() => setDownloadVariant('raw')}
+                  title="Download raw transcript"
                   className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                 >
                   <Download size={13} />
                   <span>Download</span>
-                </a>
+                </button>
               </>
             ) : null}
           </div>
@@ -540,14 +557,14 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               ) : hasTranslation ? (
                 <>
                   <CopyButton text={translated} />
-                  <a
-                    href={`/api/transcriptions/${transcription.id}/download?variant=translated`}
-                    title="Download translation (.docx)"
+                  <button
+                    onClick={() => setDownloadVariant('translated')}
+                    title="Download translation"
                     className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                   >
                     <Download size={13} />
                     <span>Download</span>
-                  </a>
+                  </button>
                 </>
               ) : null}
             </div>
@@ -618,14 +635,14 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                     <span>Refine again</span>
                   </button>
                   <CopyButton text={refined} />
-                  <a
-                    href={`/api/transcriptions/${transcription.id}/download?variant=refined`}
-                    title="Download refined transcript (.docx)"
+                  <button
+                    onClick={() => setDownloadVariant('refined')}
+                    title="Download refined transcript"
                     className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                   >
                     <Download size={13} />
                     <span>Download</span>
-                  </a>
+                  </button>
                 </>
               ) : null}
             </div>

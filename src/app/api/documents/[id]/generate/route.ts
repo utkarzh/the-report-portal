@@ -81,11 +81,11 @@ export async function POST(
   const body = await request.json().catch(() => ({}))
   const extra = ((body as { additionalPrompt?: string }).additionalPrompt || '').trim()
 
-  // Chunked generation (Vercel Hobby has a hard 60s function cap). Each POST
-  // generates ONE bounded chunk that finishes well under the limit; the browser
-  // loops calls until the document is complete. `continue: true` resumes from
-  // the document persisted so far (assistant-prefill continuation); otherwise
-  // this is a fresh start (or regenerate) and we reset the accumulators.
+  // User-controlled continuation (Vercel Hobby has a hard 60s function cap).
+  // Each POST generates ONE bounded chunk that finishes well under the limit;
+  // the user clicks "Continue" to extend the document until it's complete.
+  // `continue: true` resumes from the document persisted so far; otherwise this
+  // is a fresh start (or regenerate) and we reset the accumulators.
   const isContinuation = (body as { continue?: boolean }).continue === true
   const accumulated = isContinuation ? (session?.output || '') : ''
   const baseTokensInput = isContinuation ? (session?.tokens_input || 0) : 0
@@ -94,12 +94,30 @@ export async function POST(
   const baseSearches = isContinuation ? (session?.web_searches || 0) : 0
   const baseCost = isContinuation ? Number(session?.cost_usd || 0) : 0
 
-  // Per-chunk caps sized to finish under Hobby's 60s ceiling. A chunk that does
-  // overrun and gets killed simply isn't persisted, so the next call retries
-  // from the last saved point — no lost progress.
-  const ROUND_MAX_TOKENS = 2500
-  const ROUND_MAX_SEARCHES = 2
   const DONE_MARKER = '<<<DOCUMENT_COMPLETE>>>'
+
+  // We STREAM the generation and let the model write as much as it can, rather
+  // than capping each pass to a small fixed token count. Two things make that
+  // safe under a serverless timeout:
+  //   1. A soft deadline (below the platform's hard cap) after which we stop
+  //      reading the stream and return cleanly, marking the doc incomplete so
+  //      the user gets a "Continue" button.
+  //   2. Incremental persistence — we save the text-so-far every few seconds,
+  //      so even if the platform HARD-kills the function before the soft
+  //      deadline, no more than a couple of seconds of writing is lost and
+  //      Continue resumes from the last save.
+  // Use (almost) the whole function window: stop a short margin BEFORE the
+  // platform's hard cap so we exit cleanly — billing, analytics logging and
+  // marker cleanup all run — instead of being abruptly killed (which Vercel
+  // gives no hook to catch, and which would skip token accounting). A hard-kill
+  // is still survived by the incremental saves + client recovery; this just
+  // avoids relying on it. `maxDuration` (300 on Pro) is the real ceiling; the
+  // 15s margin covers the last DB writes + response flush. Override the whole
+  // thing with DOC_GEN_SOFT_DEADLINE_MS if your plan's real cap differs.
+  const HARD_CAP_MARGIN_MS = 15_000
+  const SOFT_DEADLINE_MS =
+    Number(process.env.DOC_GEN_SOFT_DEADLINE_MS) || maxDuration * 1_000 - HARD_CAP_MARGIN_MS
+  const SAVE_INTERVAL_MS = 2_500
 
   // Sample documents that shape the output (admin-managed, shared per type).
   const { data: samples } = await supabaseAdmin
@@ -108,13 +126,12 @@ export async function POST(
     .eq('doc_type', session.doc_type)
     .order('created_at', { ascending: true })
 
-  // Allow a couple of searches per chunk, but never exceed the doc's total
-  // search budget across all chunks (early chunks do most of the research).
+  // Give each pass the doc's remaining search budget (early passes do most of
+  // the research; later ones rarely search).
   const remainingSearches = Math.max(0, config.maxWebSearches - baseSearches)
-  const roundSearchCap = Math.min(ROUND_MAX_SEARCHES, remainingSearches)
   const roundTools: WebSearchTool20250305[] =
-    roundSearchCap > 0
-      ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: roundSearchCap }]
+    remainingSearches > 0
+      ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: remainingSearches }]
       : []
 
   const now = new Date()
@@ -191,116 +208,222 @@ ${inputs || '(no structured inputs provided)'}${
   // Continuation. Sonnet 4.6 does NOT support assistant-message prefill (the
   // conversation must end with a user message), so we feed the document-so-far
   // back as USER content and ask the model to continue from where it stops.
+  //
+  // COST: the document-so-far is re-sent on every Continue, and it grows each
+  // round — billed naively that's quadratic input cost (round N re-reads
+  // rounds 1..N-1). We put it in its OWN block with a 1h cache breakpoint, and
+  // everything before it (samples, task) is byte-identical across rounds, so
+  // the next round's prefix matches this cached content: only the newly-written
+  // tail is charged as fresh input. That turns the re-send cost from quadratic
+  // to ~linear. The CONTINUE instruction goes in a SEPARATE trailing block so
+  // it never sits between the growing document and the cache breakpoint (which
+  // would break the prefix match).
   const prior = accumulated.replace(/[\s]+$/, '')
   const continuationBlocks = prior
-    ? [{
-        type: 'text' as const,
-        text:
-          `--- DOCUMENT SO FAR (already written — do NOT repeat any of it) ---\n${prior}\n\n` +
-          `--- CONTINUE ---\nOutput ONLY the next part of the document that comes immediately after the text above. ` +
-          `Do not repeat it, do not restart, do not add a preamble or re-emit a heading you already wrote — just keep writing seamlessly from exactly where it stops. ` +
-          `Emit ${DONE_MARKER} only once the ENTIRE document (every section and appendix) is finished.`,
-      }]
+    ? [
+        {
+          type: 'text' as const,
+          text: `--- DOCUMENT SO FAR (already written — do NOT repeat any of it) ---\n${prior}`,
+          cache_control: CACHE_1H,
+        },
+        {
+          type: 'text' as const,
+          text:
+            `--- CONTINUE ---\nOutput ONLY the next part of the document that comes immediately after the text above. ` +
+            `Do not repeat it, do not restart, do not add a preamble or re-emit a heading you already wrote — just keep writing seamlessly from exactly where it stops. ` +
+            `Emit ${DONE_MARKER} only once the ENTIRE document (every section and appendix) is finished.`,
+        },
+      ]
     : []
 
-  try {
-    await supabaseAdmin
-      .from('document_sessions')
-      .update({ status: 'generating' })
-      .eq('id', session!.id)
+  const encoder = new TextEncoder()
 
-    const msg = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: ROUND_MAX_TOKENS,
-      system: systemBlocks,
-      messages: [
-        { role: 'user', content: [...userContentBlocks, ...continuationBlocks] },
-      ],
-      ...(roundTools.length ? { tools: roundTools } : {}),
-    })
+  // We stream so the client sees live typing AND so we can persist incrementally
+  // and stop at the soft deadline. The generation must finish + persist even if
+  // the client disconnects mid-stream, so enqueue() failures never abort the run.
+  const stream = new ReadableStream({
+    async start(controller) {
+      let clientConnected = true
+      const sendRaw = (data: string) => {
+        if (!clientConnected) return
+        try {
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+        } catch {
+          clientConnected = false
+        }
+      }
+      const send = (payload: unknown) => sendRaw(JSON.stringify(payload))
 
-    // Text this chunk produced (skip web_search tool blocks).
-    const chunkText = msg.content
-      .map((b) => (b.type === 'text' ? b.text : ''))
-      .join('')
+      // This pass's newly-written text (streamed on top of `prior`).
+      let fullText = ''
 
-    const roundSearches =
-      (msg.usage as { server_tool_use?: { web_search_requests?: number } })
-        .server_tool_use?.web_search_requests ?? 0
+      try {
+        await supabaseAdmin
+          .from('document_sessions')
+          .update({ status: 'generating' })
+          .eq('id', session!.id)
 
-    const usage = parseUsage(msg.usage, roundSearches)
-    const promptTokens = totalPromptTokens(usage)
-    const roundTokens = promptTokens + usage.outputTokens
-    const roundCost = calculateCost(usage)
+        const claudeStream = anthropic.messages.stream({
+          model: CLAUDE_MODEL,
+          max_tokens: config.maxTokens,
+          system: systemBlocks,
+          messages: [
+            { role: 'user', content: [...userContentBlocks, ...continuationBlocks] },
+          ],
+          ...(roundTools.length ? { tools: roundTools } : {}),
+        })
 
-    // Done when the model emits the completion marker, or ends its turn on its
-    // own. stop_reason 'max_tokens' means it was truncated by our per-chunk cap
-    // → more to write, keep looping.
-    let combined = prior + chunkText
-    const hasMarker = combined.includes(DONE_MARKER)
-    if (hasMarker) combined = combined.slice(0, combined.indexOf(DONE_MARKER))
-    // An empty non-final chunk would loop forever — treat it as finished.
-    const stalled = !hasMarker && msg.stop_reason === 'max_tokens' && chunkText.trim().length === 0
-    const done = hasMarker || msg.stop_reason !== 'max_tokens' || stalled
-    const cleanOutput = done ? stripNarration(combined) : combined
+        // Usage is tracked from stream events (not finalMessage) so it's valid
+        // even when we abort at the soft deadline.
+        let startUsage: Record<string, unknown> = {}
+        let outputTokens = 0
+        let reportedSearches: number | undefined
+        let webSearchCount = 0
+        let stopReason: string | null = null
+        let softDeadlineHit = false
+        const startTime = Date.now()
+        let lastSave = startTime
 
-    const newTokensTotal = baseTokensTotal + roundTokens
-    const newSearches = baseSearches + roundSearches
-    const newCost = baseCost + roundCost
+        for await (const event of claudeStream) {
+          if (event.type === 'message_start') {
+            startUsage = (event.message.usage ?? {}) as unknown as Record<string, unknown>
+          } else if (
+            event.type === 'content_block_start' &&
+            event.content_block.type === 'tool_use'
+          ) {
+            if (event.content_block.name === 'web_search') webSearchCount += 1
+            send({ status: 'web_search_start' })
+          } else if (
+            event.type === 'content_block_delta' &&
+            event.delta.type === 'text_delta'
+          ) {
+            fullText += event.delta.text
+            send({ text: event.delta.text })
+            // Incremental persistence — bounds worst-case data loss to
+            // SAVE_INTERVAL_MS if the platform hard-kills us before we return.
+            if (Date.now() - lastSave > SAVE_INTERVAL_MS) {
+              lastSave = Date.now()
+              await supabaseAdmin
+                .from('document_sessions')
+                .update({ output: prior + fullText, status: 'generating' })
+                .eq('id', session!.id)
+            }
+          } else if (event.type === 'message_delta') {
+            const du = event.usage as
+              | { output_tokens?: number; server_tool_use?: { web_search_requests?: number } }
+              | undefined
+            if (typeof du?.output_tokens === 'number') outputTokens = du.output_tokens
+            if (typeof du?.server_tool_use?.web_search_requests === 'number') {
+              reportedSearches = du.server_tool_use.web_search_requests
+            }
+            if (event.delta?.stop_reason) stopReason = event.delta.stop_reason
+          }
 
-    await supabaseAdmin
-      .from('document_sessions')
-      .update({
-        output: cleanOutput,
-        tokens_input: baseTokensInput + promptTokens,
-        tokens_output: baseTokensOutput + usage.outputTokens,
-        tokens_total: newTokensTotal,
-        web_searches: newSearches,
-        cost_usd: newCost,
-        status: done ? 'complete' : 'generating',
-      })
-      .eq('id', session!.id)
+          // Soft deadline — stop cleanly BEFORE the platform's hard cap so we
+          // can persist and hand back a "Continue" instead of being killed.
+          if (Date.now() - startTime > SOFT_DEADLINE_MS) {
+            softDeadlineHit = true
+            break
+          }
+        }
+        try { claudeStream.abort() } catch {}
 
-    await supabaseAdmin.rpc('increment_user_tokens', {
-      p_user_id: user!.id,
-      p_tokens: roundTokens,
-    })
+        const roundSearches = reportedSearches ?? webSearchCount
+        const usage = parseUsage({ ...startUsage, output_tokens: outputTokens }, roundSearches)
+        const promptTokens = totalPromptTokens(usage)
+        const roundTokens = promptTokens + usage.outputTokens
+        const roundCost = calculateCost(usage)
 
-    await logUsageEvent({
-      userId: user!.id,
-      workflow: session!.doc_type,
-      sourceId: session!.id,
-      model: CLAUDE_MODEL,
-      tokensInput: promptTokens,
-      tokensOutput: usage.outputTokens,
-      tokensTotal: roundTokens,
-      webSearches: roundSearches,
-      costUsd: roundCost,
-    })
+        // Done when the model emits the completion marker or ends its own turn.
+        // A soft-deadline cut, or the model stopping on 'max_tokens' (its output
+        // budget), means there's more to write → not done, the user can Continue.
+        let combined = prior + fullText
+        const hasMarker = combined.includes(DONE_MARKER)
+        if (hasMarker) combined = combined.slice(0, combined.indexOf(DONE_MARKER))
+        // A pass that produced no new text and wasn't cut off can't progress —
+        // treat it as finished to avoid an endless Continue.
+        const stalled = !softDeadlineHit && !hasMarker && fullText.trim().length === 0
+        const done = !softDeadlineHit && (hasMarker || stopReason !== 'max_tokens' || stalled)
+        const cleanOutput = done ? stripNarration(combined) : combined
 
-    return NextResponse.json({
-      done,
-      output: cleanOutput,
-      usage: { tokens_total: newTokensTotal, web_searches: newSearches, cost_usd: newCost },
-    })
-  } catch (err) {
-    console.error('Claude document chunk error:', err)
-    // Keep whatever is already saved so the client can retry this chunk; only
-    // hard-fail when nothing has been produced yet.
-    if (!accumulated) {
-      await supabaseAdmin
-        .from('document_sessions')
-        .update({ status: 'failed' })
-        .eq('id', session!.id)
-    }
-    await logUsageEvent({
-      userId: user!.id,
-      workflow: session!.doc_type,
-      sourceId: session!.id,
-      model: CLAUDE_MODEL,
-      status: 'error',
-      error: err instanceof Error ? err.message : 'Generation failed',
-    })
-    return NextResponse.json({ error: 'Generation failed. Please try again.' }, { status: 500 })
-  }
+        const newTokensTotal = baseTokensTotal + roundTokens
+        const newSearches = baseSearches + roundSearches
+        const newCost = baseCost + roundCost
+
+        // Persist FIRST — must never be skipped even if the client is gone.
+        await supabaseAdmin
+          .from('document_sessions')
+          .update({
+            output: cleanOutput,
+            tokens_input: baseTokensInput + promptTokens,
+            tokens_output: baseTokensOutput + usage.outputTokens,
+            tokens_total: newTokensTotal,
+            web_searches: newSearches,
+            cost_usd: newCost,
+            status: done ? 'complete' : 'generating',
+          })
+          .eq('id', session!.id)
+
+        await supabaseAdmin.rpc('increment_user_tokens', {
+          p_user_id: user!.id,
+          p_tokens: roundTokens,
+        })
+
+        await logUsageEvent({
+          userId: user!.id,
+          workflow: session!.doc_type,
+          sourceId: session!.id,
+          model: CLAUDE_MODEL,
+          tokensInput: promptTokens,
+          tokensOutput: usage.outputTokens,
+          tokensTotal: roundTokens,
+          webSearches: roundSearches,
+          costUsd: roundCost,
+        })
+
+        send({
+          done,
+          output: cleanOutput,
+          usage: { tokens_total: newTokensTotal, web_searches: newSearches, cost_usd: newCost },
+        })
+        sendRaw('[DONE]')
+      } catch (err) {
+        console.error('Claude document stream error:', err)
+        // Keep whatever streamed so far so Continue can resume; only hard-fail
+        // when this pass produced nothing AND there was no prior content.
+        const partial = prior + fullText
+        if (partial.trim()) {
+          await supabaseAdmin
+            .from('document_sessions')
+            .update({ output: partial, status: 'generating' })
+            .eq('id', session!.id)
+        } else if (!accumulated) {
+          await supabaseAdmin
+            .from('document_sessions')
+            .update({ status: 'failed' })
+            .eq('id', session!.id)
+        }
+        await logUsageEvent({
+          userId: user!.id,
+          workflow: session!.doc_type,
+          sourceId: session!.id,
+          model: CLAUDE_MODEL,
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Generation failed',
+        })
+        send({ error: 'Generation failed. Please try again.' })
+      } finally {
+        try {
+          controller.close()
+        } catch {}
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+    },
+  })
 }

@@ -69,7 +69,7 @@ export const DOC_TYPES: Record<DocType, DocTypeConfig> = {
     maxWebSearches: 10,
     tokenReserve: 300_000,
     lengthGuidance:
-      'Target a long, detailed document of roughly 20-30 pages, with real depth in every section.',
+      'Target a detailed document of roughly 15-20 pages, with real depth in every section.',
   },
 }
 

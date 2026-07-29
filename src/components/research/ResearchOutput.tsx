@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { marked } from 'marked'
 import { Download, MessagesSquare, FileText, ListChecks, Sparkles, WandSparkles, Copy, Check, ArrowLeft, Paperclip } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
+import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
+import DownloadTemplateModal from '@/components/ui/DownloadTemplateModal'
 import DeleteInterviewButton from '@/components/research/DeleteInterviewButton'
 import type { ResearchSession } from '@/types'
 
@@ -59,6 +61,9 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
   const [questionsError, setQuestionsError] = useState<string | null>(null)
   const [questionsExtra, setQuestionsExtra] = useState('')
   const [showQuestionsForm, setShowQuestionsForm] = useState(false)
+
+  // Download picker — which output ('research' | 'questions') is being downloaded.
+  const [downloadType, setDownloadType] = useState<'research' | 'questions' | null>(null)
 
   useEffect(() => {
     if (hasStartedRef.current) return
@@ -261,6 +266,9 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
 
   const isProcessing = streamStatus !== 'idle'
   const researchDone = Boolean(output) && !isProcessing
+
+  // Fact-checking reminder — pops whenever research or question generation starts.
+  const disclaimer = useAiDisclaimer(isProcessing || reconnecting || questionsStreaming)
   const hasQuestions = Boolean(questions)
 
   const streamingLabel = reconnecting
@@ -271,6 +279,14 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
 
   return (
     <div className="flex h-full bg-[#f0efec]">
+      <AiDisclaimerModal open={disclaimer.open} onClose={disclaimer.dismiss} />
+      <DownloadTemplateModal
+        open={downloadType !== null}
+        onClose={() => setDownloadType(null)}
+        baseUrl={`/api/sessions/${session.id}/download`}
+        extraParams={{ type: downloadType ?? 'research' }}
+        filenameBase={`${session.full_name || 'Interview'} — ${downloadType === 'questions' ? 'Questions' : 'Research'}`}
+      />
       {/* Subject side panel */}
       <aside className="flex w-64 flex-shrink-0 flex-col border-r border-[#e5e3df] bg-white">
         <div className="flex-1 overflow-y-auto p-5">
@@ -377,15 +393,14 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
               ) : output ? (
                 <>
                   <CopyButton text={output} />
-                  <a
-                    href={`/api/sessions/${session.id}/download?type=research`}
-                    download
-                    title="Download research (.docx)"
+                  <button
+                    onClick={() => setDownloadType('research')}
+                    title="Download research"
                     className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                   >
                     <Download size={13} />
                     <span>Download</span>
-                  </a>
+                  </button>
                 </>
               ) : null}
             </div>
@@ -508,15 +523,14 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
                 ) : hasQuestions ? (
                   <>
                     <CopyButton text={questions} />
-                    <a
-                      href={`/api/sessions/${session.id}/download?type=questions`}
-                      download
-                      title="Download questions (.docx)"
+                    <button
+                      onClick={() => setDownloadType('questions')}
+                      title="Download questions"
                       className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                     >
                       <Download size={13} />
                       <span>Download</span>
-                    </a>
+                    </button>
                   </>
                 ) : null}
               </div>

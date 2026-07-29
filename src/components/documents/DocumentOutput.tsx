@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { marked } from 'marked'
 import { Download, FileText, Sparkles, WandSparkles, Copy, Check, ArrowLeft } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
+import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DeleteDocumentButton from '@/components/documents/DeleteDocumentButton'
 import { getDocConfig } from '@/lib/documents'
 import type { DocumentSession } from '@/types'
@@ -27,8 +28,16 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   const [output, setOutput] = useState<string>(session.output || '')
   const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle')
   const [error, setError] = useState<string | null>(null)
+  // The document isn't finished — there's more to write and the user can click
+  // Continue to extend it. Seeded true when we reopen a run left mid-way.
+  const [needsContinue, setNeedsContinue] = useState<boolean>(
+    session.status === 'generating' && Boolean(session.output),
+  )
   const hasStartedRef = useRef(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // True while a "Continue" pass is running, so the AI disclaimer doesn't re-pop
+  // on every Continue click — only on a fresh generation / regenerate.
+  const isContinueRef = useRef(false)
 
   const [usage, setUsage] = useState({
     tokens_total: session.tokens_total || 0,
@@ -42,14 +51,15 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   useEffect(() => {
     if (hasStartedRef.current) return
     if (isGenerating && !session.output) {
-      // Fresh generation kicked off from the "new" flow.
+      // Fresh generation kicked off from the "new" flow — generate the first
+      // part automatically. If it isn't the whole document, we then show a
+      // Continue button rather than auto-looping.
       hasStartedRef.current = true
-      runChunked('fresh')
-    } else if (!isGenerating && session.status === 'generating') {
-      // Opened/reloaded mid-run — resume the chunk loop from whatever is saved.
-      hasStartedRef.current = true
-      runChunked('resume')
+      generateChunk('fresh')
     }
+    // Reopened mid-run (status 'generating', output already saved): we DON'T
+    // auto-continue — `needsContinue` is seeded true, so the Continue button
+    // shows and the user decides when to spend more.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -57,76 +67,136 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [output])
 
-  // Chunked generation. A full document exceeds Vercel Hobby's 60s function
-  // cap, so the server produces ONE bounded chunk per call and the browser
-  // loops until it reports the document is done. Each chunk is persisted, so a
-  // chunk that errors or times out is simply retried from the last saved point.
-  async function runChunked(mode: 'fresh' | 'resume' | 'regenerate') {
-    const MAX_ROUNDS = 40
+  // Generate ONE part of the document, streamed. The server writes as much as
+  // it can before a soft deadline (under the platform's function-timeout cap),
+  // persisting as it goes, then stops. If the document isn't finished we show a
+  // Continue button — the user controls how long (and how costly) it gets, and
+  // nothing is lost between passes even on a hard timeout (the server saves
+  // incrementally; on any connection drop we recover the saved text below).
+  async function generateChunk(mode: 'fresh' | 'continue' | 'regenerate') {
+    const isContinue = mode === 'continue'
+    isContinueRef.current = isContinue
     setError(null)
     setStreamStatus('generating')
     setShowForm(false)
-    if (mode !== 'resume') setOutput('')
-    // 'resume' continues from saved output; fresh/regenerate begin a new doc.
-    let cont = mode === 'resume'
+    setNeedsContinue(false)
     const additionalPrompt = mode === 'regenerate' ? extra.trim() : ''
+    // Continue streams on TOP of the saved text; fresh/regenerate start over.
+    const priorText = isContinue ? output : ''
+    if (!isContinue) setOutput('')
 
     try {
-      for (let round = 0; round < MAX_ROUNDS; round++) {
-        let data: { done?: boolean; output?: string; usage?: typeof usage; error?: string } | null = null
-
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            const res = await fetch(`/api/documents/${session.id}/generate`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ continue: cont, additionalPrompt: round === 0 ? additionalPrompt : '' }),
-            })
-            if (!res.ok) {
-              const d = await res.json().catch(() => ({}))
-              // Budget / permission problems: surface immediately, don't retry.
-              if (res.status === 402 || res.status === 403) {
-                setError(d.error || 'Generation is not available.')
-                setStreamStatus('idle')
-                return
-              }
-              throw new Error(d.error || 'Generation failed')
-            }
-            data = await res.json()
-            break
-          } catch (e) {
-            if (attempt === 2) throw e
-            await sleep(1500) // brief backoff, then retry this same chunk
-          }
-        }
-
-        if (!data) throw new Error('Generation failed')
-        if (typeof data.output === 'string') setOutput(data.output)
-        if (data.usage) setUsage(data.usage)
-        cont = true // every chunk after the first continues from saved output
-
-        if (data.done) {
+      const res = await fetch(`/api/documents/${session.id}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ continue: isContinue, additionalPrompt }),
+      })
+      // Pre-flight errors (budget/permission/etc.) come back as JSON, not SSE.
+      if (!res.ok || !res.body) {
+        const d = await res.json().catch(() => ({}))
+        if (res.status === 402 || res.status === 403) {
+          setError(d.error || 'Generation is not available.')
           setStreamStatus('idle')
-          setExtra('')
-          router.refresh()
           return
         }
+        throw new Error(d.error || 'Generation failed')
       }
-      // Safety cap reached — the partial document is saved either way.
-      setError('This document is taking an unusually long time. What’s generated so far is saved — click Regenerate to continue.')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let streamed = priorText
+      let finalDone: boolean | undefined
+      let streamError: string | undefined
+
+      // Parse the SSE frames: each is `data: <json|[DONE]>\n\n`.
+      readLoop: while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop() || ''
+        for (const frame of frames) {
+          const line = frame.startsWith('data: ') ? frame.slice(6) : frame.trim()
+          if (!line || line === '[DONE]') continue
+          let payload: { text?: string; usage?: typeof usage; done?: boolean; output?: string; error?: string }
+          try { payload = JSON.parse(line) } catch { continue }
+          if (payload.error) { streamError = payload.error; break readLoop }
+          if (payload.text) { streamed += payload.text; setOutput(streamed) }
+          if (payload.usage) setUsage(payload.usage)
+          if (typeof payload.done === 'boolean') {
+            finalDone = payload.done
+            if (typeof payload.output === 'string') { streamed = payload.output; setOutput(streamed) }
+          }
+        }
+      }
+
+      if (streamError) throw new Error(streamError)
+
       setStreamStatus('idle')
+      if (finalDone === true) {
+        setExtra('')
+        setNeedsContinue(false)
+        router.refresh()
+      } else if (finalDone === false || streamed.trim()) {
+        // Cut off at the soft deadline (or the stream ended mid-document) —
+        // there's more to write.
+        setNeedsContinue(true)
+      } else {
+        // Stream closed without any verdict or text — recover saved state.
+        const recovered = await recoverSaved()
+        if (!recovered) setError('Generation failed. Please try again.')
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Generation failed. Please try again.')
+      // The connection may have dropped because the platform hard-killed the
+      // function (e.g. a slow pass overran the timeout). The server persists
+      // incrementally, so pull the latest saved text and offer Continue rather
+      // than losing what was written.
+      const recovered = await recoverSaved()
+      if (!recovered) {
+        setError(e instanceof Error ? e.message : 'Generation failed. Please try again.')
+      }
       setStreamStatus('idle')
     }
   }
 
+  // Fetch the last saved state after a dropped stream. Returns true if it found
+  // usable saved text (and updated the UI), false otherwise.
+  async function recoverSaved(): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/documents/${session.id}`)
+      if (!res.ok) return false
+      const d = (await res.json()) as { status?: string; output?: string; usage?: typeof usage }
+      if (typeof d.output === 'string' && d.output.trim()) {
+        setOutput(d.output)
+        if (d.usage) setUsage(d.usage)
+        if (d.status === 'complete') {
+          setNeedsContinue(false)
+          router.refresh()
+        } else {
+          setNeedsContinue(true)
+        }
+        return true
+      }
+    } catch {
+      /* fall through to error */
+    }
+    return false
+  }
+
   const isProcessing = streamStatus !== 'idle'
-  const done = Boolean(output) && !isProcessing
+  // "done" = a complete document (nothing left to continue). A partial document
+  // waiting on Continue is NOT done.
+  const done = Boolean(output) && !isProcessing && !needsContinue
   const streamingLabel = 'Generating…'
+
+  // Fact-checking reminder — pops on a fresh generation / regenerate, but NOT
+  // on Continue passes (would be annoying to re-confirm every click).
+  const disclaimer = useAiDisclaimer(isProcessing && !isContinueRef.current)
 
   return (
     <div className="flex h-full bg-[#f0efec]">
+      <AiDisclaimerModal open={disclaimer.open} onClose={disclaimer.dismiss} />
       {/* Side panel */}
       <aside className="flex w-64 flex-shrink-0 flex-col border-r border-[#e5e3df] bg-white">
         <div className="flex-1 overflow-y-auto p-5">
@@ -247,11 +317,27 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                   </div>
                   <p className="text-sm text-gray-500">Ready to generate this {config.label.toLowerCase()}.</p>
                   <button
-                    onClick={() => runChunked('fresh')}
+                    onClick={() => generateChunk('fresh')}
                     className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
                   >
                     <Sparkles size={15} />
                     Generate {config.label}
+                  </button>
+                </div>
+              )}
+
+              {/* Continue — the document isn't finished; extend it on demand. */}
+              {needsContinue && !isProcessing && (
+                <div className="mt-6 border-t border-[#e5e3df] pt-5">
+                  <p className="mb-3 text-sm text-gray-500">
+                    The {config.label.toLowerCase()} isn’t finished yet — the draft so far is saved. Click Continue to generate the next part, or download what you have.
+                  </p>
+                  <button
+                    onClick={() => generateChunk('continue')}
+                    className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
+                  >
+                    <Sparkles size={15} />
+                    Continue
                   </button>
                 </div>
               )}
@@ -279,7 +365,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                       />
                       <div className="mt-4 flex gap-3">
                         <button
-                          onClick={() => runChunked('regenerate')}
+                          onClick={() => generateChunk('regenerate')}
                           className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-900"
                         >
                           <WandSparkles size={15} />
@@ -301,7 +387,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   <span>{error}</span>
                   <button
-                    onClick={() => { setError(null); runChunked(output ? 'resume' : 'fresh') }}
+                    onClick={() => { setError(null); generateChunk(output ? 'continue' : 'fresh') }}
                     className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
                   >
                     {output ? 'Continue' : 'Try again'}
@@ -339,10 +425,6 @@ function CopyButton({ text }: { text: string }) {
       <span>{copied ? 'Copied' : 'Copy'}</span>
     </button>
   )
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function InfoRow({ label, value }: { label: string; value: string | null }) {
