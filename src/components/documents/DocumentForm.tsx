@@ -47,6 +47,9 @@ export default function DocumentForm({ docType, isAtLimit }: Props) {
         const data = await res.json().catch(() => ({}))
         if (res.status === 402) {
           setError('Token limit reached. Contact an admin to increase your limit.')
+        } else if (res.status === 422) {
+          // Sanity gate rejected the inputs — show its explanation verbatim.
+          setError(data.error || 'Please check the details above and try again.')
         } else {
           setError(data.error || 'Failed to start generation. Please try again.')
         }

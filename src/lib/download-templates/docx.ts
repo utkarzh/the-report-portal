@@ -19,6 +19,7 @@ import {
 import { markdownToParagraphs } from '@/lib/docx-render'
 import { LETTERHEAD_LOGO_PNG_BASE64 } from '@/lib/letterhead-logo'
 import { BRAND_INFO, type DownloadTemplate } from './registry'
+import { templateBands } from './bands'
 
 // ────────────────────────────────────────────────────────────────────────────
 // Word (.docx) builder for the branded download templates.
@@ -47,8 +48,21 @@ const CONTENT_W_TWIPS = A4_W - MARGIN_X * 2
 const CONTENT_W_PX = Math.round((CONTENT_W_TWIPS / 1440) * 96)
 
 const NAVY = '2B3A4A' // footer rule / brand ink, matched to the sample band
+const BLUE = '2E74B5'
 const GREY = '595959'
 const INK = '1A1A1A'
+
+// Body face. The client's own templates are set in Times New Roman, and the PDF
+// builder renders in Tinos (metric-compatible with it), so naming it here keeps
+// the Word download looking like both. Word resolves this by name from the
+// reader's installed fonts — nothing is embedded, and every Word install has it.
+// Without this the document inherited Word's own default (Aptos/Calibri), which
+// matched neither the sample nor the PDF of the same template.
+const FONT = 'Times New Roman'
+
+// Half-points, mirroring the PDF type scale in pdf.tsx so the two formats of one
+// template agree: body 10.5pt, doc heading 18pt, h2 14pt, h3 12pt.
+const SZ = { body: 21, h1: 36, h2: 28, h3: 24 }
 
 // ── Image-band header / footer ──────────────────────────────────────────────
 
@@ -169,11 +183,12 @@ function composedFooter(template: DownloadTemplate): Footer {
 // ── Header / footer selection ───────────────────────────────────────────────
 
 function buildHeader(template: DownloadTemplate): Header {
-  if (template.kind === 'image' && template.header) {
+  const bands = templateBands(template)
+  if (bands) {
     return new Header({
       children: [
         new Paragraph({
-          children: [bandImage(template.header.base64, template.header.width, template.header.height)],
+          children: [bandImage(bands.header.base64, bands.header.width, bands.header.height)],
         }),
       ],
     })
@@ -182,12 +197,13 @@ function buildHeader(template: DownloadTemplate): Header {
 }
 
 function buildFooter(template: DownloadTemplate): Footer {
-  if (template.kind === 'image' && template.footer) {
+  const bands = templateBands(template)
+  if (bands) {
     return new Footer({
       children: [
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [bandImage(template.footer.base64, template.footer.width, template.footer.height)],
+          children: [bandImage(bands.footer.base64, bands.footer.width, bands.footer.height)],
         }),
       ],
     })
@@ -245,5 +261,18 @@ export function buildTemplatedDocx({ markdown, heading, template, meta, highligh
     ],
   }
 
-  return new Document({ sections: [section] })
+  // Heading styles are declared explicitly because the built-in Heading1..3
+  // styles otherwise bring their own face and colour (Calibri Light, a stock
+  // blue), which would override FONT for every heading in the document.
+  return new Document({
+    styles: {
+      default: {
+        document: { run: { font: FONT, size: SZ.body, color: INK } },
+        heading1: { run: { font: FONT, size: SZ.h1, bold: true, color: NAVY } },
+        heading2: { run: { font: FONT, size: SZ.h2, bold: true, color: NAVY } },
+        heading3: { run: { font: FONT, size: SZ.h3, bold: true, color: BLUE } },
+      },
+    },
+    sections: [section],
+  })
 }

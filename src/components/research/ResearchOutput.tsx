@@ -9,6 +9,7 @@ import Textarea from '@/components/ui/Textarea'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DownloadTemplateModal from '@/components/ui/DownloadTemplateModal'
 import DeleteInterviewButton from '@/components/research/DeleteInterviewButton'
+import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import type { ResearchSession } from '@/types'
 
 marked.use({ gfm: true, breaks: true })
@@ -40,7 +41,6 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
   const [reconnecting, setReconnecting] = useState(false)
   const hasStartedRef = useRef(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
 
   // Live usage — seeded from the server snapshot, then updated in place as each
   // stream (research + questions) reports its final totals, so the sidebar
@@ -83,9 +83,9 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [output, questions])
+  // Follows the stream only while the user is at the bottom — scrolling up to
+  // re-read earlier text detaches it instead of yanking the view back down.
+  const scroll = useStickToBottom<HTMLDivElement>(`${output.length}:${questions.length}`)
 
   // extraOverride is passed when the user regenerates with "what to improve"
   // guidance; otherwise we use the one-time context stashed by the research form.
@@ -369,7 +369,12 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
       </aside>
 
       {/* Output — scrolls independently */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={scroll.ref}
+        onScroll={scroll.onScroll}
+        onWheel={scroll.onWheel}
+        className="flex-1 overflow-y-auto"
+      >
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
 
         {/* Research card */}
@@ -618,7 +623,6 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
           </div>
         )}
 
-        <div ref={bottomRef} />
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getDocConfig, isDocType } from '@/lib/documents'
+import { validateDocumentInputs } from '@/lib/claude/validate-inputs'
 
 // POST /api/documents — creates a document_sessions row (Business Case /
 // Editorial Brief). Mirrors /api/sessions: this route does NOT call Claude; it
@@ -50,6 +51,18 @@ export async function POST(request: NextRequest) {
       { error: 'Not enough token budget remaining for another generation' },
       { status: 402 },
     )
+  }
+
+  // Sanity gate — reject placeholder/off-topic submissions BEFORE creating the
+  // session, so nonsense inputs can't spend a full document's worth of Claude
+  // budget. Costs a fraction of a cent; fails open if the check is unavailable.
+  const verdict = await validateDocumentInputs(
+    docType,
+    { projectCountry, mediaPartner, mediaCountry, additionalContext },
+    user.id,
+  )
+  if (!verdict.ok) {
+    return NextResponse.json({ error: verdict.reason }, { status: 422 })
   }
 
   // Snapshot the admin prompt at creation time (regenerations reuse the snapshot).

@@ -6,6 +6,7 @@ import { marked } from 'marked'
 import { AudioLines, Mic, WandSparkles, FileText, Loader2, Download, Languages, ChevronDown, Copy, Check, Sparkles } from 'lucide-react'
 import type { Transcription } from '@/types'
 import { TRANSCRIPTION_PROVIDER, TRANSLATION_LANGUAGES, type TranslationLanguage } from '@/lib/transcriptions'
+import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import AudioPlayer from './AudioPlayer'
 import TranscribingLoader from './TranscribingLoader'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
@@ -39,25 +40,6 @@ function renderRefinedHtml(md: string): string {
     '<mark class="confirm-highlight">$1</mark>',
   )
   return marked.parse(withHighlights) as string
-}
-
-// Keeps a scroll container pinned to the bottom as content streams in, BUT only
-// while the user is already near the bottom. The moment they scroll up, it stops
-// auto-following so they can read earlier text mid-stream; scrolling back down
-// re-engages it.
-function useStickToBottom(dep: string) {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const stick = useRef(true)
-  function onScroll() {
-    const el = ref.current
-    if (!el) return
-    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
-  }
-  useEffect(() => {
-    const el = ref.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [dep])
-  return { ref, onScroll }
 }
 
 // Copies text to the clipboard with brief "Copied" feedback. Same quiet styling
@@ -193,9 +175,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   const [refinedCollapsed, setRefinedCollapsed] = useState(false)
   // Download picker — which transcript variant is being downloaded.
   const [downloadVariant, setDownloadVariant] = useState<'raw' | 'translated' | 'refined' | null>(null)
-  const rawScroll = useStickToBottom(raw)
-  const translatedScroll = useStickToBottom(translated)
-  const refinedScroll = useStickToBottom(refined)
+  const rawScroll = useStickToBottom<HTMLDivElement>(raw.length)
+  const translatedScroll = useStickToBottom<HTMLDivElement>(translated.length)
+  const refinedScroll = useStickToBottom<HTMLDivElement>(refined.length)
 
   // Auto-start transcription for a record that still has pending chunks.
   useEffect(() => {
@@ -474,6 +456,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
             <div
               ref={rawScroll.ref}
               onScroll={rawScroll.onScroll}
+              onWheel={rawScroll.onWheel}
               className="scroll-fade max-h-[440px] min-h-[160px] overflow-y-auto whitespace-pre-wrap px-5 py-4 text-sm leading-7 text-gray-700"
             >
               {raw ? (
@@ -575,6 +558,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
           <div
             ref={translatedScroll.ref}
             onScroll={translatedScroll.onScroll}
+              onWheel={translatedScroll.onWheel}
             className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto whitespace-pre-wrap px-5 py-4 text-sm leading-7 text-gray-700"
           >
             {translated ? (
@@ -651,7 +635,12 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
 
           {!refinedCollapsed && (
           <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
-          <div className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto px-5 py-4 text-sm leading-7 text-gray-800" ref={refinedScroll.ref} onScroll={refinedScroll.onScroll}>
+          <div
+            ref={refinedScroll.ref}
+            onScroll={refinedScroll.onScroll}
+            onWheel={refinedScroll.onWheel}
+            className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto px-5 py-4 text-sm leading-7 text-gray-800"
+          >
             {refined ? (
               <>
                 <div

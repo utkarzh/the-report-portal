@@ -131,11 +131,6 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
                         >
                           {t.brand}
                         </span>
-                        {t.kind === 'image' && (
-                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-700">
-                            Sample
-                          </span>
-                        )}
                       </div>
                       <span className="text-[13px] font-medium leading-snug text-gray-900">{t.partner}</span>
                       {t.id === templateId && (

@@ -26,7 +26,8 @@ function stripNarration(text: string): string {
 // Editorial Brief allows 32k output tokens + 10 searches) can take several
 // minutes. Without this, Vercel's low default timeout kills the function before
 // the final "persist output + status:complete" step runs, losing the result.
-// 300s is the max on Vercel Pro; Hobby still caps at 60s (see notes to user).
+// With fluid compute (default on new projects) 300s is both the default and the
+// maximum on Hobby, and the default on Pro — the old 60s Hobby cap is gone.
 export const maxDuration = 300
 
 // Same 1h cache TTL used by /api/generate — keeps the (shared, stable) prompt +
@@ -81,9 +82,11 @@ export async function POST(
   const body = await request.json().catch(() => ({}))
   const extra = ((body as { additionalPrompt?: string }).additionalPrompt || '').trim()
 
-  // User-controlled continuation (Vercel Hobby has a hard 60s function cap).
-  // Each POST generates ONE bounded chunk that finishes well under the limit;
-  // the user clicks "Continue" to extend the document until it's complete.
+  // Segmented continuation. Each POST writes ONE pass, bounded by the soft
+  // deadline below or by the model's own max_tokens — neither of which means the
+  // document is finished. The client chains passes automatically until the
+  // completion marker lands (see DocumentOutput's runToCompletion), and falls
+  // back to a manual Continue button at its round cap.
   // `continue: true` resumes from the document persisted so far; otherwise this
   // is a fresh start (or regenerate) and we reset the accumulators.
   const isContinuation = (body as { continue?: boolean }).continue === true
@@ -111,7 +114,8 @@ export async function POST(
   // marker cleanup all run — instead of being abruptly killed (which Vercel
   // gives no hook to catch, and which would skip token accounting). A hard-kill
   // is still survived by the incremental saves + client recovery; this just
-  // avoids relying on it. `maxDuration` (300 on Pro) is the real ceiling; the
+  // avoids relying on it. `maxDuration` (300, on Hobby and Pro alike) is the
+  // real ceiling; the
   // 15s margin covers the last DB writes + response flush. Override the whole
   // thing with DOC_GEN_SOFT_DEADLINE_MS if your plan's real cap differs.
   const HARD_CAP_MARGIN_MS = 15_000
@@ -277,6 +281,10 @@ ${inputs || '(no structured inputs provided)'}${
         // even when we abort at the soft deadline.
         let startUsage: Record<string, unknown> = {}
         let outputTokens = 0
+        // `message_delta` is the ONLY event carrying the API's output-token
+        // count, and it arrives once at the end of a message. A pass we cut
+        // short never sees it — so we must not report its 0 as the real count.
+        let sawFinalUsage = false
         let reportedSearches: number | undefined
         let webSearchCount = 0
         let stopReason: string | null = null
@@ -284,6 +292,20 @@ ${inputs || '(no structured inputs provided)'}${
         const startTime = Date.now()
         let lastSave = startTime
 
+        // Wall-clock deadline. This MUST be a timer rather than a check inside
+        // the loop body: the loop only advances when an event arrives, and the
+        // SDK's iterator yields no keepalive (RawMessageStreamEvent has no
+        // `ping`), so during a quiet stretch — a server-side web search
+        // round-trip — an in-loop check simply cannot run and the function sails
+        // past the platform's hard cap. abort() rejects the pending await, so an
+        // idle gap is interrupted instead of waited out, and the persist +
+        // billing + logging below still get to run.
+        const deadlineTimer = setTimeout(() => {
+          softDeadlineHit = true
+          try { claudeStream.abort() } catch {}
+        }, SOFT_DEADLINE_MS)
+
+        try {
         for await (const event of claudeStream) {
           if (event.type === 'message_start') {
             startUsage = (event.message.usage ?? {}) as unknown as Record<string, unknown>
@@ -312,21 +334,51 @@ ${inputs || '(no structured inputs provided)'}${
             const du = event.usage as
               | { output_tokens?: number; server_tool_use?: { web_search_requests?: number } }
               | undefined
-            if (typeof du?.output_tokens === 'number') outputTokens = du.output_tokens
+            if (typeof du?.output_tokens === 'number') {
+              outputTokens = du.output_tokens
+              sawFinalUsage = true
+            }
             if (typeof du?.server_tool_use?.web_search_requests === 'number') {
               reportedSearches = du.server_tool_use.web_search_requests
             }
             if (event.delta?.stop_reason) stopReason = event.delta.stop_reason
           }
-
-          // Soft deadline — stop cleanly BEFORE the platform's hard cap so we
-          // can persist and hand back a "Continue" instead of being killed.
-          if (Date.now() - startTime > SOFT_DEADLINE_MS) {
-            softDeadlineHit = true
-            break
-          }
+        }
+        } catch (streamErr) {
+          // Our own deadline abort is expected and lands here — everything the
+          // stream produced is still in `fullText`, so fall through and account
+          // for it. Any other failure is a real error.
+          if (!softDeadlineHit) throw streamErr
+        } finally {
+          clearTimeout(deadlineTimer)
         }
         try { claudeStream.abort() } catch {}
+
+        // Recover the output-token count when the pass was cut short. Without
+        // this, `outputTokens` stays 0 and the pass is billed as if Claude wrote
+        // nothing — output is the expensive side, so the ledger under-counts by
+        // most of the real cost. countTokens is free and uses the same
+        // tokenizer, so counting the text we actually received is exact.
+        if (!sawFinalUsage && fullText.trim()) {
+          try {
+            const counted = await anthropic.messages.countTokens({
+              model: CLAUDE_MODEL,
+              messages: [{ role: 'user', content: fullText }],
+            })
+            outputTokens = counted.input_tokens
+          } catch (countErr) {
+            console.error('Output-token recount failed; pass will under-report:', countErr)
+          }
+        }
+
+        // Surfaces which constraint actually ended this pass (our clock vs
+        // Claude's own output budget) — otherwise both look identical from the
+        // outside, since both hand back a "Continue".
+        console.log(
+          `[doc-gen] session=${session!.id} elapsed=${Math.round((Date.now() - startTime) / 1000)}s ` +
+            `stop_reason=${stopReason} soft_deadline=${softDeadlineHit} ` +
+            `output_tokens=${outputTokens}${sawFinalUsage ? '' : ' (recounted)'}`,
+        )
 
         const roundSearches = reportedSearches ?? webSearchCount
         const usage = parseUsage({ ...startUsage, output_tokens: outputTokens }, roundSearches)

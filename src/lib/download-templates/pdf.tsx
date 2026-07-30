@@ -5,12 +5,20 @@ import {
   View,
   Text,
   Image,
+  Font,
   StyleSheet,
   renderToBuffer,
 } from '@react-pdf/renderer'
 import { marked, type Token, type Tokens } from 'marked'
 import { LETTERHEAD_LOGO_PNG_BASE64 } from '@/lib/letterhead-logo'
 import { BRAND_INFO, type DownloadTemplate } from './registry'
+import { templateBands } from './bands'
+import {
+  TINOS_REGULAR_TTF_BASE64,
+  TINOS_BOLD_TTF_BASE64,
+  TINOS_ITALIC_TTF_BASE64,
+  TINOS_BOLD_ITALIC_TTF_BASE64,
+} from './fonts'
 
 // ────────────────────────────────────────────────────────────────────────────
 // PDF builder for the branded download templates (@react-pdf/renderer).
@@ -25,6 +33,35 @@ import { BRAND_INFO, type DownloadTemplate } from './registry'
 
 marked.use({ gfm: true, breaks: true })
 
+// ── Font ────────────────────────────────────────────────────────────────────
+//
+// Body copy is set in embedded Tinos, NOT the built-in 'Times-Roman'. The
+// built-in standard-14 fonts carry no glyph data and their encoding mangles
+// characters this app emits constantly — the euro sign came out broken and
+// Cyrillic was silently corrupted, which meant every Russian transcript
+// translation downloaded as gibberish. Tinos is metrically compatible with Times
+// New Roman (the face the client's templates use), so the page breaks the same.
+// See fonts.ts for the full rationale and the subset's coverage limits.
+//
+// Font.register() is module-level and idempotent; @react-pdf caches by family so
+// repeated download requests in one warm lambda re-use the parsed font.
+const BODY_FONT = 'Tinos'
+
+Font.register({
+  family: BODY_FONT,
+  fonts: [
+    { src: `data:font/truetype;base64,${TINOS_REGULAR_TTF_BASE64}`, fontWeight: 400, fontStyle: 'normal' },
+    { src: `data:font/truetype;base64,${TINOS_BOLD_TTF_BASE64}`, fontWeight: 700, fontStyle: 'normal' },
+    { src: `data:font/truetype;base64,${TINOS_ITALIC_TTF_BASE64}`, fontWeight: 400, fontStyle: 'italic' },
+    { src: `data:font/truetype;base64,${TINOS_BOLD_ITALIC_TTF_BASE64}`, fontWeight: 700, fontStyle: 'italic' },
+  ],
+})
+
+// Long tokens (URLs, long compounds) must be allowed to break, otherwise a
+// single unbreakable run overflows the measure. The default hyphenation
+// callback splits on syllables; we only need it to not fight us.
+Font.registerHyphenationCallback((word) => [word])
+
 // A4 points. Margins mirror the sample (~40pt horizontal).
 const MARGIN_X = 40
 const CONTENT_W = 595 - MARGIN_X * 2 // 515
@@ -37,9 +74,15 @@ const RULE = '#BFBFBF'
 const HEADER_FILL = '#2B3A4A'
 const ZEBRA = '#F4F5F8'
 
+// With an embedded family, weight/style select the face — NOT a per-style
+// fontFamily like the old 'Times-Bold'. Naming a face that isn't a registered
+// family makes @react-pdf throw at render time, so keep bold/italic expressed
+// this way.
+const BOLD = { fontWeight: 700 } as const
+
 const styles = StyleSheet.create({
   page: {
-    fontFamily: 'Times-Roman',
+    fontFamily: BODY_FONT,
     fontSize: 10.5,
     lineHeight: 1.4,
     color: INK,
@@ -48,39 +91,34 @@ const styles = StyleSheet.create({
   headerFixed: { position: 'absolute', top: 24, left: MARGIN_X, right: MARGIN_X },
   footerFixed: { position: 'absolute', bottom: 22, left: MARGIN_X, right: MARGIN_X },
   bandImage: { width: CONTENT_W },
-  docHeading: { fontFamily: 'Times-Bold', fontSize: 18, color: NAVY, marginBottom: 8 },
-  h1: { fontFamily: 'Times-Bold', fontSize: 14, color: NAVY, marginTop: 12, marginBottom: 5 },
-  h3: { fontFamily: 'Times-Bold', fontSize: 12, color: BLUE, marginTop: 9, marginBottom: 4 },
+  docHeading: { ...BOLD, fontSize: 18, color: NAVY, marginBottom: 8 },
+  h1: { ...BOLD, fontSize: 14, color: NAVY, marginTop: 12, marginBottom: 5 },
+  h3: { ...BOLD, fontSize: 12, color: BLUE, marginTop: 9, marginBottom: 4 },
   para: { marginBottom: 7, textAlign: 'justify' },
   listItem: { flexDirection: 'row', marginBottom: 3 },
   bullet: { width: 14, textAlign: 'left' },
   listBody: { flex: 1 },
   quote: { marginBottom: 7, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: RULE, color: '#555555' },
+  quoteLine: { fontStyle: 'italic' },
   meta: { fontSize: 9, marginBottom: 2 },
+  metaKey: { ...BOLD },
   hr: { borderBottomWidth: 1, borderBottomColor: RULE, marginVertical: 8 },
   // table
   table: { marginBottom: 8, borderWidth: 1, borderColor: RULE },
   tRow: { flexDirection: 'row' },
-  tHeadCell: { backgroundColor: HEADER_FILL, color: '#FFFFFF', fontFamily: 'Times-Bold', fontSize: 8.5, padding: 4, borderRightWidth: 1, borderRightColor: RULE },
+  tHeadCell: { backgroundColor: HEADER_FILL, color: '#FFFFFF', ...BOLD, fontSize: 8.5, padding: 4, borderRightWidth: 1, borderRightColor: RULE },
   tCell: { fontSize: 8.5, padding: 4, borderRightWidth: 1, borderTopWidth: 1, borderColor: RULE },
   // composed header/footer
   hfRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   trcLogo: { width: 150 },
-  gfdiName: { fontFamily: 'Times-Bold', fontSize: 15, color: NAVY },
-  bsRight: { fontFamily: 'Times-Bold', fontSize: 11, color: NAVY, textAlign: 'right' },
+  gfdiName: { ...BOLD, fontSize: 15, color: NAVY },
+  bsRight: { ...BOLD, fontSize: 11, color: NAVY, textAlign: 'right' },
   footRuleTop: { borderTopWidth: 1.5, borderTopColor: NAVY, paddingTop: 6, marginTop: 2 },
   addr: { fontSize: 7.5, color: GREY },
-  addrSite: { fontSize: 8, color: INK, fontFamily: 'Times-Bold' },
+  addrSite: { ...BOLD, fontSize: 8, color: INK },
   distRight: { fontSize: 7.5, color: GREY, textAlign: 'right' },
-  distPartner: { fontSize: 10, color: NAVY, fontFamily: 'Times-Bold', textAlign: 'right' },
+  distPartner: { ...BOLD, fontSize: 10, color: NAVY, textAlign: 'right' },
 })
-
-function fontFor(bold?: boolean, italic?: boolean): string {
-  if (bold && italic) return 'Times-BoldItalic'
-  if (bold) return 'Times-Bold'
-  if (italic) return 'Times-Italic'
-  return 'Times-Roman'
-}
 
 const unescape = (s: string) =>
   s
@@ -112,19 +150,22 @@ function inlineNodes(tokens: Token[] | undefined, base: InlineStyle, keyPrefix: 
         break
       case 'strong':
         out.push(
-          <Text key={key} style={{ fontFamily: fontFor(true, base.italic) }}>
+          <Text key={key} style={{ fontWeight: 700, ...(base.italic ? { fontStyle: 'italic' } : {}) }}>
             {inlineNodes(t.tokens, { ...base, bold: true }, key)}
           </Text>,
         )
         break
       case 'em':
         out.push(
-          <Text key={key} style={{ fontFamily: fontFor(base.bold, true) }}>
+          <Text key={key} style={{ fontStyle: 'italic', ...(base.bold ? { fontWeight: 700 } : {}) }}>
             {inlineNodes(t.tokens, { ...base, italic: true }, key)}
           </Text>,
         )
         break
       case 'codespan':
+        // Standard-14 Courier — no embedded glyphs, so non-ASCII inside a code
+        // span would still mangle. Acceptable: code spans effectively never
+        // appear in research / interview questions / transcripts.
         out.push(
           <Text key={key} style={{ fontFamily: 'Courier' }}>
             {unescape(t.text ?? '')}
@@ -230,7 +271,7 @@ function renderBlocks(tokens: Token[]): React.ReactNode[] {
         out.push(
           <View key={key} style={styles.quote}>
             {text.split('\n').filter(Boolean).map((l: string, li: number) => (
-              <Text key={li} style={{ fontFamily: 'Times-Italic' }}>{l.trim()}</Text>
+              <Text key={li} style={styles.quoteLine}>{l.trim()}</Text>
             ))}
           </View>,
         )
@@ -273,10 +314,11 @@ function itemFlatTokens(item: Tokens.ListItem): Token[] {
 // ── Header / footer ──────────────────────────────────────────────────────────
 
 function HeaderBand({ template }: { template: DownloadTemplate }) {
-  if (template.kind === 'image' && template.header) {
+  const bands = templateBands(template)
+  if (bands) {
     return (
       <View fixed style={styles.headerFixed}>
-        <Image src={`data:image/jpeg;base64,${template.header.base64}`} style={styles.bandImage} />
+        <Image src={`data:image/jpeg;base64,${bands.header.base64}`} style={styles.bandImage} />
       </View>
     )
   }
@@ -298,10 +340,11 @@ function HeaderBand({ template }: { template: DownloadTemplate }) {
 }
 
 function FooterBand({ template }: { template: DownloadTemplate }) {
-  if (template.kind === 'image' && template.footer) {
+  const bands = templateBands(template)
+  if (bands) {
     return (
       <View fixed style={styles.footerFixed}>
-        <Image src={`data:image/jpeg;base64,${template.footer.base64}`} style={styles.bandImage} />
+        <Image src={`data:image/jpeg;base64,${bands.footer.base64}`} style={styles.bandImage} />
       </View>
     )
   }
@@ -346,7 +389,7 @@ function PdfDoc({ markdown, heading, template, meta }: TemplatedPdfOptions) {
         <Text style={styles.docHeading}>{heading}</Text>
         {metaRows.map(([k, v], i) => (
           <Text key={i} style={styles.meta}>
-            <Text style={{ fontFamily: 'Times-Bold' }}>{k}: </Text>
+            <Text style={styles.metaKey}>{k}: </Text>
             {String(v)}
           </Text>
         ))}

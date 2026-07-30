@@ -92,6 +92,7 @@ export type UsageWorkflow =
   | 'transcript_translate'
   | 'business_case'
   | 'editorial_brief'
+  | 'input_validation'
 
 export interface UsageEvent {
   id: string

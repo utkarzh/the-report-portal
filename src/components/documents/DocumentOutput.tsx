@@ -4,10 +4,12 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { marked } from 'marked'
-import { Download, FileText, Sparkles, WandSparkles, Copy, Check, ArrowLeft } from 'lucide-react'
+import { Download, FileText, Sparkles, WandSparkles, Copy, Check, ArrowLeft, Square } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DeleteDocumentButton from '@/components/documents/DeleteDocumentButton'
+import DocumentGeneratingLoader from '@/components/documents/DocumentGeneratingLoader'
+import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { getDocConfig } from '@/lib/documents'
 import type { DocumentSession } from '@/types'
 
@@ -26,6 +28,16 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   const config = getDocConfig(session.doc_type)
 
   const [output, setOutput] = useState<string>(session.output || '')
+  // Mirrors `output` for reads that must see the latest value. The auto-continue
+  // driver awaits inside a loop, so it keeps ONE generateChunk closure for the
+  // whole run — reading the `output` state variable there would give the value
+  // from the render that started the run, and round 2 would seed itself with
+  // stale text (the document would visibly reset mid-run).
+  const outputRef = useRef(output)
+  const applyOutput = (text: string) => {
+    outputRef.current = text
+    setOutput(text)
+  }
   const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   // The document isn't finished — there's more to write and the user can click
@@ -34,7 +46,9 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
     session.status === 'generating' && Boolean(session.output),
   )
   const hasStartedRef = useRef(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  // Follows the stream only while the user is at the bottom — scrolling up to
+  // re-read earlier text detaches it instead of yanking the view back down.
+  const scroll = useStickToBottom<HTMLDivElement>(output.length)
   // True while a "Continue" pass is running, so the AI disclaimer doesn't re-pop
   // on every Continue click — only on a fresh generation / regenerate.
   const isContinueRef = useRef(false)
@@ -48,14 +62,28 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   const [extra, setExtra] = useState('')
   const [showForm, setShowForm] = useState(false)
 
+  // ── Auto-continue ────────────────────────────────────────────────────────
+  // A pass ends when it hits the server's soft deadline or Claude's own
+  // max_tokens, neither of which means the document is finished — so the run
+  // used to stall waiting for a Continue click. We now chain the passes
+  // automatically. Each round is byte-for-byte the request the button sent, so
+  // the document is produced exactly as before; only the clicking is gone.
+  //
+  // Bounded on purpose: every round costs real money, so we cap the chain and
+  // give the user a Stop control. Hitting the cap falls back to manual Continue
+  // rather than running forever.
+  const AUTO_CONTINUE_MAX = 12
+  const [autoRunning, setAutoRunning] = useState(false)
+  const [roundsRun, setRoundsRun] = useState(0)
+  const stopRequestedRef = useRef(false)
+
   useEffect(() => {
     if (hasStartedRef.current) return
     if (isGenerating && !session.output) {
-      // Fresh generation kicked off from the "new" flow — generate the first
-      // part automatically. If it isn't the whole document, we then show a
-      // Continue button rather than auto-looping.
+      // Fresh generation kicked off from the "new" flow — run it through to
+      // completion rather than pausing after the first segment.
       hasStartedRef.current = true
-      generateChunk('fresh')
+      runToCompletion('fresh')
     }
     // Reopened mid-run (status 'generating', output already saved): we DON'T
     // auto-continue — `needsContinue` is seeded true, so the Continue button
@@ -63,9 +91,31 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [output])
+  // Drives generateChunk until the document is finished, the cap is reached, the
+  // user hits Stop, or a pass fails.
+  async function runToCompletion(mode: 'fresh' | 'continue' | 'regenerate') {
+    stopRequestedRef.current = false
+    setAutoRunning(true)
+    setRoundsRun(0)
+    try {
+      let next = mode
+      for (let round = 1; round <= AUTO_CONTINUE_MAX; round++) {
+        const result = await generateChunk(next)
+        setRoundsRun(round)
+        // 'done' — finished. 'error' — surfaced to the user, don't spend more.
+        if (result !== 'more') return
+        if (stopRequestedRef.current) {
+          setNeedsContinue(true)
+          return
+        }
+        next = 'continue'
+      }
+      // Cap reached with the document still unfinished — hand control back.
+      setNeedsContinue(true)
+    } finally {
+      setAutoRunning(false)
+    }
+  }
 
   // Generate ONE part of the document, streamed. The server writes as much as
   // it can before a soft deadline (under the platform's function-timeout cap),
@@ -73,7 +123,9 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   // Continue button — the user controls how long (and how costly) it gets, and
   // nothing is lost between passes even on a hard timeout (the server saves
   // incrementally; on any connection drop we recover the saved text below).
-  async function generateChunk(mode: 'fresh' | 'continue' | 'regenerate') {
+  async function generateChunk(
+    mode: 'fresh' | 'continue' | 'regenerate',
+  ): Promise<'done' | 'more' | 'error'> {
     const isContinue = mode === 'continue'
     isContinueRef.current = isContinue
     setError(null)
@@ -82,8 +134,8 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
     setNeedsContinue(false)
     const additionalPrompt = mode === 'regenerate' ? extra.trim() : ''
     // Continue streams on TOP of the saved text; fresh/regenerate start over.
-    const priorText = isContinue ? output : ''
-    if (!isContinue) setOutput('')
+    const priorText = isContinue ? outputRef.current : ''
+    if (!isContinue) applyOutput('')
 
     try {
       const res = await fetch(`/api/documents/${session.id}/generate`, {
@@ -97,7 +149,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
         if (res.status === 402 || res.status === 403) {
           setError(d.error || 'Generation is not available.')
           setStreamStatus('idle')
-          return
+          return 'error'
         }
         throw new Error(d.error || 'Generation failed')
       }
@@ -122,11 +174,11 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
           let payload: { text?: string; usage?: typeof usage; done?: boolean; output?: string; error?: string }
           try { payload = JSON.parse(line) } catch { continue }
           if (payload.error) { streamError = payload.error; break readLoop }
-          if (payload.text) { streamed += payload.text; setOutput(streamed) }
+          if (payload.text) { streamed += payload.text; applyOutput(streamed) }
           if (payload.usage) setUsage(payload.usage)
           if (typeof payload.done === 'boolean') {
             finalDone = payload.done
-            if (typeof payload.output === 'string') { streamed = payload.output; setOutput(streamed) }
+            if (typeof payload.output === 'string') { streamed = payload.output; applyOutput(streamed) }
           }
         }
       }
@@ -138,15 +190,21 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
         setExtra('')
         setNeedsContinue(false)
         router.refresh()
-      } else if (finalDone === false || streamed.trim()) {
-        // Cut off at the soft deadline (or the stream ended mid-document) —
-        // there's more to write.
-        setNeedsContinue(true)
-      } else {
-        // Stream closed without any verdict or text — recover saved state.
-        const recovered = await recoverSaved()
-        if (!recovered) setError('Generation failed. Please try again.')
+        return 'done'
       }
+      if (finalDone === false || streamed.trim()) {
+        // Cut off at the soft deadline (or the stream ended mid-document) —
+        // there's more to write. The driver decides whether to chain another
+        // round or surface the Continue button.
+        return 'more'
+      }
+      // Stream closed without any verdict or text — recover saved state.
+      const recovered = await recoverSaved()
+      if (!recovered) {
+        setError('Generation failed. Please try again.')
+        return 'error'
+      }
+      return 'more'
     } catch (e) {
       // The connection may have dropped because the platform hard-killed the
       // function (e.g. a slow pass overran the timeout). The server persists
@@ -157,6 +215,9 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
         setError(e instanceof Error ? e.message : 'Generation failed. Please try again.')
       }
       setStreamStatus('idle')
+      // Recovered text means the pass produced work worth continuing from; a
+      // bare failure must not be retried automatically.
+      return recovered ? 'more' : 'error'
     }
   }
 
@@ -168,7 +229,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
       if (!res.ok) return false
       const d = (await res.json()) as { status?: string; output?: string; usage?: typeof usage }
       if (typeof d.output === 'string' && d.output.trim()) {
-        setOutput(d.output)
+        applyOutput(d.output)
         if (d.usage) setUsage(d.usage)
         if (d.status === 'complete') {
           setNeedsContinue(false)
@@ -260,7 +321,12 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
       </aside>
 
       {/* Output */}
-      <div className="min-w-0 flex-1 overflow-y-auto">
+      <div
+        ref={scroll.ref}
+        onScroll={scroll.onScroll}
+        onWheel={scroll.onWheel}
+        className="min-w-0 flex-1 overflow-y-auto"
+      >
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
           <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
@@ -275,10 +341,25 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
               </div>
               <div className="flex items-center gap-1">
                 {isProcessing ? (
-                  <span className="flex items-center gap-2 pr-2 text-xs text-gray-500">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
-                    {streamingLabel}
-                  </span>
+                  <>
+                    <span className="flex items-center gap-2 pr-1 text-xs text-gray-500">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+                      {streamingLabel}
+                      {roundsRun > 0 && (
+                        <span className="tabular-nums text-gray-400">part {roundsRun + 1}</span>
+                      )}
+                    </span>
+                    {autoRunning && (
+                      <button
+                        onClick={() => { stopRequestedRef.current = true }}
+                        title="Stop after the current part finishes"
+                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                      >
+                        <Square size={11} />
+                        <span>{stopRequestedRef.current ? 'Stopping…' : 'Stop'}</span>
+                      </button>
+                    )}
+                  </>
                 ) : output ? (
                   <>
                     <CopyButton text={output} />
@@ -306,10 +387,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                   {isProcessing && <span className="cursor-blink select-none text-gray-300">▋</span>}
                 </>
               ) : isProcessing ? (
-                <div className="flex items-center gap-2 py-6 text-sm text-gray-400">
-                  <span>Generating the {config.label.toLowerCase()} — a full document builds in stages and can take a few minutes…</span>
-                  <span className="cursor-blink select-none">▋</span>
-                </div>
+                <DocumentGeneratingLoader label={config.label} />
               ) : (
                 <div className="flex flex-col items-center gap-4 py-10 text-center">
                   <div className="rounded-full bg-[#f7f6f3] p-3 text-gray-400">
@@ -317,7 +395,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                   </div>
                   <p className="text-sm text-gray-500">Ready to generate this {config.label.toLowerCase()}.</p>
                   <button
-                    onClick={() => generateChunk('fresh')}
+                    onClick={() => runToCompletion('fresh')}
                     className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
                   >
                     <Sparkles size={15} />
@@ -333,7 +411,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                     The {config.label.toLowerCase()} isn’t finished yet — the draft so far is saved. Click Continue to generate the next part, or download what you have.
                   </p>
                   <button
-                    onClick={() => generateChunk('continue')}
+                    onClick={() => runToCompletion('continue')}
                     className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
                   >
                     <Sparkles size={15} />
@@ -365,7 +443,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                       />
                       <div className="mt-4 flex gap-3">
                         <button
-                          onClick={() => generateChunk('regenerate')}
+                          onClick={() => runToCompletion('regenerate')}
                           className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-900"
                         >
                           <WandSparkles size={15} />
@@ -387,7 +465,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   <span>{error}</span>
                   <button
-                    onClick={() => { setError(null); generateChunk(output ? 'continue' : 'fresh') }}
+                    onClick={() => { setError(null); runToCompletion(output ? 'continue' : 'fresh') }}
                     className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
                   >
                     {output ? 'Continue' : 'Try again'}
@@ -396,8 +474,6 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
               )}
             </div>
           </div>
-
-          <div ref={bottomRef} />
         </div>
       </div>
     </div>
