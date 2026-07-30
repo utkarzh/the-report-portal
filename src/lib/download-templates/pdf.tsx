@@ -137,7 +137,38 @@ interface InlineStyle {
   size?: number
 }
 
-function inlineNodes(tokens: Token[] | undefined, base: InlineStyle, keyPrefix: string): React.ReactNode[] {
+// Yellow used for [[ … ]] client-confirmation spans, matching the on-screen
+// highlight (mark.confirm-highlight) and the docx 'yellow' highlight.
+const CONFIRM_FILL = '#FDE68A'
+
+// Render a plain-text run, converting [[ … ]] confirmation spans into yellow
+// highlighted text (brackets stripped) when highlight is enabled. Without this
+// the raw "[[ … ]]" markers leak into the downloaded PDF.
+function textNodes(text: string, keyPrefix: string, highlight: boolean): React.ReactNode[] {
+  const plain = unescape(text)
+  if (!highlight || !plain.includes('[[')) return [plain]
+  const out: React.ReactNode[] = []
+  plain.split(/(\[\[[\s\S]+?\]\])/g).forEach((part, i) => {
+    if (!part) return
+    if (part.startsWith('[[') && part.endsWith(']]')) {
+      out.push(
+        <Text key={`${keyPrefix}-hl-${i}`} style={{ backgroundColor: CONFIRM_FILL }}>
+          {part.slice(2, -2)}
+        </Text>,
+      )
+    } else {
+      out.push(part)
+    }
+  })
+  return out
+}
+
+function inlineNodes(
+  tokens: Token[] | undefined,
+  base: InlineStyle,
+  keyPrefix: string,
+  highlight = false,
+): React.ReactNode[] {
   if (!tokens) return []
   const out: React.ReactNode[] = []
   ;(tokens as Tokens.Generic[]).forEach((t, i) => {
@@ -145,20 +176,20 @@ function inlineNodes(tokens: Token[] | undefined, base: InlineStyle, keyPrefix: 
     switch (t.type) {
       case 'text':
       case 'escape':
-        if (t.tokens && t.tokens.length) out.push(...inlineNodes(t.tokens, base, key))
-        else out.push(unescape(t.text ?? ''))
+        if (t.tokens && t.tokens.length) out.push(...inlineNodes(t.tokens, base, key, highlight))
+        else out.push(...textNodes(t.text ?? '', key, highlight))
         break
       case 'strong':
         out.push(
           <Text key={key} style={{ fontWeight: 700, ...(base.italic ? { fontStyle: 'italic' } : {}) }}>
-            {inlineNodes(t.tokens, { ...base, bold: true }, key)}
+            {inlineNodes(t.tokens, { ...base, bold: true }, key, highlight)}
           </Text>,
         )
         break
       case 'em':
         out.push(
           <Text key={key} style={{ fontStyle: 'italic', ...(base.bold ? { fontWeight: 700 } : {}) }}>
-            {inlineNodes(t.tokens, { ...base, italic: true }, key)}
+            {inlineNodes(t.tokens, { ...base, italic: true }, key, highlight)}
           </Text>,
         )
         break
@@ -184,14 +215,14 @@ function inlineNodes(tokens: Token[] | undefined, base: InlineStyle, keyPrefix: 
         out.push('\n')
         break
       case 'del':
-        out.push(...inlineNodes(t.tokens, base, key))
+        out.push(...inlineNodes(t.tokens, base, key, highlight))
         break
       case 'html':
-        out.push(unescape((t.text ?? '').replace(/<[^>]+>/g, '')))
+        out.push(...textNodes((t.text ?? '').replace(/<[^>]+>/g, ''), key, highlight))
         break
       default:
-        if (t.tokens) out.push(...inlineNodes(t.tokens, base, key))
-        else if (t.text) out.push(unescape(t.text))
+        if (t.tokens) out.push(...inlineNodes(t.tokens, base, key, highlight))
+        else if (t.text) out.push(...textNodes(t.text, key, highlight))
     }
   })
   return out
@@ -199,7 +230,7 @@ function inlineNodes(tokens: Token[] | undefined, base: InlineStyle, keyPrefix: 
 
 // ── Block rendering ────────────────────────────────────────────────────────
 
-function tableBlock(token: Tokens.Table, key: string): React.ReactNode {
+function tableBlock(token: Tokens.Table, key: string, highlight = false): React.ReactNode {
   const cols = token.header.length
   const flex = 1 / cols
   return (
@@ -207,7 +238,7 @@ function tableBlock(token: Tokens.Table, key: string): React.ReactNode {
       <View style={styles.tRow}>
         {token.header.map((c, ci) => (
           <Text key={ci} style={{ ...styles.tHeadCell, flex, ...(ci === cols - 1 ? { borderRightWidth: 0 } : {}) }}>
-            {inlineNodes(c.tokens, {}, `th-${ci}`)}
+            {inlineNodes(c.tokens, {}, `th-${ci}`, highlight)}
           </Text>
         ))}
       </View>
@@ -217,7 +248,7 @@ function tableBlock(token: Tokens.Table, key: string): React.ReactNode {
             const cell = row[ci]
             return (
               <Text key={ci} style={{ ...styles.tCell, flex, ...(ci === cols - 1 ? { borderRightWidth: 0 } : {}) }}>
-                {cell ? inlineNodes(cell.tokens, {}, `td-${ri}-${ci}`) : ''}
+                {cell ? inlineNodes(cell.tokens, {}, `td-${ri}-${ci}`, highlight) : ''}
               </Text>
             )
           })}
@@ -227,7 +258,7 @@ function tableBlock(token: Tokens.Table, key: string): React.ReactNode {
   )
 }
 
-function renderBlocks(tokens: Token[]): React.ReactNode[] {
+function renderBlocks(tokens: Token[], highlight = false): React.ReactNode[] {
   const out: React.ReactNode[] = []
 
   const renderList = (list: Tokens.List, level: number, key: string) => {
@@ -238,7 +269,7 @@ function renderBlocks(tokens: Token[]): React.ReactNode[] {
       out.push(
         <View key={itemKey} style={{ ...styles.listItem, marginLeft: level * 14 }} wrap={false}>
           <Text style={styles.bullet}>{marker}</Text>
-          <Text style={styles.listBody}>{inlineNodes(itemFlatTokens(item), {}, itemKey)}</Text>
+          <Text style={styles.listBody}>{inlineNodes(itemFlatTokens(item), {}, itemKey, highlight)}</Text>
         </View>,
       )
       for (const sub of item.tokens as Tokens.Generic[]) {
@@ -254,7 +285,7 @@ function renderBlocks(tokens: Token[]): React.ReactNode[] {
         const depth = (tok as Tokens.Heading).depth
         out.push(
           <Text key={key} style={depth <= 2 ? styles.h1 : styles.h3}>
-            {inlineNodes((tok as Tokens.Heading).tokens, {}, key)}
+            {inlineNodes((tok as Tokens.Heading).tokens, {}, key, highlight)}
           </Text>,
         )
         break
@@ -262,7 +293,7 @@ function renderBlocks(tokens: Token[]): React.ReactNode[] {
       case 'paragraph':
         out.push(
           <Text key={key} style={styles.para}>
-            {inlineNodes((tok as Tokens.Paragraph).tokens, {}, key)}
+            {inlineNodes((tok as Tokens.Paragraph).tokens, {}, key, highlight)}
           </Text>,
         )
         break
@@ -281,7 +312,7 @@ function renderBlocks(tokens: Token[]): React.ReactNode[] {
         renderList(tok as Tokens.List, 0, key)
         break
       case 'table':
-        out.push(tableBlock(tok as Tokens.Table, key))
+        out.push(tableBlock(tok as Tokens.Table, key, highlight))
         break
       case 'code':
         out.push(
@@ -377,9 +408,11 @@ export interface TemplatedPdfOptions {
   heading: string
   template: DownloadTemplate
   meta?: [string, string | null | undefined][]
+  /** Highlight [[ … ]] client-confirmation spans yellow (refined transcripts). */
+  highlightConfirm?: boolean
 }
 
-function PdfDoc({ markdown, heading, template, meta }: TemplatedPdfOptions) {
+function PdfDoc({ markdown, heading, template, meta, highlightConfirm }: TemplatedPdfOptions) {
   const metaRows = (meta ?? []).filter(([, v]) => v)
   return (
     <Document>
@@ -394,7 +427,7 @@ function PdfDoc({ markdown, heading, template, meta }: TemplatedPdfOptions) {
           </Text>
         ))}
         {metaRows.length ? <View style={{ height: 8 }} /> : null}
-        {renderBlocks(marked.lexer(markdown))}
+        {renderBlocks(marked.lexer(markdown), Boolean(highlightConfirm))}
       </Page>
     </Document>
   )

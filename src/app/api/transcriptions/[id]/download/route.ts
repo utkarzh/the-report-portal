@@ -60,7 +60,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   let body: BodyInit
   let contentType: string
   if (format === 'pdf') {
-    body = new Uint8Array(await renderTemplatedPdf({ markdown: text, heading, template })) as BodyInit
+    // Highlight [[ … ]] client-confirmation spans yellow on the refined variant
+    // (mirrors the docx path); otherwise the raw markers leak into the PDF.
+    body = new Uint8Array(await renderTemplatedPdf({ markdown: text, heading, template, highlightConfirm: variant === 'refined' })) as BodyInit
     contentType = 'application/pdf'
   } else {
     // Highlight [[ … ]] client-confirmation spans yellow on the refined variant.
