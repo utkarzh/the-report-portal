@@ -1,15 +1,19 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import type { PromptVersion, CategoryPromptVersion, DocType } from '@/types'
+import type { PromptVersion, CategoryPromptVersion, DocType, InterviewType, MeetingPrepPromptKey } from '@/types'
 
 type Version = PromptVersion | CategoryPromptVersion
 
 interface Props {
-  type: 'general' | 'category' | 'transcript' | 'document'
+  type: 'general' | 'category' | 'transcript' | 'document' | 'meeting_prep_planteo' | 'meeting_prep_prompt'
   categoryId?: string
   // Required when type === 'document' — selects which module's prompt history.
   docType?: DocType
+  // Required when type === 'meeting_prep_planteo'.
+  variant?: InterviewType
+  // Required when type === 'meeting_prep_prompt'.
+  promptKey?: MeetingPrepPromptKey
   currentPromptText?: string
   refreshKey?: number
   onRestore: (promptText: string) => void
@@ -22,18 +26,22 @@ function formatDate(iso: string) {
   })
 }
 
-export default function PromptVersionHistory({ type, categoryId, docType, currentPromptText, refreshKey, onRestore }: Props) {
+export default function PromptVersionHistory({ type, categoryId, docType, variant, promptKey, currentPromptText, refreshKey, onRestore }: Props) {
   // Endpoints per prompt type. For 'document', the list is filtered by docType;
   // restore/delete target a version id directly (the row carries its doc_type).
   const listUrl =
     type === 'general' ? '/api/prompts/versions'
     : type === 'transcript' ? '/api/transcript-prompt/versions'
     : type === 'document' ? `/api/document-prompt/versions?docType=${docType}`
+    : type === 'meeting_prep_planteo' ? `/api/meeting-prep/planteo-library/${variant}/versions`
+    : type === 'meeting_prep_prompt' ? `/api/meeting-prep/prompts/${promptKey}/versions`
     : `/api/categories/${categoryId}/versions`
   const itemUrl = (id: string) =>
     type === 'general' ? `/api/prompts/versions/${id}`
     : type === 'transcript' ? `/api/transcript-prompt/versions/${id}`
     : type === 'document' ? `/api/document-prompt/versions/${id}`
+    : type === 'meeting_prep_planteo' ? `/api/meeting-prep/planteo-library/${variant}/versions/${id}`
+    : type === 'meeting_prep_prompt' ? `/api/meeting-prep/prompts/${promptKey}/versions/${id}`
     : `/api/categories/${categoryId}/versions/${id}`
 
   const [open, setOpen] = useState(false)

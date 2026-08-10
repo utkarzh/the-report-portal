@@ -33,8 +33,12 @@ const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
   business_case: 'Business case',
   editorial_brief: 'Editorial brief',
   input_validation: 'Input screening',
+  meeting_prep_research: 'Meeting prep — research',
+  meeting_prep_points: 'Meeting prep — presentation points',
+  meeting_prep_planteo: 'Meeting prep — planteo',
+  meeting_prep_final_document: 'Meeting prep — final document',
 }
-const WORKFLOW_ORDER: UsageWorkflow[] = ['research', 'research_questions', 'transcript_refine', 'transcript_translate', 'business_case', 'editorial_brief', 'input_validation']
+const WORKFLOW_ORDER: UsageWorkflow[] = ['research', 'research_questions', 'transcript_refine', 'transcript_translate', 'business_case', 'editorial_brief', 'meeting_prep_research', 'meeting_prep_points', 'meeting_prep_planteo', 'meeting_prep_final_document', 'input_validation']
 
 // Resolves a range key to concrete bounds + how the trend should be bucketed.
 // `start`/`end` are ISO strings (null start = "from the beginning").

@@ -49,6 +49,16 @@ export const GENERATION_TOKEN_RESERVE = 150_000
 // cached) research context, so it costs far less than a full research run.
 export const QUESTIONS_TOKEN_RESERVE = 60_000
 
+// Commercial Meeting Preparation module — 4 sequential stages, each gated
+// independently right before its own Claude call (never after). Research
+// does web search plus up to one internal reframe retry, so it's sized like
+// GENERATION_TOKEN_RESERVE; the later stages reuse mostly-cached context and
+// produce far shorter output.
+export const MEETING_PREP_RESEARCH_RESERVE = 150_000
+export const MEETING_PREP_POINTS_RESERVE = 20_000
+export const MEETING_PREP_PLANTEO_RESERVE = 20_000
+export const MEETING_PREP_FINAL_DOC_RESERVE = 40_000
+
 export interface UsageBreakdown {
   inputTokens: number                // uncached input (billed at full input price)
   outputTokens: number

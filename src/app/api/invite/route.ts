@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { email, role, tokenLimit, fullName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs } = body
+  const { email, role, tokenLimit, fullName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation } = body
 
   if (!email || !role) {
     return NextResponse.json({ error: 'email and role are required' }, { status: 400 })
@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       can_access_transcriptions: role === 'admin' ? true : canAccessTranscriptions === true,
       can_access_business_cases: role === 'admin' ? true : canAccessBusinessCases === true,
       can_access_editorial_briefs: role === 'admin' ? true : canAccessEditorialBriefs === true,
+      can_access_meeting_preparation: role === 'admin' ? true : canAccessMeetingPreparation === true,
       invited_by: user.id,
     })
     .select('id, token')

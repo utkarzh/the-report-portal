@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  CalendarClock,
 } from 'lucide-react'
 import type { UserRole } from '@/types'
 
@@ -29,6 +30,7 @@ interface SidebarProps {
   canAccessTranscriptions: boolean
   canAccessBusinessCases: boolean
   canAccessEditorialBriefs: boolean
+  canAccessMeetingPreparation: boolean
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
@@ -60,7 +62,7 @@ function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: bool
   )
 }
 
-export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, mobileOpen = false }: SidebarProps) {
+export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, mobileOpen = false }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
@@ -71,6 +73,7 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
     ...(canAccessTranscriptions ? [{ label: 'Transcriptions', href: '/transcriptions', icon: AudioLines }] : []),
     ...(canAccessBusinessCases ? [{ label: 'Business Cases', href: '/business-cases', icon: Briefcase }] : []),
     ...(canAccessEditorialBriefs ? [{ label: 'Editorial Briefs', href: '/editorial-briefs', icon: FileText }] : []),
+    ...(canAccessMeetingPreparation ? [{ label: 'Meeting Preparation', href: '/meeting-preparation', icon: CalendarClock }] : []),
   ]
 
   useEffect(() => {

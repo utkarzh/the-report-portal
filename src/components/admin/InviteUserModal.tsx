@@ -22,6 +22,7 @@ const defaultForm = {
   canAccessTranscriptions: false,
   canAccessBusinessCases: false,
   canAccessEditorialBriefs: false,
+  canAccessMeetingPreparation: false,
 }
 
 // Admins get an invite link (they set a password on signup). Normal users have
@@ -81,6 +82,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
           canAccessTranscriptions: form.canAccessTranscriptions,
           canAccessBusinessCases: form.canAccessBusinessCases,
           canAccessEditorialBriefs: form.canAccessEditorialBriefs,
+          canAccessMeetingPreparation: form.canAccessMeetingPreparation,
         }),
       }),
     })
@@ -319,6 +321,11 @@ export default function InviteUserModal({ open, onClose }: Props) {
                       label="Editorial Briefs"
                       checked={form.canAccessEditorialBriefs}
                       onChange={(v) => setForm(p => ({ ...p, canAccessEditorialBriefs: v }))}
+                    />
+                    <ModuleCheckbox
+                      label="Meeting Preparation"
+                      checked={form.canAccessMeetingPreparation}
+                      onChange={(v) => setForm(p => ({ ...p, canAccessMeetingPreparation: v }))}
                     />
                   </div>
                 </div>

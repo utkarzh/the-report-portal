@@ -46,27 +46,30 @@ marked.use({ gfm: true, breaks: true })
 // auto-layout tables render broken (collapsed / overlapping columns) in Apple
 // apps (Pages, iOS Quick Look, Word for Mac), which don't compute auto-layout
 // the way Windows Word does. Fixed widths render identically everywhere.
-const MARGIN = 1080
-const LETTER_W = 12240
-const LETTER_H = 15840
-const CONTENT_W_PORTRAIT = LETTER_W - MARGIN * 2 // 10080
-const CONTENT_W_LANDSCAPE = LETTER_H - MARGIN * 2 // 13680
+// Exported so other document-style templates (e.g. Meeting Preparation) can
+// share the same page geometry and render the same markdown->docx tokens
+// without duplicating the table/callout/citation rendering logic below.
+export const MARGIN = 1080
+export const LETTER_W = 12240
+export const LETTER_H = 15840
+export const CONTENT_W_PORTRAIT = LETTER_W - MARGIN * 2 // 10080
+export const CONTENT_W_LANDSCAPE = LETTER_H - MARGIN * 2 // 13680
 
 // Palette (hex without '#'), lifted from the reference template.
-const NAVY = '1F3864' // section headings, table header fill, cover title
-const BLUE = '2E74B5' // media sub-title, sub-headings
+export const NAVY = '1F3864' // section headings, table header fill, cover title
+export const BLUE = '2E74B5' // media sub-title, sub-headings
 const ORANGE = 'C55A11' // callout labels
 const ORANGE_RULE = 'E8A33D' // section-heading underline rule
 const CREAM = 'FFF9E6' // callout box fill
 const CREAM_BORDER = 'E6C74C' // callout box border
 const GREY_CITE = '7F7F7F' // citation text
-const GREY_FOOT = '888888' // footer text
+export const GREY_FOOT = '888888' // footer text
 const TABLE_BORDER = 'BFBFBF' // table cell borders
 const ZEBRA = 'F4F5F8' // alternate table row fill
-const INK = '1A1A1A' // body text
+export const INK = '1A1A1A' // body text
 
 // Sizes are half-points (docx convention): 21 = 10.5pt.
-const SZ = {
+export const SZ = {
   coverTitle: 64, // 32pt
   coverSub: 30, // 15pt
   coverMeta: 22, // 11pt
@@ -80,7 +83,7 @@ const SZ = {
   footer: 16, // 8pt
 }
 
-const FONT = 'Calibri'
+export const FONT = 'Calibri'
 
 type RunOpts = { size: number; color?: string; bold?: boolean; italics?: boolean }
 
@@ -336,7 +339,7 @@ function isCalloutParagraph(t: Tokens.Generic): boolean {
 
 // ── Body rendering ──────────────────────────────────────────────────────────────
 
-function renderTokens(tokens: Token[], contentWidth: number): (Paragraph | Table)[] {
+export function renderTokens(tokens: Token[], contentWidth: number): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = []
 
   const renderList = (list: Tokens.List, level: number) => {

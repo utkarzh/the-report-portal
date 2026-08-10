@@ -25,6 +25,7 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
     canAccessTranscriptions: user.can_access_transcriptions,
     canAccessBusinessCases: user.can_access_business_cases,
     canAccessEditorialBriefs: user.can_access_editorial_briefs,
+    canAccessMeetingPreparation: user.can_access_meeting_preparation,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +52,7 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
           canAccessTranscriptions: form.canAccessTranscriptions,
           canAccessBusinessCases: form.canAccessBusinessCases,
           canAccessEditorialBriefs: form.canAccessEditorialBriefs,
+          canAccessMeetingPreparation: form.canAccessMeetingPreparation,
         }),
       }),
     })
@@ -153,6 +155,11 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
               label="Editorial Briefs"
               checked={form.canAccessEditorialBriefs}
               onChange={(v) => setForm(p => ({ ...p, canAccessEditorialBriefs: v }))}
+            />
+            <ModuleCheckbox
+              label="Meeting Preparation"
+              checked={form.canAccessMeetingPreparation}
+              onChange={(v) => setForm(p => ({ ...p, canAccessMeetingPreparation: v }))}
             />
           </div>
         </div>

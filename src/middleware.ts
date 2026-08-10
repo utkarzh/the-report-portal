@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, landingPathFor } from '@/lib/access'
+import { canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, landingPathFor } from '@/lib/access'
 import type { UserRole } from '@/types'
 
 // Normal users are automatically signed out 10 days after they last signed in.
@@ -115,14 +115,14 @@ export async function middleware(request: NextRequest) {
   }
 
   const requestHeaders = new Headers(request.headers)
-  for (const key of ['x-user-id', 'x-user-role', 'x-user-name', 'x-user-tokens-used', 'x-user-token-limit', 'x-user-can-interview', 'x-user-can-transcriptions', 'x-user-can-business-cases', 'x-user-can-editorial-briefs']) {
+  for (const key of ['x-user-id', 'x-user-role', 'x-user-name', 'x-user-tokens-used', 'x-user-token-limit', 'x-user-can-interview', 'x-user-can-transcriptions', 'x-user-can-business-cases', 'x-user-can-editorial-briefs', 'x-user-can-meeting-preparation']) {
     requestHeaders.delete(key)
   }
 
   if (user && !isPublicRoute) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role, status, full_name, tokens_used, token_limit, active_session_id, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs')
+      .select('role, status, full_name, tokens_used, token_limit, active_session_id, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation')
       .eq('id', user.id)
       .single()
 
@@ -176,12 +176,14 @@ export async function middleware(request: NextRequest) {
       can_access_transcriptions: profile.can_access_transcriptions,
       can_access_business_cases: profile.can_access_business_cases,
       can_access_editorial_briefs: profile.can_access_editorial_briefs,
+      can_access_meeting_preparation: profile.can_access_meeting_preparation,
     }
     const blockedFromInterview = pathname.startsWith('/interview') && !canAccessInterview(access)
     const blockedFromTranscriptions = pathname.startsWith('/transcriptions') && !canAccessTranscriptions(access)
     const blockedFromBusinessCases = pathname.startsWith('/business-cases') && !canAccessBusinessCases(access)
     const blockedFromEditorialBriefs = pathname.startsWith('/editorial-briefs') && !canAccessEditorialBriefs(access)
-    if (blockedFromInterview || blockedFromTranscriptions || blockedFromBusinessCases || blockedFromEditorialBriefs) {
+    const blockedFromMeetingPreparation = pathname.startsWith('/meeting-preparation') && !canAccessMeetingPreparation(access)
+    if (blockedFromInterview || blockedFromTranscriptions || blockedFromBusinessCases || blockedFromEditorialBriefs || blockedFromMeetingPreparation) {
       const url = request.nextUrl.clone()
       url.pathname = landingPathFor(access)
       url.search = ''
@@ -198,6 +200,7 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set('x-user-can-transcriptions', String(canAccessTranscriptions(access)))
     requestHeaders.set('x-user-can-business-cases', String(canAccessBusinessCases(access)))
     requestHeaders.set('x-user-can-editorial-briefs', String(canAccessEditorialBriefs(access)))
+    requestHeaders.set('x-user-can-meeting-preparation', String(canAccessMeetingPreparation(access)))
   }
 
   const response = NextResponse.next({ request: { headers: requestHeaders } })

@@ -16,6 +16,7 @@ export interface Profile {
   can_access_transcriptions: boolean
   can_access_business_cases: boolean
   can_access_editorial_briefs: boolean
+  can_access_meeting_preparation: boolean
   created_at: string
   updated_at: string
 }
@@ -29,6 +30,7 @@ export interface Invitation {
   can_access_transcriptions: boolean
   can_access_business_cases: boolean
   can_access_editorial_briefs: boolean
+  can_access_meeting_preparation: boolean
   token: string
   status: InviteStatus
   invited_by: string | null
@@ -93,6 +95,10 @@ export type UsageWorkflow =
   | 'business_case'
   | 'editorial_brief'
   | 'input_validation'
+  | 'meeting_prep_research'
+  | 'meeting_prep_points'
+  | 'meeting_prep_planteo'
+  | 'meeting_prep_final_document'
 
 export interface UsageEvent {
   id: string
@@ -280,4 +286,92 @@ export interface UserAnalytics {
   inputTokens: number
   outputTokens: number
   costUsd: number
+}
+
+// ── Commercial Meeting Preparation module ──────────────────────────────────
+export type InterviewType = 'company_ceo' | 'government_official'
+
+export type MeetingPrepStage =
+  | 'input'
+  | 'researching'
+  | 'awaiting_review'
+  | 'points_generating'
+  | 'points_pending'
+  | 'planteo_generating'
+  | 'planteo_pending'
+  | 'final_generating'
+  | 'complete'
+  | 'failed'
+
+export interface MeetingPrepResearchSections {
+  interviewee?: string
+  organisation?: string
+  motivation_profiles?: string
+  quotes_news?: string
+}
+
+export interface MeetingPrepSession {
+  id: string
+  user_id: string | null
+  interviewee_name: string
+  interviewee_title: string
+  interviewee_type: InterviewType
+  company_org: string
+  company_country: string
+  publication: string
+  publication_country: string
+  media_library_id: string | null
+  media_positioning_snapshot: string | null
+  media_audience_reach_snapshot: string | null
+  media_narrative_snapshot: string | null
+  advertiser_history_status: 'yes' | 'no' | null
+  advertiser_history_details: string | null
+  research_sections: MeetingPrepResearchSections
+  presentation_points: string[]
+  planteo_output: string | null
+  final_output: string | null
+  research_prompt_snapshot: string | null
+  points_prompt_snapshot: string | null
+  planteo_prompt_snapshot: string | null
+  final_doc_prompt_snapshot: string | null
+  planteo_library_snapshot: string | null
+  stage: MeetingPrepStage
+  error: string | null
+  tokens_input: number
+  tokens_output: number
+  tokens_total: number
+  web_searches: number
+  cost_usd: number
+  created_at: string
+  updated_at: string
+}
+
+export interface MeetingPrepMediaLibraryEntry {
+  id: string
+  publication_name: string
+  positioning_statement: string
+  audience_reach: string
+  editorial_narrative_focus: string
+  country_of_publication: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MeetingPrepPlanteoLibraryEntry {
+  id: string
+  variant: InterviewType
+  template_text: string
+  updated_by: string | null
+  updated_at: string
+}
+
+export type MeetingPrepPromptKey = 'research' | 'presentation_points' | 'planteo' | 'final_document'
+
+export interface MeetingPrepPrompt {
+  id: string
+  prompt_key: MeetingPrepPromptKey
+  prompt_text: string
+  updated_by: string | null
+  updated_at: string
 }
