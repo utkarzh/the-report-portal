@@ -28,26 +28,10 @@ export function useAiDisclaimer(active: boolean) {
 }
 
 const CHECK_ITEMS = [
-  {
-    icon: CalendarClock,
-    title: 'Appointments & career history',
-    body: 'Appointment dates, tenure, and career history — the single most common source of errors.',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Macroeconomic figures',
-    body: 'GDP, foreign direct investment, trade, and other macroeconomic figures.',
-  },
-  {
-    icon: CalendarDays,
-    title: 'Event dates',
-    body: 'Any date tied to an event, summit, deal, or agreement.',
-  },
-  {
-    icon: Award,
-    title: 'Awards & rankings',
-    body: 'Awards, rankings, and results — confirm they are current and not outdated.',
-  },
+  { icon: CalendarClock, label: 'Appointment dates & tenure' },
+  { icon: TrendingUp, label: 'Macroeconomic figures' },
+  { icon: CalendarDays, label: 'Event & summit dates' },
+  { icon: Award, label: 'Awards & rankings' },
 ]
 
 const backdrop = {
@@ -111,27 +95,27 @@ export default function AiDisclaimerModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="ai-disclaimer-title"
-            className="relative w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+            className="relative flex max-h-[95vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
             variants={panel}
             initial="hidden"
             animate="visible"
             exit="exit"
           >
-            {/* Header band */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-red-500 via-red-500 to-rose-600 px-6 py-5">
+            {/* Header band — stays put; only the body below scrolls if it doesn't fit */}
+            <div className="relative flex-shrink-0 overflow-hidden bg-gradient-to-br from-red-500 via-red-500 to-rose-600 px-6 py-4">
               <div className="pointer-events-none absolute -right-6 -top-8 h-28 w-28 rounded-full bg-white/10" />
               <div className="pointer-events-none absolute -bottom-10 right-16 h-20 w-20 rounded-full bg-white/10" />
               <div className="relative flex items-center gap-3">
                 <motion.span
-                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/20 text-white shadow-inner ring-1 ring-white/30"
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white/20 text-white shadow-inner ring-1 ring-white/30"
                   initial={{ rotate: -12, scale: 0.6, opacity: 0 }}
                   animate={{ rotate: 0, scale: 1, opacity: 1 }}
                   transition={{ type: 'spring', stiffness: 300, damping: 15, delay: 0.05 }}
                 >
-                  <ShieldCheck size={22} />
+                  <ShieldCheck size={20} />
                 </motion.span>
                 <div>
-                  <h3 id="ai-disclaimer-title" className="text-lg font-semibold leading-tight text-white">
+                  <h3 id="ai-disclaimer-title" className="text-base font-semibold leading-tight text-white">
                     Before you rely on this
                   </h3>
                   <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-red-50/90">
@@ -142,51 +126,41 @@ export default function AiDisclaimerModal({
               </div>
             </div>
 
-            {/* Body */}
-            <div className="px-6 pb-6 pt-5">
-              <p className="text-sm leading-relaxed text-gray-600">
-                The AI is a highly capable research assistant, but it is{' '}
-                <span className="font-semibold text-gray-900">not always accurate</span>. It can
-                get dates, figures, and facts wrong — even when they look confident and well
-                sourced. <span className="font-semibold text-gray-900">Cross-checking every fact
-                before publication is not optional</span>, especially:
+            {/* Body — the only scrollable region, so short screens/landscape phones never clip the button */}
+            <div className="overflow-y-auto px-6 py-4">
+              <p className="text-[13px] leading-relaxed text-gray-600">
+                AI research can look confident and still be wrong. Always verify before publication — especially:
               </p>
 
-              <motion.ul className="mt-4 space-y-2" variants={list} initial="hidden" animate="visible">
-                {CHECK_ITEMS.map(({ icon: Icon, title, body }) => (
+              <motion.ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2" variants={list} initial="hidden" animate="visible">
+                {CHECK_ITEMS.map(({ icon: Icon, label }) => (
                   <motion.li
-                    key={title}
+                    key={label}
                     variants={item}
-                    className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3"
+                    className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/70 px-2.5 py-2"
                   >
-                    <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-700">
-                      <Icon size={16} />
+                    <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-red-100 text-red-700">
+                      <Icon size={13} />
                     </span>
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-semibold text-gray-900">{title}</p>
-                      <p className="mt-0.5 text-xs leading-relaxed text-gray-500">{body}</p>
-                    </div>
+                    <span className="text-xs font-medium leading-tight text-gray-700">{label}</span>
                   </motion.li>
                 ))}
               </motion.ul>
 
               <motion.p
-                className="mt-4 rounded-xl border-l-2 border-red-400 bg-red-50/60 px-3.5 py-2.5 text-[13px] italic leading-relaxed text-gray-600"
-                initial={{ opacity: 0, y: 8 }}
+                className="mt-3 text-xs leading-relaxed text-gray-500"
+                initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.42 }}
+                transition={{ delay: 0.35 }}
               >
-                Treat every output and generated question as a{' '}
-                <span className="font-semibold not-italic text-gray-900">first draft</span> from a
-                very fast, very well-read junior researcher: useful, often excellent, but always in
-                need of a second pair of eyes before it reaches the client.
+                Treat outputs as a first draft — have a second pair of eyes check it before it reaches the client.
               </motion.p>
 
               <motion.div
-                className="mt-6 flex justify-end"
+                className="mt-4 flex justify-end"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 }}
+                transition={{ delay: 0.45 }}
               >
                 <Button variant="primary" size="sm" onClick={onClose}>
                   <span className="flex items-center gap-1.5">

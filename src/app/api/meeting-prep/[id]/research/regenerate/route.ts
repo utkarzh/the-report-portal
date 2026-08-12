@@ -105,7 +105,7 @@ Rewrite ONLY the "${SECTION_LABELS[section]}" section. Do not restate or rewrite
     })
 
     for await (const event of claudeStream) {
-      if (event.type === 'content_block_start' && event.content_block.type === 'tool_use' && event.content_block.name === 'web_search') {
+      if (event.type === 'content_block_start' && event.content_block.type === 'server_tool_use' && event.content_block.name === 'web_search') {
         searchesUsed += 1
       }
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {

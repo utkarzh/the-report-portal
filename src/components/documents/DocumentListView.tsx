@@ -1,10 +1,12 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, UserRound, ArrowRight, Briefcase, FileText, CalendarDays, ShieldCheck } from 'lucide-react'
+import { Plus, Briefcase, FileText, ShieldCheck } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import DeleteDocumentButton from '@/components/documents/DeleteDocumentButton'
 import ListPagination from '@/components/ui/ListPagination'
+import EntityCard from '@/components/ui/EntityCard'
+import StatusPill from '@/components/ui/StatusPill'
 import { getDocConfig } from '@/lib/documents'
 import type { DocType } from '@/types'
 
@@ -82,20 +84,20 @@ export default async function DocumentListView({ docType, page: pageParam }: { d
       </div>
 
       {profile.role === 'admin' && (
-        <div className="mb-6 rounded-xl border border-[#db3030]/25 bg-[#fdf6f5] p-4 shadow-sm">
+        <div className="mb-6 rounded-xl border border-[#c8973f]/25 bg-[#fbf7ed] p-4 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 rounded-lg bg-[#db3030]/10 p-2 text-[#db3030]">
+              <div className="flex-shrink-0 rounded-lg bg-[#c8973f]/10 p-2 text-[#a07530]">
                 <ShieldCheck size={18} />
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#db3030]">Admin tools</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">Admin tools</p>
                 <p className="text-sm text-gray-600 mt-0.5">Manage the prompt and sample documents used to generate every {config.label.toLowerCase()}.</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href={`/admin/document-prompt/${docType}`} className="group inline-flex items-center gap-2 rounded-lg border border-[#db3030]/25 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#db3030]/50 hover:text-[#db3030] hover:shadow">
-                <FileText size={14} className="text-[#db3030]" />
+              <Link href={`/admin/document-prompt/${docType}`} className="group inline-flex items-center gap-2 rounded-lg border border-[#c8973f]/25 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c8973f]/50 hover:text-[#a07530] hover:shadow">
+                <FileText size={14} className="text-[#a07530]" />
                 <span>Prompt &amp; Samples</span>
               </Link>
             </div>
@@ -113,59 +115,20 @@ export default async function DocumentListView({ docType, page: pageParam }: { d
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {items.map((s) => (
-              <div key={s.id} className="group relative">
-                {profile.role === 'admin' && (
-                  <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                    <DeleteDocumentButton documentId={s.id} documentTitle={s.title} variant="icon" />
-                  </div>
-                )}
-
-                <Link
-                  href={`/${config.slug}/${s.id}`}
-                  className="block rounded-xl border border-[#e5e3df] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-sm"
-                >
-                  <div className="flex items-start gap-3 pr-8">
-                    <div className="rounded-lg bg-black p-2 text-white flex-shrink-0">
-                      <Icon size={16} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{s.title}</p>
-                      <p className="text-xs text-gray-500 mt-1 truncate">
-                        {[s.project_country, s.media_partner].filter(Boolean).join(' · ') || config.label}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 space-y-2 text-[11px] text-gray-500">
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <CalendarDays size={12} />
-                      <span>
-                        {new Date(s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </span>
-                    </div>
-
-                    {profile.role === 'admin' && s.creatorName ? (
-                      <div className="flex items-center gap-2 rounded-md bg-stone-50 px-2.5 py-2 text-stone-700">
-                        <UserRound size={12} className="text-stone-500" />
-                        <span>Created by {s.creatorName}</span>
-                      </div>
-                    ) : null}
-
-                    {s.tokens_total > 0 ? (
-                      <div className="flex items-center gap-2 rounded-md bg-amber-50 px-2.5 py-2 text-amber-700">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                        <span>{formatTokens(s.tokens_total)} tokens</span>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-between text-sm font-medium text-gray-700">
-                    <span>View {config.label.toLowerCase()}</span>
-                    <ArrowRight size={16} className="text-gray-400 transition-transform group-hover:translate-x-1" />
-                  </div>
-                </Link>
-              </div>
+            {items.map((s, i) => (
+              <EntityCard
+                key={s.id}
+                index={i}
+                href={`/${config.slug}/${s.id}`}
+                icon={<Icon size={16} />}
+                title={s.title}
+                subtitle={[s.project_country, s.media_partner].filter(Boolean).join(' · ') || config.label}
+                date={new Date(s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                creatorName={s.creatorName}
+                badge={s.tokens_total > 0 ? <StatusPill label={`${formatTokens(s.tokens_total)} tokens`} tone="amber" /> : undefined}
+                footerLabel={`View ${config.label.toLowerCase()}`}
+                deleteSlot={profile.role === 'admin' ? <DeleteDocumentButton documentId={s.id} documentTitle={s.title} variant="icon" /> : undefined}
+              />
             ))}
           </div>
 

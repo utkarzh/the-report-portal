@@ -37,7 +37,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const { data: session } = await supabaseAdmin
     .from('meeting_prep_sessions')
-    .select('id, user_id')
+    .select('id, user_id, stage')
     .eq('id', params.id)
     .single()
 
@@ -47,7 +47,31 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const body = await request.json()
-  const { researchSections, presentationPoints, planteoOutput } = body
+  const { researchSections, presentationPoints, planteoOutput, resetStalledStage } = body
+
+  // Recovery path for a stage that started (stage flipped to an in-progress
+  // value) but whose request died without ever reaching completion or the
+  // failure handler — e.g. a dev-server restart mid-request. Steps back to
+  // the last safe checkpoint so the client can retry without losing anything
+  // already approved in an earlier stage.
+  if (resetStalledStage) {
+    const FALLBACK: Record<string, string> = {
+      researching: 'input',
+      points_generating: 'awaiting_review',
+      planteo_generating: 'points_pending',
+      final_generating: 'planteo_pending',
+    }
+    const fallback = FALLBACK[session.stage]
+    if (!fallback) {
+      return NextResponse.json({ error: 'This session is not in a stalled state.' }, { status: 409 })
+    }
+    const { error: resetError } = await supabaseAdmin
+      .from('meeting_prep_sessions')
+      .update({ stage: fallback, error: null })
+      .eq('id', params.id)
+    if (resetError) return NextResponse.json({ error: resetError.message }, { status: 500 })
+    return NextResponse.json({ success: true, stage: fallback })
+  }
 
   const updates: Record<string, unknown> = {}
   if (researchSections !== undefined) updates.research_sections = researchSections

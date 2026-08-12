@@ -160,7 +160,9 @@ export async function POST(_request: NextRequest, { params }: Params) {
         })
 
         for await (const event of claudeStream) {
-          if (event.type === 'content_block_start' && event.content_block.type === 'tool_use' && event.content_block.name === 'web_search') {
+          // Server-executed tools (web_search) stream as `server_tool_use`
+          // content blocks, not `tool_use` — that's only for client-side tools.
+          if (event.type === 'content_block_start' && event.content_block.type === 'server_tool_use' && event.content_block.name === 'web_search') {
             searchesThisPass += 1
             send({ status: 'web_search_start' })
           }

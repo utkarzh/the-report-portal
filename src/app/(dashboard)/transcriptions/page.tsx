@@ -2,12 +2,14 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, UserRound, ArrowRight, AudioLines, WandSparkles, CheckCircle2, Loader2, AlertCircle, CalendarDays, Sparkles, ShieldCheck } from 'lucide-react'
+import { Plus, AudioLines, WandSparkles, CheckCircle2, Loader2, AlertCircle, Sparkles, ShieldCheck } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { reconcilePendingTranscriptions } from '@/lib/assemblyai/reconcile'
 import DeleteTranscriptionButton from '@/components/transcriptions/DeleteTranscriptionButton'
 import ListPagination from '@/components/ui/ListPagination'
+import EntityCard from '@/components/ui/EntityCard'
+import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import type { TranscriptionStatus } from '@/types'
 
 const PAGE_SIZE = 12
@@ -96,20 +98,20 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
       </div>
 
       {profile.role === 'admin' && (
-        <div className="mb-6 rounded-xl border border-[#db3030]/25 bg-[#fdf6f5] p-4 shadow-sm">
+        <div className="mb-6 rounded-xl border border-[#c8973f]/25 bg-[#fbf7ed] p-4 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 rounded-lg bg-[#db3030]/10 p-2 text-[#db3030]">
+              <div className="flex-shrink-0 rounded-lg bg-[#c8973f]/10 p-2 text-[#a07530]">
                 <ShieldCheck size={18} />
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#db3030]">Admin tools</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">Admin tools</p>
                 <p className="text-sm text-gray-600 mt-0.5">Manage the prompt used to refine transcripts with AI.</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href="/admin/transcript-prompt" className="group inline-flex items-center gap-2 rounded-lg border border-[#db3030]/25 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#db3030]/50 hover:text-[#db3030] hover:shadow">
-                <WandSparkles size={14} className="text-[#db3030]" />
+              <Link href="/admin/transcript-prompt" className="group inline-flex items-center gap-2 rounded-lg border border-[#c8973f]/25 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c8973f]/50 hover:text-[#a07530] hover:shadow">
+                <WandSparkles size={14} className="text-[#a07530]" />
                 <span>Refining Prompt</span>
               </Link>
             </div>
@@ -127,72 +129,30 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
       ) : (
         <>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map((t) => (
-            <div key={t.id} className="group relative">
-              {/* Delete (admin-only) floats over the card corner, revealed on
-                  hover. Sits outside the <Link> so its click never navigates. */}
-              {profile.role === 'admin' && (
-                <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                  <DeleteTranscriptionButton
-                    transcriptionId={t.id}
-                    transcriptionTitle={t.title}
-                    variant="icon"
-                  />
-                </div>
-              )}
-
-              <Link
-                href={`/transcriptions/${t.id}`}
-                className="block rounded-xl border border-[#e5e3df] bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-sm"
-              >
-                <div className="flex items-start gap-3 pr-8">
-                  <div className="rounded-lg bg-black p-2 text-white flex-shrink-0">
-                    <AudioLines size={16} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{t.title}</p>
-                    <p className="text-xs text-gray-500 mt-1 truncate">{t.audio_filename || 'audio'}</p>
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-2 text-[11px] text-gray-500">
-                  <div className="flex items-center justify-between gap-2 text-gray-400">
-                    <div className="flex items-center gap-2">
-                      <CalendarDays size={12} />
-                      <span>
-                        {new Date(t.created_at).toLocaleDateString('en-GB', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                      </span>
-                    </div>
-                    {isAdmin && Number(t.cost_usd) > 0 && (
-                      <span
-                        title="AI (Claude) cost for refine & translation"
-                        className="inline-flex items-center gap-1 rounded-full bg-[#f7f6f3] px-2 py-0.5 font-medium text-gray-600 tabular-nums"
-                      >
-                        <Sparkles size={10} />${Number(t.cost_usd).toFixed(4)}
-                      </span>
-                    )}
-                  </div>
-
-                  {profile.role === 'admin' && t.creatorName ? (
-                    <div className="flex items-center gap-2 rounded-md bg-stone-50 px-2.5 py-2 text-stone-700">
-                      <UserRound size={12} className="text-stone-500" />
-                      <span>Created by {t.creatorName}</span>
-                    </div>
-                  ) : null}
-
-                  <StatusBadge status={t.status as TranscriptionStatus} />
-                </div>
-
-                <div className="mt-5 flex items-center justify-between text-sm font-medium text-gray-700">
-                  <span>View transcript</span>
-                  <ArrowRight size={16} className="text-gray-400 transition-transform group-hover:translate-x-1" />
-                </div>
-              </Link>
-            </div>
+          {rows.map((t, i) => (
+            <EntityCard
+              key={t.id}
+              index={i}
+              href={`/transcriptions/${t.id}`}
+              icon={<AudioLines size={16} />}
+              title={t.title}
+              subtitle={t.audio_filename || 'audio'}
+              date={new Date(t.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              creatorName={t.creatorName}
+              badge={<StatusBadge status={t.status as TranscriptionStatus} />}
+              metaRight={
+                isAdmin && Number(t.cost_usd) > 0 ? (
+                  <span
+                    title="AI (Claude) cost for refine & translation"
+                    className="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-[#f7f6f3] px-2 py-0.5 text-[11px] font-medium text-gray-600 tabular-nums"
+                  >
+                    <Sparkles size={10} />${Number(t.cost_usd).toFixed(4)}
+                  </span>
+                ) : undefined
+              }
+              footerLabel="View transcript"
+              deleteSlot={profile.role === 'admin' ? <DeleteTranscriptionButton transcriptionId={t.id} transcriptionTitle={t.title} variant="icon" /> : undefined}
+            />
           ))}
         </div>
 
@@ -213,19 +173,14 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
 }
 
 function StatusBadge({ status }: { status: TranscriptionStatus }) {
-  const map: Record<TranscriptionStatus, { label: string; className: string; icon: React.ReactNode }> = {
-    uploaded: { label: 'Queued', className: 'bg-stone-50 text-stone-600', icon: <Loader2 size={12} /> },
-    transcribing: { label: 'Transcribing', className: 'bg-amber-50 text-amber-700', icon: <Loader2 size={12} className="animate-spin" /> },
-    transcribed: { label: 'Transcribed', className: 'bg-sky-50 text-sky-700', icon: <CheckCircle2 size={12} /> },
-    refining: { label: 'Refining', className: 'bg-amber-50 text-amber-700', icon: <Loader2 size={12} className="animate-spin" /> },
-    refined: { label: 'Refined', className: 'bg-emerald-50 text-emerald-700', icon: <CheckCircle2 size={12} /> },
-    failed: { label: 'Failed', className: 'bg-red-50 text-red-700', icon: <AlertCircle size={12} /> },
+  const map: Record<TranscriptionStatus, { label: string; tone: PillTone; icon?: React.ReactNode }> = {
+    uploaded: { label: 'Queued', tone: 'stone' },
+    transcribing: { label: 'Transcribing', tone: 'amber', icon: <Loader2 size={12} className="animate-spin" /> },
+    transcribed: { label: 'Transcribed', tone: 'sky', icon: <CheckCircle2 size={12} /> },
+    refining: { label: 'Refining', tone: 'amber', icon: <Loader2 size={12} className="animate-spin" /> },
+    refined: { label: 'Refined', tone: 'emerald', icon: <CheckCircle2 size={12} /> },
+    failed: { label: 'Failed', tone: 'red', icon: <AlertCircle size={12} /> },
   }
   const s = map[status] ?? map.uploaded
-  return (
-    <div className={`flex items-center gap-2 rounded-md px-2.5 py-2 ${s.className}`}>
-      {s.icon}
-      <span>{s.label}</span>
-    </div>
-  )
+  return <StatusPill label={s.label} tone={s.tone} icon={s.icon} />
 }
