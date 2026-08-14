@@ -1009,3 +1009,28 @@ CREATE POLICY "Users can insert own meeting prep sessions"
     ON public.meeting_prep_sessions FOR INSERT WITH CHECK (user_id = auth.uid());
 CREATE POLICY "Users can update own meeting prep sessions"
     ON public.meeting_prep_sessions FOR UPDATE USING (user_id = auth.uid());
+
+-- ------------------------------------------------------------
+-- Advertiser Tracker (one per-country row; see migration 015)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.meeting_prep_advertiser_tracker (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    country     TEXT        NOT NULL UNIQUE,
+    filename    TEXT,
+    entries     JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    row_count   INTEGER     NOT NULL DEFAULT 0,
+    updated_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER meeting_prep_advertiser_tracker_updated_at
+    BEFORE UPDATE ON public.meeting_prep_advertiser_tracker
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.meeting_prep_advertiser_tracker ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can read advertiser tracker"
+    ON public.meeting_prep_advertiser_tracker FOR SELECT TO authenticated USING (TRUE);
+CREATE POLICY "Admins can manage advertiser tracker"
+    ON public.meeting_prep_advertiser_tracker FOR ALL USING (public.user_role() = 'admin');

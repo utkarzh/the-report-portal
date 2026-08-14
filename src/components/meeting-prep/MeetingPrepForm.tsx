@@ -34,6 +34,43 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  // Advertiser history is auto-matched from the per-country tracker, then
+  // remains editable. Lookup runs when company + country are both filled.
+  const [looking, setLooking] = useState(false)
+  const [lookup, setLookup] = useState<
+    { trackerFound: boolean; hasHistory?: boolean; matchCount?: number; filename?: string } | null
+  >(null)
+  const [lastKey, setLastKey] = useState('')
+
+  async function runLookup() {
+    const company = form.companyOrg.trim()
+    const country = form.companyCountry.trim()
+    if (!company || !country || looking) return
+    const key = `${company}||${country}`.toLowerCase()
+    if (key === lastKey) return
+    setLastKey(key)
+    setLooking(true)
+    try {
+      const res = await fetch(
+        `/api/meeting-prep/advertiser-tracker/lookup?country=${encodeURIComponent(country)}&company=${encodeURIComponent(company)}`,
+      )
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { setLookup(null); return }
+      setLookup(d)
+      if (d.trackerFound) {
+        setForm((prev) => ({
+          ...prev,
+          advertiserHistoryStatus: d.status || (d.hasHistory ? 'yes' : 'no'),
+          advertiserHistoryDetails: d.details || '',
+        }))
+      }
+    } catch {
+      setLookup(null)
+    } finally {
+      setLooking(false)
+    }
+  }
+
   const publicationOptions = mediaLibrary.map(m => ({ value: m.publication_name, label: m.publication_name }))
 
   async function handleSubmit(e: React.FormEvent) {
@@ -111,6 +148,7 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
         placeholder="e.g. Brazil"
         value={form.companyCountry}
         onChange={(e) => handleChange('companyCountry', e.target.value)}
+        onBlur={runLookup}
         required
       />
 
@@ -133,6 +171,42 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
 
       <div className="pt-2 border-t border-[#e5e3df]" />
 
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <label className="text-sm font-medium text-gray-800">Advertiser history (Commercial Alert)</label>
+          <button
+            type="button"
+            onClick={runLookup}
+            disabled={!form.companyOrg.trim() || !form.companyCountry.trim() || looking}
+            className="text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-black disabled:opacity-40"
+          >
+            {looking ? 'Checking tracker…' : 'Check tracker'}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-gray-500">
+          Auto-filled from the {form.companyCountry.trim() || 'country'} advertiser tracker — edit if needed.
+        </p>
+
+        {lookup && !lookup.trackerFound && (
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            No advertiser tracker on file for &ldquo;{form.companyCountry.trim()}&rdquo;. Ask an admin to upload it under
+            Meeting Preparation → Advertiser Tracker, or enter the history manually below.
+          </p>
+        )}
+        {lookup && lookup.trackerFound && lookup.hasHistory && (
+          <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+            Matched {lookup.matchCount} row{lookup.matchCount === 1 ? '' : 's'} in {lookup.filename || 'the tracker'} —
+            advertising history found and filled in below.
+          </p>
+        )}
+        {lookup && lookup.trackerFound && !lookup.hasHistory && (
+          <p className="mt-2 rounded-lg border border-[#e5e3df] bg-[#faf9f7] px-3 py-2 text-xs text-gray-600">
+            No previous advertising found for &ldquo;{form.companyOrg.trim()}&rdquo; in the {form.companyCountry.trim()} tracker.
+            Marked as &ldquo;No&rdquo; — override below if you know otherwise.
+          </p>
+        )}
+      </div>
+
       <Select
         label="Has this company previously advertised with TRC? *"
         options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]}
@@ -147,7 +221,7 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
           placeholder="Publication, advertising space and approximate period."
           value={form.advertiserHistoryDetails}
           onChange={(e) => handleChange('advertiserHistoryDetails', e.target.value)}
-          rows={3}
+          rows={4}
           required
         />
       )}

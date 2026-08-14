@@ -26,7 +26,9 @@ export function canAccessEditorialBriefs(p: ModuleAccess): boolean {
   return p.role === 'admin' || p.can_access_editorial_briefs
 }
 
-export function canAccessMeetingPreparation(p: ModuleAccess): boolean {
+export function canAccessMeetingPreparation(
+  p: Pick<ModuleAccess, 'role' | 'can_access_meeting_preparation'>,
+): boolean {
   return p.role === 'admin' || p.can_access_meeting_preparation
 }
 
