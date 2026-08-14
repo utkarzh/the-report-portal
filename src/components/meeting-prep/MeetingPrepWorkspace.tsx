@@ -62,7 +62,11 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
   const [points, setPoints] = useState<string[]>(initialSession.presentation_points || [])
   const [planteo, setPlanteo] = useState(initialSession.planteo_output || '')
   const [finalOutput, setFinalOutput] = useState(initialSession.final_output || '')
-  const [error, setError] = useState<string | null>(null)
+  // Seed the error from the saved session so opening an already-failed run
+  // shows the message + retry instead of a blank page.
+  const [error, setError] = useState<string | null>(
+    initialSession.stage === 'failed' ? (initialSession.error || 'The last step didn’t complete. You can run it again.') : null,
+  )
   const [busy, setBusy] = useState<string | null>(null) // human-readable status while a stage is running
   const [reconnecting, setReconnecting] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>(() => tabForSession(initialSession))
@@ -620,6 +624,26 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
                   >
                     <Sparkles size={15} />
                     Continue to Presentation Points
+                  </button>
+                </div>
+              )}
+
+              {/* Failed / empty research — always give a clear way forward so the
+                  page is never blank. */}
+              {stage === 'failed' && Object.keys(sections).length === 0 && (
+                <div className="flex flex-col items-start gap-4 rounded-2xl border border-[#e5e3df] bg-white p-8">
+                  <div className="rounded-full bg-[#f7f6f3] p-3 text-gray-500">
+                    <ShieldAlert size={20} />
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {error || 'The research didn’t complete last time. Running it again is safe — nothing else is affected.'}
+                  </p>
+                  <button
+                    onClick={() => { setError(null); startResearch() }}
+                    className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
+                  >
+                    <Sparkles size={15} />
+                    Retry research
                   </button>
                 </div>
               )}
