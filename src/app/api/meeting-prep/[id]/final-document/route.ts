@@ -8,7 +8,7 @@ import { researchSectionsToPrompt } from '@/lib/meeting-prep'
 import type { MeetingPrepResearchSections } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
-export const maxDuration = 120
+export const maxDuration = 300
 
 interface Params {
   params: { id: string }
