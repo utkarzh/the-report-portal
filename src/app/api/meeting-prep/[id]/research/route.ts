@@ -20,23 +20,9 @@ interface Params {
 // run could do 8 (pass) + 8 (reframe) = 16 searches. Kept at 12 as requested.
 const MAX_WEB_SEARCHES = 8
 const TOTAL_SEARCH_BUDGET = 12
-
-const VALIDATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    ok: {
-      type: 'boolean',
-      description: 'true only if ALL six checks pass',
-    },
-    reasons: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'One short sentence per FAILED check, naming what is missing or weak. Empty array if ok is true.',
-    },
-  },
-  required: ['ok', 'reasons'],
-  additionalProperties: false,
-} as const
+// Abort generation this long into the request so the persist step always runs
+// before Vercel's 300s hard cap (Hobby + Fluid Compute).
+const SOFT_DEADLINE_MS = 270_000
 
 function searchPolicy() {
   const now = new Date()
@@ -137,6 +123,16 @@ export async function POST(_request: NextRequest, { params }: Params) {
       let outputTokens = 0
       let webSearches = 0
 
+      // Soft deadline: abort generation with time to spare so we always reach
+      // the persist step below, rather than being hard-killed at Vercel's limit
+      // and leaving the session stuck at 'researching' forever.
+      let aborted = false
+      let activeStream: { abort: () => void } | null = null
+      const deadlineTimer = setTimeout(() => {
+        aborted = true
+        try { activeStream?.abort() } catch {}
+      }, SOFT_DEADLINE_MS)
+
       async function runResearchPass(extraInstruction?: string): Promise<string> {
         let fullText = ''
         let searchesThisPass = 0
@@ -147,7 +143,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
           : []
         const claudeStream = anthropic.messages.stream({
           model: CLAUDE_MODEL,
-          max_tokens: 16000,
+          max_tokens: 8000,
           system: [
             { type: 'text', text: searchPolicy() },
             ...(researchPromptText ? [{ type: 'text' as const, text: researchPromptText, cache_control: CACHE_1H }] : []),
@@ -160,73 +156,37 @@ export async function POST(_request: NextRequest, { params }: Params) {
           }],
           ...(tools.length ? { tools } : {}),
         })
-
-        for await (const event of claudeStream) {
-          // Server-executed tools (web_search) stream as `server_tool_use`
-          // content blocks, not `tool_use` — that's only for client-side tools.
-          if (event.type === 'content_block_start' && event.content_block.type === 'server_tool_use' && event.content_block.name === 'web_search') {
-            searchesThisPass += 1
-            send({ status: 'web_search_start' })
-          }
-          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-            fullText += event.delta.text
-          }
-        }
-
-        const finalMsg = await claudeStream.finalMessage()
-        const reportedSearches = (finalMsg.usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use?.web_search_requests
-        const usage = parseUsage(finalMsg.usage, reportedSearches ?? searchesThisPass)
-        promptTokens += totalPromptTokens(usage)
-        outputTokens += usage.outputTokens
-        webSearches += usage.webSearches ?? 0
-
-        return fullText
-      }
-
-      async function validateResearch(sections: MeetingPrepResearchSections): Promise<{ ok: boolean; reasons: string[] }> {
-        const system = `You internally validate meeting-preparation research before it is shown to a TRC sales rep. Verify all six:
-1. Is there a clear "why now" for this meeting, both editorially and commercially grounded?
-2. Does the research connect to the publication's editorial narrative on business and investment?
-3. Are there enough substantive facts to support three genuinely distinct presentation points?
-4. Is the bilateral connection to the country of publication evident?
-5. Is at least one strong commercial motivation profile supported by evidence?
-6. Are the recent quotes and news items strong enough to be referenced naturally in conversation?
-Be strict — this gate exists to catch thin or generic research before a human reviews it.`
-
-        const submission = `${subjectBlock(session)}
-
---- INTERVIEWEE RESEARCH ---
-${sections.interviewee || '(missing)'}
-
---- ORGANISATION RESEARCH ---
-${sections.organisation || '(missing)'}
-
---- MOTIVATION PROFILES ---
-${sections.motivation_profiles || '(missing)'}
-
---- QUOTES & NEWS ---
-${sections.quotes_news || '(missing)'}`
+        activeStream = claudeStream
 
         try {
-          const message = await anthropic.messages.create({
-            model: CLAUDE_MODEL,
-            max_tokens: 500,
-            system,
-            messages: [{ role: 'user', content: submission }],
-            output_config: { format: { type: 'json_schema', schema: VALIDATION_SCHEMA } },
-          })
-          const usage = parseUsage(message.usage as unknown, 0)
+          for await (const event of claudeStream) {
+            // Server-executed tools (web_search) stream as `server_tool_use`.
+            if (event.type === 'content_block_start' && event.content_block.type === 'server_tool_use' && event.content_block.name === 'web_search') {
+              searchesThisPass += 1
+              send({ status: 'web_search_start' })
+            }
+            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+              fullText += event.delta.text
+            }
+          }
+        } catch (e) {
+          if (!aborted) throw e // swallow ONLY our own soft-deadline abort
+        }
+
+        try {
+          const finalMsg = await claudeStream.finalMessage()
+          const reportedSearches = (finalMsg.usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use?.web_search_requests
+          const usage = parseUsage(finalMsg.usage, reportedSearches ?? searchesThisPass)
           promptTokens += totalPromptTokens(usage)
           outputTokens += usage.outputTokens
-
-          const text = message.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
-          const parsed = JSON.parse(text) as { ok: boolean; reasons: string[] }
-          return { ok: Boolean(parsed.ok), reasons: parsed.reasons || [] }
-        } catch (err) {
-          // Fails open — a validator outage must not block the whole stage.
-          console.error('Meeting prep internal validation unavailable, accepting research as-is:', err)
-          return { ok: true, reasons: [] }
+          webSearches += usage.webSearches ?? 0
+        } catch {
+          // Aborted mid-stream — usage isn't finalised; count the searches seen.
+          webSearches += searchesThisPass
         }
+
+        activeStream = null
+        return fullText
       }
 
       try {
@@ -243,7 +203,7 @@ ${sections.quotes_news || '(missing)'}`
         async function repairFormat(rawText: string): Promise<string> {
           const message = await anthropic.messages.create({
             model: CLAUDE_MODEL,
-            max_tokens: 16000,
+            max_tokens: 8000,
             system: `You reformat existing research. Output the research below reorganised into EXACTLY these four sections, each introduced by its literal marker line on its own line, in this order and nothing else:
 <<<SECTION:INTERVIEWEE>>>
 <<<SECTION:ORGANISATION>>>
@@ -260,30 +220,18 @@ Preserve ALL content, sources, citations and wording exactly — do NOT research
 
         const firstText = await runResearchPass()
         let sections = parseResearchSections(firstText)
-        let lastText = firstText
 
-        send({ status: 'validating' })
-        const verdict = await validateResearch(sections)
-
-        // Internal validation loop is invisible to the user — capped at one
-        // reframe retry so a stubborn miss can't loop cost indefinitely.
-        if (!verdict.ok && verdict.reasons.length > 0) {
+        // If the model didn't emit parseable sections, reformat its own text
+        // under the markers — fast, no new research. We deliberately do NOT run a
+        // second full research pass (the old validation "reframe"): that doubled
+        // the runtime and overran the function time limit, leaving runs stuck.
+        if (!researchSectionsComplete(sections) && !aborted) {
           send({ status: 'refining' })
-          const retryText = await runResearchPass(
-            `Your previous draft failed internal review for these reasons — deepen or reframe the research to fix them: ${verdict.reasons.join(' ')}`,
-          )
-          lastText = retryText
-          const retrySections = parseResearchSections(retryText)
-          if (researchSectionsComplete(retrySections)) sections = retrySections
-        }
-
-        // Safety net: if the sections still didn't parse (no markers AND no
-        // recognisable headings), reformat the raw text under the markers.
-        if (!researchSectionsComplete(sections)) {
-          send({ status: 'refining' })
-          const repaired = parseResearchSections(await repairFormat(lastText))
+          const repaired = parseResearchSections(await repairFormat(firstText))
           if (researchSectionsComplete(repaired)) sections = repaired
         }
+
+        clearTimeout(deadlineTimer)
 
         const cost = calculateCost({ inputTokens: promptTokens, outputTokens, webSearches })
         const totalTokens = promptTokens + outputTokens
@@ -353,6 +301,7 @@ Preserve ALL content, sources, citations and wording exactly — do NOT research
         })
         send({ error: 'Research failed' })
       } finally {
+        clearTimeout(deadlineTimer)
         try {
           controller.close()
         } catch {}
