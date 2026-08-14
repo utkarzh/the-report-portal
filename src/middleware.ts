@@ -64,6 +64,19 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // Copy any refreshed Supabase auth cookies onto a response. Supabase rotates
+  // the refresh token during getSession(); if we DON'T write the new cookies to
+  // whatever response we return (including redirects), the browser keeps the old
+  // — now-invalidated — token and the very next request bounces to /login. This
+  // caused intermittent "have to log in again" loops. Every non-logout response
+  // must go through this. (Logout responses intentionally clear cookies instead.)
+  const applyCookies = (response: NextResponse) => {
+    pendingCookies.forEach(({ name, value, options }) => {
+      response.cookies.set(name, value, options)
+    })
+    return response
+  }
+
   const { data: { session } } = await supabase.auth.getSession()
   const user = session?.user ?? null
 
@@ -111,7 +124,7 @@ export async function middleware(request: NextRequest) {
 
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
+    return applyCookies(NextResponse.redirect(url))
   }
 
   const requestHeaders = new Headers(request.headers)
@@ -165,7 +178,7 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/admin') && profile.role !== 'admin') {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
+      return applyCookies(NextResponse.redirect(url))
     }
 
     // Per-module access. Admins bypass; normal users are redirected to their
@@ -187,7 +200,7 @@ export async function middleware(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.pathname = landingPathFor(access)
       url.search = ''
-      return NextResponse.redirect(url)
+      return applyCookies(NextResponse.redirect(url))
     }
 
     requestHeaders.set('x-user-id', user.id)
