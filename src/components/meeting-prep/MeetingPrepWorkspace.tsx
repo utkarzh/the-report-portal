@@ -144,7 +144,11 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
   // instead of polling forever with no way out.
   const STALL_THRESHOLD = 40
 
-  function startReconnect() {
+  // `fromStage` is the in-progress stage we're waiting to move OFF of. Pass it
+  // explicitly when reconnecting from a just-dropped stream, because the closure
+  // `stage` can still be the pre-generation value ('input') and would make the
+  // poll stop the instant it sees the (still in-progress) stage.
+  function startReconnect(fromStage: string = stage) {
     setReconnecting(true)
     setStalled(false)
     pollAttemptsRef.current = 0
@@ -155,7 +159,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
         if (!res.ok) return
         const data: MeetingPrepSession = await res.json()
         setUsage({ tokens_total: data.tokens_total, web_searches: data.web_searches, cost_usd: Number(data.cost_usd) })
-        if (data.stage !== stage) {
+        if (data.stage !== fromStage) {
           setSession(data)
           setStage(data.stage)
           setSections(data.research_sections || {})
@@ -226,6 +230,11 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
     setError(null)
     setStage('researching')
     setBusy('Researching the interviewee and organisation…')
+    // Did the stream deliver a terminal verdict (done/error)? If it just ENDS
+    // (connection dropped, response cut after the server persisted, proxy
+    // timeout on a long research), we must not hang on the loader — fall back to
+    // polling, which picks up the result the server already saved.
+    let settled = false
     try {
       const res = await fetch(`/api/meeting-prep/${session.id}/research`, { method: 'POST' })
       if (!res.ok) {
@@ -237,6 +246,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
       }
       await readSSE(res, (parsed) => {
         if (parsed.error) {
+          settled = true
           setError(parsed.error as string)
           setStage('failed')
         } else if (parsed.status === 'web_search_start') {
@@ -246,16 +256,22 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
         } else if (parsed.status === 'refining') {
           setBusy('Deepening the research…')
         } else if (parsed.done) {
+          settled = true
           setSections(parsed.sections as MeetingPrepResearchSections)
           setStage('awaiting_review')
         }
       })
-      router.refresh()
+      if (settled) {
+        setBusy(null)
+        router.refresh()
+      } else {
+        // Stream ended with no verdict — poll for the persisted result.
+        startReconnect('researching')
+      }
     } catch {
-      setError('Network error. Please try again.')
-      setStage('failed')
-    } finally {
-      setBusy(null)
+      // Network drop mid-stream: the server may still finish (or already has).
+      // Poll rather than declaring failure and losing a completed run.
+      startReconnect('researching')
     }
   }
 
