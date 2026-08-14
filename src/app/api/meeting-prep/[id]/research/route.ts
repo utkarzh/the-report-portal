@@ -145,7 +145,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
         let searchesThisPass = 0
         const claudeStream = anthropic.messages.stream({
           model: CLAUDE_MODEL,
-          max_tokens: 8192,
+          max_tokens: 16000,
           system: [
             { type: 'text', text: searchPolicy() },
             ...(researchPromptText ? [{ type: 'text' as const, text: researchPromptText, cache_control: CACHE_1H }] : []),

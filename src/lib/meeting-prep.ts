@@ -43,23 +43,98 @@ export function isMeetingPrepPromptKey(v: unknown): v is MeetingPrepPromptKey {
 // while splitting on a unique literal marker is not.
 const RESEARCH_SECTION_KEYS = ['INTERVIEWEE', 'ORGANISATION', 'MOTIVATION_PROFILES', 'QUOTES_NEWS'] as const
 
+type SectionField = 'interviewee' | 'organisation' | 'motivation_profiles' | 'quotes_news'
+
+// Heading aliases the model tends to use when it drops the exact <<<SECTION>>>
+// markers (it often falls back to plain markdown headings). Matched leniently so
+// parsing succeeds instead of failing the whole run.
+// Multi-word aliases only — generic single words ("quotes", "motivations",
+// "profile") are avoided because they also occur in body prose and would split
+// the text in the wrong place.
+const SECTION_ALIASES: { field: SectionField; aliases: string[] }[] = [
+  { field: 'interviewee', aliases: ['interviewee', 'the interviewee', 'person profile', 'interviewee profile', 'interviewee & background'] },
+  { field: 'organisation', aliases: ['organisation', 'organization', 'the organisation', 'the organization', 'company', 'the company', 'company and organisation', 'company & organisation', 'organisation profile', 'the organisation and company'] },
+  { field: 'motivation_profiles', aliases: ['motivation profiles', 'motivation profile', 'commercial motivation profiles', 'ranked motivation profiles', 'motivation profile ranking', 'commercial motivation profile'] },
+  { field: 'quotes_news', aliases: ['quotes and news', 'quotes & news', 'quotes news', 'recent quotes and news', 'recent quotes & news', 'quotes and latest news', 'quotes & latest news', 'news and quotes', 'recent news and quotes', 'what they have said recently'] },
+]
+
+// Normalise a candidate heading line: strip markers, markdown decorations,
+// "Section N:" prefixes and trailing punctuation, lowercase it.
+function normalizeHeading(line: string): string {
+  return line
+    .replace(/<<<\s*section\s*:?/gi, '')
+    .replace(/>>>/g, '')
+    .replace(/^[#>\s]*/, '')            // leading markdown heading / quote markers
+    .replace(/^[-*•]\s*/, '')           // leading bullet
+    .replace(/[*_`~]/g, '')             // bold/italic/code
+    .replace(/^section\s*\d*\s*[:.\-–)]*\s*/i, '') // "SECTION 1:" / "Section:"
+    .replace(/^\d+\s*[.)\-–:]\s*/, '')  // "1. " / "2) "
+    .replace(/[:：.\s]+$/, '')          // trailing colon / period / space
+    .trim()
+    .toLowerCase()
+}
+
+function headingField(rawLine: string): SectionField | null {
+  const h = normalizeHeading(rawLine)
+  if (!h || h.length > 70) return null
+  const t = rawLine.trim()
+  // A real heading is either decorated (markdown/marker/bullet/number) or ALL
+  // CAPS. Undecorated lines only count when they EXACTLY equal a section name,
+  // so body prose can't be mistaken for a header.
+  const decorated =
+    /^(#{1,6}\s|>+\s|[-*•]\s|\d+[.)]\s|\*\*|__|<<<)/.test(t) ||
+    (t === t.toUpperCase() && /[A-Za-z]/.test(t))
+  for (const { field, aliases } of SECTION_ALIASES) {
+    for (const a of aliases) {
+      if (h === a) return field
+      if (decorated && (h.startsWith(a + ' ') || h.startsWith(a + ':') || h.startsWith(a + ' —') || h.startsWith(a + ' -'))) return field
+    }
+  }
+  return null
+}
+
 export function parseResearchSections(text: string): MeetingPrepResearchSections {
-  const result: MeetingPrepResearchSections = {}
+  // 1) Preferred: exact markers.
+  const strict: MeetingPrepResearchSections = {}
   const markerRe = /<<<SECTION:(INTERVIEWEE|ORGANISATION|MOTIVATION_PROFILES|QUOTES_NEWS)>>>/g
   const matches = [...text.matchAll(markerRe)]
-
   for (let i = 0; i < matches.length; i++) {
     const key = matches[i][1] as (typeof RESEARCH_SECTION_KEYS)[number]
     const start = matches[i].index! + matches[i][0].length
     const end = i + 1 < matches.length ? matches[i + 1].index! : text.length
     const body = text.slice(start, end).trim()
-    if (key === 'INTERVIEWEE') result.interviewee = body
-    else if (key === 'ORGANISATION') result.organisation = body
-    else if (key === 'MOTIVATION_PROFILES') result.motivation_profiles = body
-    else if (key === 'QUOTES_NEWS') result.quotes_news = body
+    if (key === 'INTERVIEWEE') strict.interviewee = body
+    else if (key === 'ORGANISATION') strict.organisation = body
+    else if (key === 'MOTIVATION_PROFILES') strict.motivation_profiles = body
+    else if (key === 'QUOTES_NEWS') strict.quotes_news = body
+  }
+  if (researchSectionsComplete(strict)) return strict
+
+  // 2) Fallback: the model used ordinary headings. Split the text on any line
+  // that reads as one of the four section headings.
+  const lines = text.split('\n')
+  const marks: { field: SectionField; line: number }[] = []
+  lines.forEach((line, idx) => {
+    const field = headingField(line)
+    if (field) marks.push({ field, line: idx })
+  })
+
+  const lenient: MeetingPrepResearchSections = {}
+  for (let i = 0; i < marks.length; i++) {
+    const { field, line } = marks[i]
+    if (lenient[field]) continue // first occurrence wins
+    const nextLine = i + 1 < marks.length ? marks[i + 1].line : lines.length
+    const body = lines.slice(line + 1, nextLine).join('\n').trim()
+    if (body) lenient[field] = body
   }
 
-  return result
+  // Prefer whichever pass produced more complete sections; merge to be safe.
+  return {
+    interviewee: strict.interviewee || lenient.interviewee,
+    organisation: strict.organisation || lenient.organisation,
+    motivation_profiles: strict.motivation_profiles || lenient.motivation_profiles,
+    quotes_news: strict.quotes_news || lenient.quotes_news,
+  }
 }
 
 export function researchSectionsComplete(s: MeetingPrepResearchSections): boolean {
