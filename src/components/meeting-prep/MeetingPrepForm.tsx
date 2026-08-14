@@ -73,6 +73,15 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
 
   const publicationOptions = mediaLibrary.map(m => ({ value: m.publication_name, label: m.publication_name }))
 
+  // A Government Official has no "company" — the entity is a ministry / body.
+  // Wording adapts to the selected interviewee type.
+  const isGov = form.intervieweeType === 'government_official'
+  const orgLabel = isGov ? 'Government Body / Ministry *' : 'Company / Organisation *'
+  const orgPlaceholder = isGov ? 'e.g. Ministry of Economy' : 'e.g. Acme Corp'
+  const countryLabel = isGov ? 'Country *' : 'Country of the Company *'
+  const countryPlaceholder = isGov ? 'e.g. Georgia' : 'e.g. Brazil'
+  const orgWord = isGov ? 'organisation' : 'company'
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (isAtLimit) return
@@ -121,7 +130,7 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
 
       <Input
         label="Interviewee Title / Position *"
-        placeholder="e.g. Chief Executive Officer"
+        placeholder={isGov ? 'e.g. Minister of Economy' : 'e.g. Chief Executive Officer'}
         value={form.intervieweeTitle}
         onChange={(e) => handleChange('intervieweeTitle', e.target.value)}
         required
@@ -136,16 +145,17 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
       />
 
       <Input
-        label="Company / Organisation *"
-        placeholder="e.g. Acme Corp"
+        label={orgLabel}
+        placeholder={orgPlaceholder}
         value={form.companyOrg}
         onChange={(e) => handleChange('companyOrg', e.target.value)}
+        onBlur={runLookup}
         required
       />
 
       <Input
-        label="Country of the Company *"
-        placeholder="e.g. Brazil"
+        label={countryLabel}
+        placeholder={countryPlaceholder}
         value={form.companyCountry}
         onChange={(e) => handleChange('companyCountry', e.target.value)}
         onBlur={runLookup}
@@ -172,16 +182,9 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
       <div className="pt-2 border-t border-[#e5e3df]" />
 
       <div>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-gray-800">Advertiser history (Commercial Alert)</label>
-          <button
-            type="button"
-            onClick={runLookup}
-            disabled={!form.companyOrg.trim() || !form.companyCountry.trim() || looking}
-            className="text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-black disabled:opacity-40"
-          >
-            {looking ? 'Checking tracker…' : 'Check tracker'}
-          </button>
+          {looking && <span className="text-xs text-gray-400">Checking tracker…</span>}
         </div>
         <p className="mt-1 text-xs text-gray-500">
           Auto-filled from the {form.companyCountry.trim() || 'country'} advertiser tracker — edit if needed.
@@ -208,7 +211,7 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
       </div>
 
       <Select
-        label="Has this company previously advertised with TRC? *"
+        label={`Has this ${orgWord} previously advertised with TRC? *`}
         options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]}
         value={form.advertiserHistoryStatus}
         onChange={(e) => handleChange('advertiserHistoryStatus', e.target.value)}
