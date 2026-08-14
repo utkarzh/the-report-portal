@@ -234,8 +234,31 @@ ${sections.quotes_news || '(missing)'}`
           .eq('id', session.id)
         send({ status: 'researching' })
 
+        // Reformat the model's own research text under the exact section
+        // markers, without re-researching. A last-resort safety net for the rare
+        // case where the model answers with no parseable structure at all — this
+        // is a trivial restructuring task the model does reliably.
+        async function repairFormat(rawText: string): Promise<string> {
+          const message = await anthropic.messages.create({
+            model: CLAUDE_MODEL,
+            max_tokens: 16000,
+            system: `You reformat existing research. Output the research below reorganised into EXACTLY these four sections, each introduced by its literal marker line on its own line, in this order and nothing else:
+<<<SECTION:INTERVIEWEE>>>
+<<<SECTION:ORGANISATION>>>
+<<<SECTION:MOTIVATION_PROFILES>>>
+<<<SECTION:QUOTES_NEWS>>>
+Preserve ALL content, sources, citations and wording exactly — do NOT research, add, remove, summarise or shorten anything. Only move the existing text under the correct marker. If content for a section is scattered, gather it under the right marker.`,
+            messages: [{ role: 'user', content: rawText }],
+          })
+          const usage = parseUsage(message.usage as unknown, 0)
+          promptTokens += totalPromptTokens(usage)
+          outputTokens += usage.outputTokens
+          return message.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
+        }
+
         const firstText = await runResearchPass()
         let sections = parseResearchSections(firstText)
+        let lastText = firstText
 
         send({ status: 'validating' })
         const verdict = await validateResearch(sections)
@@ -247,8 +270,17 @@ ${sections.quotes_news || '(missing)'}`
           const retryText = await runResearchPass(
             `Your previous draft failed internal review for these reasons — deepen or reframe the research to fix them: ${verdict.reasons.join(' ')}`,
           )
+          lastText = retryText
           const retrySections = parseResearchSections(retryText)
           if (researchSectionsComplete(retrySections)) sections = retrySections
+        }
+
+        // Safety net: if the sections still didn't parse (no markers AND no
+        // recognisable headings), reformat the raw text under the markers.
+        if (!researchSectionsComplete(sections)) {
+          send({ status: 'refining' })
+          const repaired = parseResearchSections(await repairFormat(lastText))
+          if (researchSectionsComplete(repaired)) sections = repaired
         }
 
         const cost = calculateCost({ inputTokens: promptTokens, outputTokens, webSearches })
