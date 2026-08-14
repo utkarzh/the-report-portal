@@ -254,11 +254,21 @@ ${sections.quotes_news || '(missing)'}`
         const cost = calculateCost({ inputTokens: promptTokens, outputTokens, webSearches })
         const totalTokens = promptTokens + outputTokens
 
+        // The model occasionally returns text without the <<<SECTION:…>>> markers
+        // (a format miss), leaving `sections` empty/incomplete. Advancing to
+        // review with nothing shows a blank screen. Instead, fail this run so the
+        // user can retry — but still record the spend that actually happened.
+        const researchOk = researchSectionsComplete(sections)
+
         await supabaseAdmin
           .from('meeting_prep_sessions')
           .update({
-            research_sections: sections,
-            stage: 'awaiting_review',
+            // Only overwrite sections when we have a complete result.
+            ...(researchOk ? { research_sections: sections } : {}),
+            stage: researchOk ? 'awaiting_review' : 'failed',
+            error: researchOk
+              ? null
+              : 'The research came back in an unexpected format (sections missing). Please run it again.',
             tokens_input: (session.tokens_input || 0) + promptTokens,
             tokens_output: (session.tokens_output || 0) + outputTokens,
             tokens_total: (session.tokens_total || 0) + totalTokens,
@@ -279,9 +289,14 @@ ${sections.quotes_news || '(missing)'}`
           tokensTotal: totalTokens,
           webSearches,
           costUsd: cost,
+          ...(researchOk ? {} : { status: 'error' as const, error: 'Research returned incomplete sections' }),
         })
 
-        send({ done: true, sections })
+        if (researchOk) {
+          send({ done: true, sections })
+        } else {
+          send({ error: 'The research came back incomplete. Please run it again.' })
+        }
         sendRaw('[DONE]')
       } catch (err) {
         console.error('Meeting prep research error:', err)
