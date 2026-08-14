@@ -15,14 +15,11 @@ interface Params {
   params: { id: string }
 }
 
-// Research covers both the interviewee and their organisation in one pass —
-// give it more budget than the single-subject research module's 7.
+// Per-pass search cap AND a hard total budget across ALL passes of one research
+// run (first pass + any reframe). This bounds cost — without the total cap a
+// run could do 8 (pass) + 8 (reframe) = 16 searches. Kept at 12 as requested.
 const MAX_WEB_SEARCHES = 8
-const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
-  type: 'web_search_20250305',
-  name: 'web_search',
-  max_uses: MAX_WEB_SEARCHES,
-}
+const TOTAL_SEARCH_BUDGET = 12
 
 const VALIDATION_SCHEMA = {
   type: 'object',
@@ -51,7 +48,7 @@ TODAY'S DATE IS ${todayStr}. The current year is ${currentYear}. Your training d
 
 RECENCY: financial/market data no older than 24 months; biographical/career information may extend to 5 years; quotes and news no older than 12 months wherever possible. Older data is only acceptable if labelled with its date.
 
-You have a budget of ${MAX_WEB_SEARCHES} web searches — spend them well across BOTH the interviewee and the organisation. Append a recency qualifier ("${currentYear}", "latest", a month/year) to queries chasing current facts. Cite source URLs for every factual claim, with the publication date where available. If something cannot be verified, write N/A rather than falling back to training-data assumptions.`
+You have a budget of up to ${MAX_WEB_SEARCHES} web searches — spend them well across BOTH the interviewee and the organisation, and stop searching once you have enough to write all four sections. Append a recency qualifier ("${currentYear}", "latest", a month/year) to queries chasing current facts. Cite source URLs for every factual claim, with the publication date where available. If something cannot be verified, write N/A rather than falling back to training-data assumptions.`
 }
 
 function subjectBlock(session: Record<string, unknown>) {
@@ -143,6 +140,11 @@ export async function POST(_request: NextRequest, { params }: Params) {
       async function runResearchPass(extraInstruction?: string): Promise<string> {
         let fullText = ''
         let searchesThisPass = 0
+        // Only allow as many searches as remain in the run's total budget.
+        const perPass = Math.max(0, Math.min(MAX_WEB_SEARCHES, TOTAL_SEARCH_BUDGET - webSearches))
+        const tools: WebSearchTool20250305[] = perPass > 0
+          ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: perPass }]
+          : []
         const claudeStream = anthropic.messages.stream({
           model: CLAUDE_MODEL,
           max_tokens: 16000,
@@ -156,7 +158,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
               ? `${subjectBlock(session)}\n\n--- REVISION INSTRUCTIONS ---\n${extraInstruction}`
               : subjectBlock(session),
           }],
-          tools: [WEB_SEARCH_TOOL],
+          ...(tools.length ? { tools } : {}),
         })
 
         for await (const event of claudeStream) {
@@ -301,11 +303,16 @@ Preserve ALL content, sources, citations and wording exactly — do NOT research
             error: researchOk
               ? null
               : 'The research came back in an unexpected format (sections missing). Please run it again.',
-            tokens_input: (session.tokens_input || 0) + promptTokens,
-            tokens_output: (session.tokens_output || 0) + outputTokens,
-            tokens_total: (session.tokens_total || 0) + totalTokens,
-            web_searches: (session.web_searches || 0) + webSearches,
-            cost_usd: Number(session.cost_usd || 0) + cost,
+            // Research is stage 1 — OVERWRITE the session's usage with this
+            // run's figures rather than accumulating. Otherwise every retry
+            // stacks on top of previous (failed) attempts and the sidebar cost
+            // balloons (e.g. 46 searches / $2.55 across 4 retries). Later stages
+            // (points/planteo/final) still accumulate onto this base.
+            tokens_input: promptTokens,
+            tokens_output: outputTokens,
+            tokens_total: totalTokens,
+            web_searches: webSearches,
+            cost_usd: cost,
           })
           .eq('id', session.id)
 
