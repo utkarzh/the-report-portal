@@ -928,7 +928,7 @@ CREATE TABLE IF NOT EXISTS public.meeting_prep_sessions (
     media_narrative_snapshot      TEXT,
 
     advertiser_history_status     TEXT
-        CHECK (advertiser_history_status IN ('yes', 'no')),
+        CHECK (advertiser_history_status IN ('yes', 'no', 'not_aware')),
     advertiser_history_details    TEXT,
 
     -- Keys: interviewee, organisation, motivation_profiles, quotes_news.

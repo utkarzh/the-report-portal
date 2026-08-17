@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_PLANTEO_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { researchSectionsToPrompt } from '@/lib/meeting-prep'
+import { researchSectionsToPrompt, NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
 import type { MeetingPrepResearchSections } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -74,10 +74,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   const points = ((session.presentation_points || []) as string[]).map((p, i) => `${i + 1}. ${p}`).join('\n')
   const anthropic = getAnthropicClient()
 
-  const system = `${promptText}\n\n--- APPROVED PLANTEO LIBRARY FORMULA FOR THIS VARIANT (source of truth — do not deviate) ---\n${libraryText || '(no formula has been added to the Planteo Library yet for this variant — use the structure described in your instructions above as closely as possible, and note in the output where the approved formula is still pending)'}`
+  const system = `${promptText}\n\n--- APPROVED PLANTEO LIBRARY FORMULA FOR THIS VARIANT (source of truth — do not deviate) ---\n${libraryText || '(no formula has been added to the Planteo Library yet for this variant — use the structure described in your instructions above as closely as possible, and note in the output where the approved formula is still pending)'}\n\n${NO_PREAMBLE_INSTRUCTION}`
 
   const userContent = isRegenerate
-    ? `${researchContext}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\n--- CURRENT PLANTEO (sales rep wants changes) ---\n${session.planteo_output || ''}\n\n--- SALES REP'S FEEDBACK ---\n${(feedback || '').trim() || 'Improve this planteo.'}`
+    ? `${researchContext}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\n--- CURRENT PLANTEO (sales rep wants changes) ---\n${session.planteo_output || ''}\n\n--- SALES REP'S FEEDBACK ---\n${(feedback || '').trim() || 'Improve this planteo.'}\n\nThe current planteo above is shown in full. Your reply must be the FULL replacement script from start to finish, not just the part the feedback is about. If the feedback targets one part (e.g. "the opening" or "the closing line"), keep everything else from the current version and change only what was targeted — never reply with just the changed portion, a summary, or a shorter excerpt.`
     : `${researchContext}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\nBuild the planteo now.`
 
   try {
@@ -88,11 +88,36 @@ export async function POST(request: NextRequest, { params }: Params) {
       messages: [{ role: 'user', content: userContent }],
     })
 
-    const text = message.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim()
+    const text = extractAfterMarker(message.content.map((b) => (b.type === 'text' ? b.text : '')).join(''))
     const usage = parseUsage(message.usage as unknown, 0)
     const promptTokens = totalPromptTokens(usage)
     const totalTokens = promptTokens + usage.outputTokens
     const cost = calculateCost(usage)
+
+    // Backstop for the prompt instruction above: on a regenerate, if the reply
+    // is drastically shorter than what it's replacing, the model likely wrote
+    // only the changed portion instead of the full script. There's no fixed
+    // item count to verify here (unlike presentation points), so use a length
+    // ratio instead. The API call already happened and is billed regardless,
+    // so persist its real cost before failing rather than losing it in the
+    // catch block below, which logs status only, no token/cost data.
+    const previousLength = (session.planteo_output || '').length
+    if (isRegenerate && previousLength > 200 && text.length < previousLength * 0.2) {
+      await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
+      await logUsageEvent({
+        userId: user.id,
+        workflow: 'meeting_prep_planteo',
+        sourceId: session.id,
+        model: CLAUDE_MODEL,
+        tokensInput: promptTokens,
+        tokensOutput: usage.outputTokens,
+        tokensTotal: totalTokens,
+        costUsd: cost,
+        status: 'error',
+        error: 'Regenerated planteo was suspiciously short compared to the original',
+      })
+      return NextResponse.json({ error: 'The regenerated planteo looked incomplete compared to the original. Please try again.' }, { status: 500 })
+    }
 
     const updates: Record<string, unknown> = {
       planteo_output: text,
@@ -121,7 +146,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       costUsd: cost,
     })
 
-    return NextResponse.json({ planteo: text })
+    return NextResponse.json({ planteo: text, usage: { tokens_total: totalTokens, cost_usd: cost } })
   } catch (err) {
     console.error('Meeting prep planteo error:', err)
     if (!isRegenerate) {

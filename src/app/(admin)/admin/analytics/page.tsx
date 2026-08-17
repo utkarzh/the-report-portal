@@ -223,7 +223,11 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
         ) : (
           <>
             {/* Cost trend + workflow breakdown */}
-            <div className="grid gap-4 lg:grid-cols-5 mb-10">
+            {/* items-start: without it, a grid row stretches every item to match
+                its tallest sibling — with many workflows, the (naturally short)
+                trend chart panel was being stretched into a tall card with a lot
+                of empty space, making the chart itself look tiny and broken. */}
+            <div className="grid gap-4 lg:grid-cols-5 mb-10 items-start">
               {/* Trend — single-series magnitude over time, monochrome bars */}
               <div className="lg:col-span-3 bg-white border border-[#e5e3df] p-5">
                 <div className="flex items-center gap-2 mb-5">
@@ -252,13 +256,15 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
                 </div>
               </div>
 
-              {/* By workflow — magnitude by named category, monochrome + direct labels */}
-              <div className="lg:col-span-2 bg-white border border-[#e5e3df] p-5">
-                <div className="flex items-center gap-2 mb-5">
+              {/* By workflow — magnitude by named category, monochrome + direct labels.
+                  Fixed height + internal scroll: the list of workflows grows
+                  unbounded as new ones are added, but the card shouldn't. */}
+              <div className="lg:col-span-2 bg-white border border-[#e5e3df] p-5 flex h-80 flex-col">
+                <div className="mb-5 flex flex-shrink-0 items-center gap-2">
                   <Layers size={14} className="text-gray-400" />
                   <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">Cost by workflow</h2>
                 </div>
-                <div className="space-y-4">
+                <div className="flex-1 space-y-4 overflow-y-auto pr-1">
                   {byWorkflow.map((w) => (
                     <div key={w.workflow}>
                       <div className="flex items-center justify-between text-xs mb-1.5">

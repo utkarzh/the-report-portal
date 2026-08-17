@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_POINTS_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { parsePoints, researchSectionsToPrompt } from '@/lib/meeting-prep'
+import { parsePoints, researchSectionsToPrompt, NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
 import type { MeetingPrepResearchSections } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -80,17 +80,17 @@ export async function POST(request: NextRequest, { params }: Params) {
       const others = current.filter((_, i) => i !== regenerateIndex)
       userContent = `${researchContext}\n\n--- OTHER TWO APPROVED POINTS (this new one must stay genuinely distinct from these) ---\n${others.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\n--- CURRENT POINT TO REPLACE ---\n${current[regenerateIndex] || ''}\n\n--- SALES REP'S FEEDBACK ---\n${(feedback || '').trim() || 'Improve this point.'}\n\nReturn ONLY the replacement point text, one to three sentences, no numbering, no other commentary.`
     } else {
-      userContent = `${researchContext}\n\n--- CURRENT 3 POINTS (sales rep wants all reframed) ---\n${(session.presentation_points || []).map((p: string, i: number) => `${i + 1}. ${p}`).join('\n')}\n\n--- SALES REP'S FEEDBACK ---\n${(feedback || '').trim() || 'Reframe all three points.'}\n\nGenerate 3 new presentation points now.`
+      userContent = `${researchContext}\n\n--- CURRENT 3 POINTS (sales rep wants all reframed) ---\n${(session.presentation_points || []).map((p: string, i: number) => `${i + 1}. ${p}`).join('\n')}\n\n--- SALES REP'S FEEDBACK ---\n${(feedback || '').trim() || 'Reframe all three points.'}\n\nGenerate 3 new presentation points now, numbered 1-3. Your reply must always contain exactly 3 points, not fewer — if the feedback only targets one or two of them (e.g. "point 1 is fine, fix 2 and 3"), keep the ones it doesn't mention as-is (lightly reworded is fine, but don't drop them) rather than returning only the changed ones.`
     }
 
     const message = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 1024,
-      system: promptText || undefined,
+      system: promptText ? `${promptText}\n\n${NO_PREAMBLE_INSTRUCTION}` : NO_PREAMBLE_INSTRUCTION,
       messages: [{ role: 'user', content: userContent }],
     })
 
-    const text = message.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
+    const text = extractAfterMarker(message.content.map((b) => (b.type === 'text' ? b.text : '')).join(''))
     const usage = parseUsage(message.usage as unknown, 0)
     const promptTokens = totalPromptTokens(usage)
     const totalTokens = promptTokens + usage.outputTokens
@@ -103,6 +103,37 @@ export async function POST(request: NextRequest, { params }: Params) {
       points = current
     } else {
       points = parsePoints(text).slice(0, 3)
+    }
+
+    // Backstop for the prompt instruction above: if the model still collapsed
+    // to fewer than 3 points (dropped ones the feedback didn't mention, or
+    // broke numbering), don't silently save a broken/shrunk set. The API call
+    // already happened and is billed either way, so persist its real cost
+    // here before failing — a thrown error would land in the catch block
+    // below, which only logs status: 'error' with no token/cost data, the
+    // same under-billing gap fixed elsewhere in this module.
+    if (regenerateIndex === undefined && points.length < 3) {
+      await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
+      await logUsageEvent({
+        userId: user.id,
+        workflow: 'meeting_prep_points',
+        sourceId: session.id,
+        model: CLAUDE_MODEL,
+        tokensInput: promptTokens,
+        tokensOutput: usage.outputTokens,
+        tokensTotal: totalTokens,
+        costUsd: cost,
+        status: 'error',
+        error: 'Response contained fewer than 3 presentation points',
+      })
+      const errorMessage = 'The response didn’t contain all 3 presentation points. Please try again.'
+      if (!isRegenerate) {
+        await supabaseAdmin
+          .from('meeting_prep_sessions')
+          .update({ stage: 'failed', error: errorMessage })
+          .eq('id', session.id)
+      }
+      return NextResponse.json({ error: errorMessage }, { status: 500 })
     }
 
     const updates: Record<string, unknown> = {

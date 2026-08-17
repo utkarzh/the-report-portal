@@ -187,7 +187,8 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
           {looking && <span className="text-xs text-gray-400">Checking tracker…</span>}
         </div>
         <p className="mt-1 text-xs text-gray-500">
-          Auto-filled from the {form.companyCountry.trim() || 'country'} advertiser tracker — edit if needed.
+          Optional — auto-filled from the {form.companyCountry.trim() || 'country'} advertiser tracker where available.
+          Leave as &ldquo;Not aware&rdquo; if you don&rsquo;t know.
         </p>
 
         {lookup && !lookup.trackerFound && (
@@ -211,11 +212,14 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
       </div>
 
       <Select
-        label={`Has this ${orgWord} previously advertised with TRC? *`}
-        options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]}
+        label={`Has this ${orgWord} previously advertised with TRC?`}
+        options={[
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+          { value: 'not_aware', label: 'Not aware' },
+        ]}
         value={form.advertiserHistoryStatus}
         onChange={(e) => handleChange('advertiserHistoryStatus', e.target.value)}
-        required
       />
 
       {form.advertiserHistoryStatus === 'yes' && (

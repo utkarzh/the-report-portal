@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { marked } from 'marked'
 import {
   ArrowLeft, CalendarClock, Sparkles, WandSparkles, Check, Pencil,
-  Download, ShieldAlert, UserRound, Building2, Target, Newspaper, Loader2,
+  Download, ShieldAlert, UserRound, Building2, Target, Newspaper, Undo2, ChevronDown,
 } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
@@ -76,14 +76,21 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
   const [feedbackSection, setFeedbackSection] = useState<keyof MeetingPrepResearchSections | null>(null)
   const [sectionFeedback, setSectionFeedback] = useState('')
   const [sectionBusy, setSectionBusy] = useState<keyof MeetingPrepResearchSections | null>(null)
+  // One-level undo per section — snapshot of what was there (and whether it
+  // was accepted) right before the most recent regenerate, so a regenerate
+  // the user doesn't like can be reverted without losing the prior state.
+  const [sectionUndo, setSectionUndo] = useState<Partial<Record<keyof MeetingPrepResearchSections, { text: string; wasAccepted: boolean }>>>({})
 
   const [editingPoint, setEditingPoint] = useState<number | null>(null)
   const [pointFeedback, setPointFeedback] = useState<{ index: number | 'all'; text: string } | null>(null)
   const [pointBusy, setPointBusy] = useState<number | 'all' | null>(null)
+  const [pointUndo, setPointUndo] = useState<Partial<Record<number, string>>>({})
+  const [allPointsUndo, setAllPointsUndo] = useState<string[] | null>(null)
 
   const [editingPlanteo, setEditingPlanteo] = useState(false)
   const [planteoFeedback, setPlanteoFeedback] = useState('')
   const [showPlanteoFeedback, setShowPlanteoFeedback] = useState(false)
+  const [planteoUndo, setPlanteoUndo] = useState<string | null>(null)
 
   const [usage, setUsage] = useState({
     tokens_total: initialSession.tokens_total || 0,
@@ -263,6 +270,10 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
           settled = true
           setSections(parsed.sections as MeetingPrepResearchSections)
           setStage('awaiting_review')
+          // Research overwrites (not accumulates) the session's usage — mirror
+          // that here rather than adding onto whatever `usage` held before.
+          const u = parsed.usage as { tokens_total?: number; web_searches?: number; cost_usd?: number } | undefined
+          if (u) setUsage({ tokens_total: u.tokens_total || 0, web_searches: u.web_searches || 0, cost_usd: u.cost_usd || 0 })
         }
       })
       if (settled) {
@@ -289,6 +300,10 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
     setSections(updated)
     setEditingSection(null)
     acceptSection(key)
+    // A deliberate manual edit supersedes any pending "undo the last
+    // regenerate" for this section — reverting to a stale AI draft after the
+    // user has since rewritten it by hand would be surprising, not helpful.
+    setSectionUndo(prev => { const next = { ...prev }; delete next[key]; return next })
     await fetch(`/api/meeting-prep/${session.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -299,6 +314,8 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
   async function regenerateSection(key: keyof MeetingPrepResearchSections) {
     setSectionBusy(key)
     setError(null)
+    const previousText = sections[key] || ''
+    const wasAccepted = acceptedSections.has(key)
     try {
       const res = await fetch(`/api/meeting-prep/${session.id}/research/regenerate`, {
         method: 'POST',
@@ -311,6 +328,8 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
         return
       }
       setSections(prev => ({ ...prev, [key]: data.text }))
+      setSectionUndo(prev => ({ ...prev, [key]: { text: previousText, wasAccepted } }))
+      setUsage(u => ({ ...u, tokens_total: u.tokens_total + (data.usage?.tokens_total || 0), web_searches: u.web_searches + (data.usage?.web_searches || 0), cost_usd: u.cost_usd + (data.usage?.cost_usd || 0) }))
       setAcceptedSections(prev => { const next = new Set(prev); next.delete(key); return next })
       setFeedbackSection(null)
       setSectionFeedback('')
@@ -320,6 +339,24 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
     } finally {
       setSectionBusy(null)
     }
+  }
+
+  // Restores whatever was in this section right before the most recent
+  // regenerate (text + whether it had been accepted) — the API spend already
+  // happened and stays on the ledger, this only reverts the saved content.
+  async function undoSectionRegenerate(key: keyof MeetingPrepResearchSections) {
+    const snapshot = sectionUndo[key]
+    if (!snapshot) return
+    const updated = { ...sections, [key]: snapshot.text }
+    setSections(updated)
+    if (snapshot.wasAccepted) acceptSection(key)
+    else setAcceptedSections(prev => { const next = new Set(prev); next.delete(key); return next })
+    setSectionUndo(prev => { const next = { ...prev }; delete next[key]; return next })
+    await fetch(`/api/meeting-prep/${session.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ researchSections: updated }),
+    })
   }
 
   const allSectionsReviewed = SECTION_ORDER.every(k => acceptedSections.has(k))
@@ -356,6 +393,8 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
     const updated = points.map((p, i) => (i === index ? text : p))
     setPoints(updated)
     setEditingPoint(null)
+    // A deliberate manual edit supersedes any pending undo for this point.
+    setPointUndo(prev => { const next = { ...prev }; delete next[index]; return next })
     await fetch(`/api/meeting-prep/${session.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -366,6 +405,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
   async function regeneratePoints(target: number | 'all', feedback: string) {
     setPointBusy(target)
     setError(null)
+    const previousPoints = points
     try {
       const res = await fetch(`/api/meeting-prep/${session.id}/points`, {
         method: 'POST',
@@ -378,6 +418,12 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
         return
       }
       setPoints(data.points)
+      if (target === 'all') {
+        setAllPointsUndo(previousPoints)
+      } else {
+        setPointUndo(prev => ({ ...prev, [target]: previousPoints[target] || '' }))
+      }
+      setUsage(u => ({ ...u, tokens_total: u.tokens_total + (data.usage?.tokens_total || 0), cost_usd: u.cost_usd + (data.usage?.cost_usd || 0) }))
       setPointFeedback(null)
       router.refresh()
     } catch {
@@ -385,6 +431,30 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
     } finally {
       setPointBusy(null)
     }
+  }
+
+  async function undoPointRegenerate(index: number) {
+    const previous = pointUndo[index]
+    if (previous === undefined) return
+    const updated = points.map((p, i) => (i === index ? previous : p))
+    setPoints(updated)
+    setPointUndo(prev => { const next = { ...prev }; delete next[index]; return next })
+    await fetch(`/api/meeting-prep/${session.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presentationPoints: updated }),
+    })
+  }
+
+  async function undoAllPointsRegenerate() {
+    if (!allPointsUndo) return
+    setPoints(allPointsUndo)
+    setAllPointsUndo(null)
+    await fetch(`/api/meeting-prep/${session.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presentationPoints: allPointsUndo }),
+    })
   }
 
   async function approvePointsAndGeneratePlanteo() {
@@ -402,6 +472,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
         return
       }
       setPlanteo(data.planteo)
+      setUsage(u => ({ ...u, tokens_total: u.tokens_total + (data.usage?.tokens_total || 0), cost_usd: u.cost_usd + (data.usage?.cost_usd || 0) }))
       setStage('planteo_pending')
       router.refresh()
     } catch {
@@ -417,6 +488,8 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
   async function savePlanteoEdit(text: string) {
     setPlanteo(text)
     setEditingPlanteo(false)
+    // A deliberate manual edit supersedes any pending undo.
+    setPlanteoUndo(null)
     await fetch(`/api/meeting-prep/${session.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -427,6 +500,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
   async function regeneratePlanteo() {
     setBusy('Regenerating the planteo…')
     setError(null)
+    const previousPlanteo = planteo
     try {
       const res = await fetch(`/api/meeting-prep/${session.id}/planteo`, {
         method: 'POST',
@@ -439,6 +513,8 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
         return
       }
       setPlanteo(data.planteo)
+      setPlanteoUndo(previousPlanteo)
+      setUsage(u => ({ ...u, tokens_total: u.tokens_total + (data.usage?.tokens_total || 0), cost_usd: u.cost_usd + (data.usage?.cost_usd || 0) }))
       setShowPlanteoFeedback(false)
       setPlanteoFeedback('')
       router.refresh()
@@ -447,6 +523,18 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
     } finally {
       setBusy(null)
     }
+  }
+
+  async function undoPlanteoRegenerate() {
+    if (planteoUndo === null) return
+    const previous = planteoUndo
+    setPlanteo(previous)
+    setPlanteoUndo(null)
+    await fetch(`/api/meeting-prep/${session.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planteoOutput: previous }),
+    })
   }
 
   async function approvePlanteoAndGenerateFinal() {
@@ -514,7 +602,11 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
           <div className="mt-6 border-t border-[#e5e3df] pt-4">
             <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Advertiser History</p>
             <p className="text-[13px] leading-snug text-gray-700">
-              {session.advertiser_history_status === 'yes' ? session.advertiser_history_details : 'No previous advertising history on record.'}
+              {session.advertiser_history_status === 'yes'
+                ? session.advertiser_history_details
+                : session.advertiser_history_status === 'no'
+                ? 'No previous advertising history on record.'
+                : 'Not aware / not checked.'}
             </p>
           </div>
 
@@ -594,7 +686,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
           {activeTab === 'research' && (
             <>
               {!stalled && ['input', 'researching'].includes(stage) && (
-                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} />
+                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} variant="research" />
               )}
 
               {!['input', 'researching'].includes(stage) && Object.keys(sections).length > 0 && (
@@ -612,14 +704,23 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
                   onAccept={acceptSection}
                   onSaveEdit={saveSectionEdit}
                   onRegenerate={regenerateSection}
+                  sectionUndo={sectionUndo}
+                  onUndo={undoSectionRegenerate}
                 />
               )}
 
               {stage === 'awaiting_review' && (
-                <div className="flex justify-end">
+                <div className="flex items-center justify-end gap-3">
+                  {!allSectionsReviewed && (
+                    <p className="text-xs text-gray-500">
+                      Accept all 4 sections above to continue
+                      <span className="ml-1 font-medium text-gray-700">({acceptedSections.size} of {SECTION_ORDER.length} accepted)</span>
+                    </p>
+                  )}
                   <button
                     onClick={advanceToPoints}
                     disabled={!allSectionsReviewed}
+                    title={allSectionsReviewed ? undefined : 'Accept every section above first'}
                     className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md disabled:opacity-40 disabled:hover:translate-y-0"
                   >
                     <Sparkles size={15} />
@@ -653,7 +754,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
           {activeTab === 'points' && (
             <>
               {!stalled && stage === 'points_generating' && (
-                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} />
+                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} variant="points" />
               )}
 
               {points.length > 0 && stage !== 'points_generating' && (
@@ -667,6 +768,10 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
                   pointBusy={pointBusy}
                   onSaveEdit={savePointEdit}
                   onRegenerate={regeneratePoints}
+                  pointUndo={pointUndo}
+                  onUndoPoint={undoPointRegenerate}
+                  allPointsUndo={allPointsUndo}
+                  onUndoAllPoints={undoAllPointsRegenerate}
                 />
               )}
 
@@ -687,7 +792,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
           {activeTab === 'planteo' && (
             <>
               {!stalled && stage === 'planteo_generating' && (
-                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} />
+                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} variant="planteo" />
               )}
 
               {planteo && stage !== 'planteo_generating' && (
@@ -703,6 +808,8 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
                   busy={isProcessing}
                   onSaveEdit={savePlanteoEdit}
                   onRegenerate={regeneratePlanteo}
+                  planteoUndo={planteoUndo}
+                  onUndo={undoPlanteoRegenerate}
                 />
               )}
 
@@ -723,7 +830,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
           {activeTab === 'final' && (
             <>
               {!stalled && stage === 'final_generating' && (
-                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} />
+                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} variant="final" />
               )}
 
               {stage === 'complete' && finalOutput && (
@@ -810,7 +917,7 @@ function formatTokens(n: number): string {
 function ResearchReviewCard({
   sections, locked, acceptedSections, editingSection, setEditingSection,
   feedbackSection, setFeedbackSection, sectionFeedback, setSectionFeedback,
-  sectionBusy, onAccept, onSaveEdit, onRegenerate,
+  sectionBusy, onAccept, onSaveEdit, onRegenerate, sectionUndo, onUndo,
 }: {
   sections: MeetingPrepResearchSections
   locked: boolean
@@ -825,9 +932,22 @@ function ResearchReviewCard({
   onAccept: (k: keyof MeetingPrepResearchSections) => void
   onSaveEdit: (k: keyof MeetingPrepResearchSections, text: string) => void
   onRegenerate: (k: keyof MeetingPrepResearchSections) => void
+  sectionUndo: Partial<Record<keyof MeetingPrepResearchSections, { text: string; wasAccepted: boolean }>>
+  onUndo: (k: keyof MeetingPrepResearchSections) => void
 }) {
   const [draft, setDraft] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Which sections are collapsed — starts empty (all expanded) so nothing
+  // changes for anyone until they choose to collapse a section themselves.
+  const [collapsed, setCollapsed] = useState<Set<keyof MeetingPrepResearchSections>>(new Set())
+  function toggleCollapsed(key: keyof MeetingPrepResearchSections) {
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   // Move focus (and the cursor) into the textarea the instant edit mode
   // opens, and settle the scroll position ourselves — otherwise the sudden
@@ -856,15 +976,37 @@ function ResearchReviewCard({
           const isFeedbackOpen = feedbackSection === key
           const isBusy = sectionBusy === key
           const Icon = SECTION_ICONS[key]
+          // Force a section open while it's being edited or regenerated —
+          // collapsing it out from under an in-progress action would hide
+          // what you're doing, not just tidy up the page.
+          const isCollapsed = collapsed.has(key) && !isEditing && !isBusy
 
           return (
-            <div key={key} className={`rounded-xl border p-4 transition-colors ${isEditing ? 'border-black/15 bg-white' : 'border-[#e5e3df] bg-[#faf9f7]'}`}>
-              <div className="flex items-center justify-between gap-3">
+            <div
+              key={key}
+              className={`rounded-xl border p-4 transition-colors ${
+                isEditing
+                  ? 'border-black/15 bg-white'
+                  : isAccepted
+                  ? 'border-emerald-200 bg-emerald-50'
+                  : 'border-[#e5e3df] bg-[#faf9f7]'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => toggleCollapsed(key)}
+                className="flex w-full items-center justify-between gap-3 text-left"
+                aria-expanded={!isCollapsed}
+              >
                 <div className="flex items-center gap-2.5">
-                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 shadow-sm">
-                    <Icon size={14} />
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 shadow-sm">
+                    <Icon size={16} />
                   </span>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-600">{SECTION_LABELS[key]}</h3>
+                  <h3 className="text-lg font-bold leading-tight text-gray-900">{SECTION_LABELS[key]}</h3>
+                  <ChevronDown
+                    size={16}
+                    className={`flex-shrink-0 text-gray-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
+                  />
                 </div>
                 {!locked && (
                   isAccepted ? (
@@ -875,12 +1017,22 @@ function ResearchReviewCard({
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600">Needs review</span>
                   )
                 )}
-              </div>
+              </button>
 
+              {!isCollapsed && <>
               {isBusy ? (
-                <div className="mt-3 flex items-center gap-2 py-4 text-sm text-gray-400">
-                  <Loader2 size={14} className="animate-spin" />
-                  <span>Regenerating…</span>
+                // Keep the existing text on screen (dimmed) instead of collapsing
+                // to a one-line spinner — a tall section shrinking to a single
+                // loader line shoves everything below it up the page, which
+                // reads as losing your place. Same height in, same height out.
+                // No text/badge overlay here — the Regenerate button below
+                // becomes the single "this is in progress" signal.
+                <div className="relative mt-3 overflow-hidden rounded-lg">
+                  <div
+                    className="prose-research pointer-events-none select-none text-sm text-gray-800 opacity-25"
+                    dangerouslySetInnerHTML={{ __html: marked.parse(text || '_Not yet written_') as string }}
+                  />
+                  <div className="content-shimmer absolute inset-0" />
                 </div>
               ) : isEditing ? (
                 <div className="mt-3">
@@ -894,19 +1046,37 @@ function ResearchReviewCard({
                 <div className="prose-research mt-3 text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: marked.parse(text || '_Not yet written_') as string }} />
               )}
 
-              {!locked && !isEditing && !isBusy && (
+              {!locked && !isEditing && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {!isAccepted && (
-                    <button onClick={() => onAccept(key)} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100">
+                    <button
+                      disabled={isBusy}
+                      onClick={() => onAccept(key)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
+                    >
                       <Check size={13} /> Accept
                     </button>
                   )}
-                  <button onClick={() => { setEditingSection(key); setDraft(text) }} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100">
+                  <button
+                    disabled={isBusy}
+                    onClick={() => { setEditingSection(key); setDraft(text) }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
+                  >
                     <Pencil size={13} /> Edit
                   </button>
-                  <button onClick={() => { setFeedbackSection(isFeedbackOpen ? null : key); setSectionFeedback('') }} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100">
-                    <WandSparkles size={13} /> Regenerate
+                  <button
+                    disabled={isBusy}
+                    onClick={() => { setFeedbackSection(isFeedbackOpen ? null : key); setSectionFeedback('') }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    <WandSparkles size={13} className={isBusy ? 'animate-pulse' : ''} />
+                    {isBusy ? 'Regenerating…' : 'Regenerate'}
                   </button>
+                  {sectionUndo[key] !== undefined && !isBusy && (
+                    <button onClick={() => onUndo(key)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+                      <Undo2 size={13} /> Undo last regenerate
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -918,13 +1088,21 @@ function ResearchReviewCard({
                     value={sectionFeedback}
                     onChange={(e) => setSectionFeedback(e.target.value)}
                     rows={2}
+                    disabled={isBusy}
                   />
                   <div className="mt-3 flex gap-3">
-                    <button onClick={() => onRegenerate(key)} className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900">Regenerate</button>
-                    <button onClick={() => setFeedbackSection(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
+                    <button
+                      disabled={isBusy}
+                      onClick={() => onRegenerate(key)}
+                      className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isBusy ? 'Regenerating…' : 'Regenerate'}
+                    </button>
+                    <button disabled={isBusy} onClick={() => setFeedbackSection(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
                   </div>
                 </div>
               )}
+              </>}
             </div>
           )
         })}
@@ -936,7 +1114,7 @@ function ResearchReviewCard({
 // ── Step 5: Presentation points card ──────────────────────────────────────
 function PointsCard({
   points, locked, editingPoint, setEditingPoint, pointFeedback, setPointFeedback,
-  pointBusy, onSaveEdit, onRegenerate,
+  pointBusy, onSaveEdit, onRegenerate, pointUndo, onUndoPoint, allPointsUndo, onUndoAllPoints,
 }: {
   points: string[]
   locked: boolean
@@ -947,6 +1125,10 @@ function PointsCard({
   pointBusy: number | 'all' | null
   onSaveEdit: (index: number, text: string) => void
   onRegenerate: (target: number | 'all', feedback: string) => void
+  pointUndo: Partial<Record<number, string>>
+  onUndoPoint: (index: number) => void
+  allPointsUndo: string[] | null
+  onUndoAllPoints: () => void
 }) {
   const [draft, setDraft] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -977,9 +1159,9 @@ function PointsCard({
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-black text-[11px] font-semibold text-white">{i + 1}</span>
                 {isBusy ? (
-                  <div className="flex items-center gap-2 py-2 text-sm text-gray-400">
-                    <Loader2 size={14} className="animate-spin" />
-                    <span>Regenerating…</span>
+                  <div className="relative flex-1 overflow-hidden rounded-lg">
+                    <p className="pointer-events-none select-none text-sm leading-relaxed text-gray-800 opacity-25">{point}</p>
+                    <div className="content-shimmer absolute inset-0" />
                   </div>
                 ) : isEditing ? (
                   <div className="flex-1">
@@ -994,14 +1176,28 @@ function PointsCard({
                 )}
               </div>
 
-              {!locked && !isEditing && !isBusy && (
+              {!locked && !isEditing && (
                 <div className="mt-2 ml-9 flex flex-wrap items-center gap-2">
-                  <button onClick={() => { setEditingPoint(i); setDraft(point) }} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100">
+                  <button
+                    disabled={isBusy}
+                    onClick={() => { setEditingPoint(i); setDraft(point) }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
+                  >
                     <Pencil size={13} /> Edit
                   </button>
-                  <button onClick={() => setPointFeedback(isFeedbackOpen ? null : { index: i, text: '' })} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100">
-                    <WandSparkles size={13} /> Regenerate
+                  <button
+                    disabled={isBusy}
+                    onClick={() => setPointFeedback(isFeedbackOpen ? null : { index: i, text: '' })}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    <WandSparkles size={13} className={isBusy ? 'animate-pulse' : ''} />
+                    {isBusy ? 'Regenerating…' : 'Regenerate'}
                   </button>
+                  {pointUndo[i] !== undefined && !isBusy && (
+                    <button onClick={() => onUndoPoint(i)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+                      <Undo2 size={13} /> Undo
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1012,10 +1208,17 @@ function PointsCard({
                     value={pointFeedback!.text}
                     onChange={(e) => setPointFeedback({ index: i, text: e.target.value })}
                     rows={2}
+                    disabled={isBusy}
                   />
                   <div className="mt-3 flex gap-3">
-                    <button onClick={() => onRegenerate(i, pointFeedback!.text)} className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900">Regenerate</button>
-                    <button onClick={() => setPointFeedback(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
+                    <button
+                      disabled={isBusy}
+                      onClick={() => onRegenerate(i, pointFeedback!.text)}
+                      className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isBusy ? 'Regenerating…' : 'Regenerate'}
+                    </button>
+                    <button disabled={isBusy} onClick={() => setPointFeedback(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
                   </div>
                 </div>
               )}
@@ -1033,16 +1236,30 @@ function PointsCard({
                 value={pointFeedback.text}
                 onChange={(e) => setPointFeedback({ index: 'all', text: e.target.value })}
                 rows={2}
+                disabled={pointBusy === 'all'}
               />
               <div className="mt-3 flex gap-3">
-                <button onClick={() => onRegenerate('all', pointFeedback.text)} className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900">Regenerate All</button>
-                <button onClick={() => setPointFeedback(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
+                <button
+                  disabled={pointBusy === 'all'}
+                  onClick={() => onRegenerate('all', pointFeedback.text)}
+                  className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {pointBusy === 'all' ? 'Regenerating…' : 'Regenerate All'}
+                </button>
+                <button disabled={pointBusy === 'all'} onClick={() => setPointFeedback(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => setPointFeedback({ index: 'all', text: '' })} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
-              <WandSparkles size={13} /> Reframe all three
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPointFeedback({ index: 'all', text: '' })} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
+                <WandSparkles size={13} /> Reframe all three
+              </button>
+              {allPointsUndo && (
+                <button onClick={onUndoAllPoints} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+                  <Undo2 size={13} /> Undo last reframe
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -1053,6 +1270,7 @@ function PointsCard({
 // ── Step 6: Planteo card ───────────────────────────────────────────────────
 function PlanteoCard({
   planteo, locked, editing, setEditing, showFeedback, setShowFeedback, feedback, setFeedback, busy, onSaveEdit, onRegenerate,
+  planteoUndo, onUndo,
 }: {
   planteo: string
   locked: boolean
@@ -1065,6 +1283,8 @@ function PlanteoCard({
   busy: boolean
   onSaveEdit: (text: string) => void
   onRegenerate: () => void
+  planteoUndo: string | null
+  onUndo: () => void
 }) {
   const [draft, setDraft] = useState(planteo)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -1086,9 +1306,12 @@ function PlanteoCard({
 
       <div className="mt-4">
         {busy ? (
-          <div className="flex items-center gap-2 py-6 text-sm text-gray-400">
-            <Loader2 size={14} className="animate-spin" />
-            <span>Working…</span>
+          <div className="relative overflow-hidden rounded-lg">
+            <div
+              className="prose-research pointer-events-none select-none text-sm text-gray-800 opacity-25"
+              dangerouslySetInnerHTML={{ __html: marked.parse(planteo || '_Not yet written_') as string }}
+            />
+            <div className="content-shimmer absolute inset-0" />
           </div>
         ) : editing ? (
           <div>
@@ -1103,7 +1326,7 @@ function PlanteoCard({
         )}
       </div>
 
-      {!locked && !editing && !busy && (
+      {!locked && !editing && (
         <div className="mt-5 border-t border-[#e5e3df] pt-4">
           {showFeedback ? (
             <div className="rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-4">
@@ -1113,10 +1336,17 @@ function PlanteoCard({
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={3}
+                disabled={busy}
               />
               <div className="mt-3 flex gap-3">
-                <button onClick={onRegenerate} className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900">Regenerate</button>
-                <button onClick={() => setShowFeedback(false)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
+                <button
+                  disabled={busy}
+                  onClick={onRegenerate}
+                  className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {busy ? 'Regenerating…' : 'Regenerate'}
+                </button>
+                <button disabled={busy} onClick={() => setShowFeedback(false)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
               </div>
             </div>
           ) : (
@@ -1127,6 +1357,11 @@ function PlanteoCard({
               <button onClick={() => setShowFeedback(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
                 <WandSparkles size={13} /> Regenerate
               </button>
+              {planteoUndo !== null && (
+                <button onClick={onUndo} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+                  <Undo2 size={13} /> Undo last regenerate
+                </button>
+              )}
             </div>
           )}
         </div>

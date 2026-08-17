@@ -9,6 +9,36 @@ export function isInterviewType(v: unknown): v is InterviewType {
   return v === 'company_ceo' || v === 'government_official'
 }
 
+// Appended after the admin-managed prompt on every meeting-prep Claude call
+// that has no marker/heading of its own to anchor on (points, planteo, final
+// document, and the per-section research regenerate — the main research pass
+// already strips anything before its first <<<SECTION>>> marker, which is
+// exactly why it never leaks narration into saved output). Placed LAST so it
+// overrides whatever the admin prompt says, mirroring the document engine's
+// OUTPUT_CONTRACT pattern.
+//
+// A prose instruction alone ("don't narrate") is a request the model can
+// still ignore — and does, in practice (analytical asides, "here is the
+// updated draft", justification paragraphs standing in for real content all
+// slip through). A literal marker is not a request, it's a parsing contract:
+// extractAfterMarker() below mechanically discards everything before it
+// regardless of what the model wrote, the same structural trick that already
+// makes the marker-based research pass reliable. This never dictates *what*
+// content to write — only *where* the real answer starts.
+export const OUTPUT_MARKER = '<<<OUTPUT>>>'
+
+export const NO_PREAMBLE_INSTRUCTION = `Before writing anything else, output the literal line ${OUTPUT_MARKER} on its own line, with nothing before it — no greeting, no plan, no explanation. Immediately after that line, write ONLY the requested output itself: no preamble, no meta-commentary about what you're doing, no closing remarks. Never write things like "Here is..." or "I'll now write...".`
+
+// Strips everything up to and including the marker. Falls back to the full
+// text untouched if the model didn't include it (rare, but keeps the run
+// recoverable instead of failing outright — same tolerant philosophy as
+// parseResearchSections' lenient fallback below).
+export function extractAfterMarker(text: string): string {
+  const idx = text.indexOf(OUTPUT_MARKER)
+  if (idx === -1) return text.trim()
+  return text.slice(idx + OUTPUT_MARKER.length).trim()
+}
+
 export const MEETING_PREP_PROMPT_KEYS: { key: MeetingPrepPromptKey; label: string; description: string }[] = [
   {
     key: 'research',

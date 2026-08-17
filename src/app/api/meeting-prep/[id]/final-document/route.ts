@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_FINAL_DOC_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { researchSectionsToPrompt } from '@/lib/meeting-prep'
+import { researchSectionsToPrompt, NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
 import type { MeetingPrepResearchSections } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -81,7 +81,9 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
   const advertiserBlock = session.advertiser_history_status === 'yes'
     ? `Previously advertised with TRC: ${session.advertiser_history_details}`
-    : 'No previous advertising history on record.'
+    : session.advertiser_history_status === 'no'
+    ? 'No previous advertising history on record.'
+    : 'Not checked / unknown.'
   const researchContext = researchSectionsToPrompt(session.research_sections as MeetingPrepResearchSections)
   const points = ((session.presentation_points || []) as string[]).map((p, i) => `${i + 1}. ${p}`).join('\n')
 
@@ -91,23 +93,33 @@ export async function POST(_request: NextRequest, { params }: Params) {
   let promptTokens = 0
   let outputTokens = 0
 
+  // This route is non-streaming — if Vercel hard-kills it mid-call there is no
+  // partial output to fall back on, unlike the streaming research route. So
+  // rather than try to recover after the fact, avoid ever attempting the
+  // (slower, unrecoverable) corrective second pass unless there's clearly
+  // enough of the maxDuration budget left for it to complete safely.
+  const requestStartedAt = Date.now()
+  const HARD_CAP_MS = maxDuration * 1000
+  const CORRECTIVE_PASS_MARGIN_MS = 60_000
+
   async function runPass(extra?: string): Promise<string> {
     const message = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 4096,
-      system: promptText,
+      system: `${promptText}\n\n${NO_PREAMBLE_INSTRUCTION}`,
       messages: [{ role: 'user', content: extra ? `${userContent}\n\n--- CORRECTION NEEDED ---\n${extra}` : userContent }],
     })
     const usage = parseUsage(message.usage as unknown, 0)
     promptTokens += totalPromptTokens(usage)
     outputTokens += usage.outputTokens
-    return message.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim()
+    return extractAfterMarker(message.content.map((b) => (b.type === 'text' ? b.text : '')).join(''))
   }
 
   try {
     let output = await runPass()
     const missing = missingHeadings(output)
-    if (missing.length > 0) {
+    const timeLeftMs = HARD_CAP_MS - (Date.now() - requestStartedAt)
+    if (missing.length > 0 && timeLeftMs > CORRECTIVE_PASS_MARGIN_MS) {
       output = await runPass(`Your draft was missing or unclear on these required sections: ${missing.join(', ')}. Regenerate the FULL document with all six sections present, in the required order.`)
     }
 
@@ -140,7 +152,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
       costUsd: cost,
     })
 
-    return NextResponse.json({ output })
+    return NextResponse.json({ output, usage: { tokens_total: totalTokens, cost_usd: cost } })
   } catch (err) {
     console.error('Meeting prep final document error:', err)
     await supabaseAdmin

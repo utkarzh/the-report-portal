@@ -124,6 +124,23 @@ body {
   .gemini-aurora, .gemini-bloom, .gemini-sparkle, .flow-line, .fade-up { animation: none; }
 }
 
+/* Regenerating-content shimmer — a soft light band sweeping across the dimmed
+   existing text while a section/point regenerates. Keeps the card at its
+   existing height (the old content stays rendered, just dimmed) instead of
+   collapsing to a bare spinner line, so the page doesn't jump under the
+   user's scroll position. */
+@keyframes content-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.content-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: content-shimmer 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .content-shimmer { animation: none; display: none; }
+}
+
 /* Streaming cursor */
 @keyframes blink {
   0%, 100% { opacity: 1; }

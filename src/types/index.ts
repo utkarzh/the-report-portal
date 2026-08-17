@@ -324,7 +324,7 @@ export interface MeetingPrepSession {
   media_positioning_snapshot: string | null
   media_audience_reach_snapshot: string | null
   media_narrative_snapshot: string | null
-  advertiser_history_status: 'yes' | 'no' | null
+  advertiser_history_status: 'yes' | 'no' | 'not_aware' | null
   advertiser_history_details: string | null
   research_sections: MeetingPrepResearchSections
   presentation_points: string[]

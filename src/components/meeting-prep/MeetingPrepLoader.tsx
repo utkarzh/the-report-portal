@@ -1,19 +1,47 @@
 'use client'
 
-import { Search } from 'lucide-react'
+import { useState } from 'react'
+import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 
-// Mirrors TranscribingLoader's shape (icon + elapsed clock + rotating hint)
-// so every long-running AI step in the app feels like one flow, but the
-// primary line stays tied to the real SSE status the server sends (e.g.
-// "Searching the web…") — the rotating hint below it only fills the dead
-// air between those real updates, it never replaces them.
-const AMBIENT_HINTS = [
-  'Cross-referencing multiple sources…',
-  'Checking dates, figures, and names for accuracy…',
-  'Filtering out anything off-topic…',
-  'Structuring findings into clear sections…',
-  'Polishing the language…',
-]
+// One shared "generating" mark used across every stage of the flow — a
+// designed Lottie animation instead of a hand-rolled CSS/Framer Motion
+// effect. Picks randomly between the two provided animations each time the
+// loader appears, and forces grayscale so whatever colors are baked into the
+// source file always render in the app's black/white theme.
+type Variant = 'research' | 'points' | 'planteo' | 'final'
+
+const LOTTIE_SOURCES = ['/animations/cooking-preloader.lottie', '/animations/ai.lottie']
+
+const HINTS: Record<Variant, string[]> = {
+  research: [
+    'Cross-referencing multiple sources…',
+    'Checking dates, figures, and names for accuracy…',
+    'Filtering out anything off-topic…',
+    'Structuring findings into clear sections…',
+    'Polishing the language…',
+  ],
+  points: [
+    'Reviewing the accepted research…',
+    'Identifying the strongest commercial angles…',
+    'Drafting three sharp presentation points…',
+    'Weighing each point for impact…',
+    'Tightening the language…',
+  ],
+  planteo: [
+    'Reviewing the presentation points…',
+    'Shaping the opening lines…',
+    'Writing natural, spoken phrasing…',
+    'Matching the tone to the audience…',
+    'Reading it back for flow…',
+  ],
+  final: [
+    'Pulling together every accepted section…',
+    'Applying the required document structure…',
+    'Checking every claim is sourced…',
+    'Formatting the final layout…',
+    'Running a final quality pass…',
+  ],
+}
 
 function fmt(secs: number): string {
   const m = Math.floor(secs / 60)
@@ -21,16 +49,33 @@ function fmt(secs: number): string {
   return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`
 }
 
-export default function MeetingPrepLoader({ label, elapsedSecs }: { label: string; elapsedSecs: number }) {
-  const hint = AMBIENT_HINTS[Math.min(Math.floor(elapsedSecs / 6), AMBIENT_HINTS.length - 1)]
+function GeneratingEmblem() {
+  // Lazy initializer — picked once per mount, so each time the loader
+  // appears (a new stage starting, a new regenerate) it re-rolls, rather
+  // than picking once for the whole session or re-rolling on every render.
+  const [src] = useState(() => LOTTIE_SOURCES[Math.floor(Math.random() * LOTTIE_SOURCES.length)])
+  return (
+    <div className="h-36 w-36" style={{ filter: 'grayscale(1) contrast(1.15)' }}>
+      <DotLottieReact src={src} loop autoplay />
+    </div>
+  )
+}
+
+export default function MeetingPrepLoader({
+  label,
+  elapsedSecs,
+  variant = 'research',
+}: {
+  label: string
+  elapsedSecs: number
+  variant?: Variant
+}) {
+  const hints = HINTS[variant]
+  const hint = hints[Math.min(Math.floor(elapsedSecs / 6), hints.length - 1)]
 
   return (
     <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-[#e5e3df] bg-white p-10 text-center shadow-sm">
-      <div className="relative flex h-20 w-20 items-center justify-center">
-        <span className="absolute inset-0 rounded-full bg-[#c8973f]/10 animate-ping" style={{ animationDuration: '2.4s' }} />
-        <span className="absolute inset-3 rounded-full bg-[#c8973f]/10" />
-        <Search size={22} className="relative animate-[spin_5s_linear_infinite] text-[#a07530]" />
-      </div>
+      <GeneratingEmblem />
 
       <div className="space-y-2">
         <p key={label} className="fade-up text-sm font-medium text-gray-800">{label}</p>

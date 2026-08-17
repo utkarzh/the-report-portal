@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
+import { NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
 import type { MeetingPrepResearchSections } from '@/types'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
@@ -87,7 +88,11 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const system = `You are updating ONE section of previously generated meeting-preparation research for a TRC sales representative, per the sales rep's refinement request. Apply the same source-quality, recency and editorial-orientation rules as the original research: cite sources with dates, flag unsourced claims explicitly, and never surface negative, corrosive or reputationally damaging content. TODAY'S DATE IS ${todayStr} (${currentYear}) — treat pre-training facts as possibly stale and verify with web search where useful.
 
-Rewrite ONLY the "${SECTION_LABELS[section]}" section. Do not restate or rewrite the other sections — they are shown only for context and are already approved. Output just the replacement text for this one section, with no marker line and no heading.`
+Rewrite ONLY the "${SECTION_LABELS[section]}" section. Do not restate or rewrite the other sections — they are shown only for context and are already approved. The replacement text must be genuine sourced content for this section (e.g. actual quotes or news items with attribution, not your own analysis or justification of why something matters) — if the rep's feedback is vague, use your judgement on what "better" means for this section type rather than substituting commentary for content.
+
+Your reply is not a comment or a diff — it is the ENTIRE, FINAL, ONLY text this section will contain afterward. There is no other mechanism that preserves anything: whatever you don't include is permanently deleted from this section, and whatever you do include is what the sales rep sees. If the section currently contains multiple quotes and multiple news items and the rep's feedback targets only one of them (e.g. "quote 2 is weak" or "the third news item isn't relevant"), you must still output ALL of it: copy every untouched quote and news item forward VERBATIM, character-for-character, in the same order, and change only the specific item the feedback names. "The rest is fine" means "reproduce the rest exactly as-is" — it is never permission to leave it out. Before you finish, count what the current version below contains (how many quotes, how many news items) and verify your reply contains at least that many, unless the feedback explicitly asked you to remove or consolidate items.
+
+${NO_PREAMBLE_INSTRUCTION}`
 
   const userContent = `${otherSections}\n\n--- CURRENT "${SECTION_LABELS[section].toUpperCase()}" (to be replaced) ---\n${sections[section] || '(empty)'}\n\n--- SALES REP'S REFINEMENT REQUEST ---\n${(feedback || '').trim() || 'Improve this section.'}`
 
@@ -108,6 +113,15 @@ Rewrite ONLY the "${SECTION_LABELS[section]}" section. Do not restate or rewrite
       if (event.type === 'content_block_start' && event.content_block.type === 'server_tool_use' && event.content_block.name === 'web_search') {
         searchesUsed += 1
       }
+      // Simple concatenation across every text block, in order. Any preamble
+      // Claude writes before the required <<<OUTPUT>>> marker is stripped by
+      // extractAfterMarker() below regardless of which block it landed in —
+      // no need to reset per-block here. (An earlier version reset fullText
+      // on every new text block to drop pre-search narration, but that broke
+      // longer replies: when the verbatim-preservation instruction requires
+      // reproducing several existing quotes/items, Claude sometimes runs a
+      // second search partway through writing them, and the reset silently
+      // discarded everything written before that second search.)
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
         fullText += event.delta.text
       }
@@ -120,7 +134,34 @@ Rewrite ONLY the "${SECTION_LABELS[section]}" section. Do not restate or rewrite
     const totalTokens = promptTokens + usage.outputTokens
     const cost = calculateCost(usage)
 
-    const updatedSections: MeetingPrepResearchSections = { ...sections, [section]: fullText.trim() }
+    const replacementText = extractAfterMarker(fullText)
+
+    // Backstop for the system prompt's verbatim-preservation instruction: if
+    // the reply is drastically shorter than what it's replacing, the model
+    // likely dropped untouched quotes/items instead of reproducing them. The
+    // API call already happened and is billed regardless, so persist its
+    // real cost before failing rather than losing it in the catch block
+    // below, which logs status only, no token/cost data.
+    const previousLength = (sections[section] || '').length
+    if (previousLength > 200 && replacementText.length < previousLength * 0.2) {
+      await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
+      await logUsageEvent({
+        userId: user.id,
+        workflow: 'meeting_prep_research',
+        sourceId: session.id,
+        model: CLAUDE_MODEL,
+        tokensInput: promptTokens,
+        tokensOutput: usage.outputTokens,
+        tokensTotal: totalTokens,
+        webSearches: usage.webSearches ?? 0,
+        costUsd: cost,
+        status: 'error',
+        error: 'Regenerated section was suspiciously short compared to the original',
+      })
+      return NextResponse.json({ error: 'The regenerated section looked incomplete compared to the original. Please try again.' }, { status: 500 })
+    }
+
+    const updatedSections: MeetingPrepResearchSections = { ...sections, [section]: replacementText }
 
     await supabaseAdmin
       .from('meeting_prep_sessions')
@@ -148,7 +189,11 @@ Rewrite ONLY the "${SECTION_LABELS[section]}" section. Do not restate or rewrite
       costUsd: cost,
     })
 
-    return NextResponse.json({ section, text: fullText.trim() })
+    return NextResponse.json({
+      section,
+      text: replacementText,
+      usage: { tokens_total: totalTokens, web_searches: usage.webSearches ?? 0, cost_usd: cost },
+    })
   } catch (err) {
     console.error('Meeting prep section regenerate error:', err)
     await logUsageEvent({

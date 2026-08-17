@@ -4,7 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isInterviewType } from '@/lib/meeting-prep'
 
 // POST /api/meeting-prep — Step 1 of the brief: captures interviewee/meeting
-// details + the Phase-1 manual advertiser-history check, looks up the Media
+// details + the optional advertiser-history check (auto-filled from the
+// tracker where available, otherwise 'not_aware'), looks up the Media
 // Library profile for the selected publication, and creates the session row.
 // No Claude call happens here — research only starts once the client calls
 // /api/meeting-prep/[id]/research, so a missing media profile halts with zero
@@ -46,8 +47,10 @@ export async function POST(request: NextRequest) {
   if (!isInterviewType(intervieweeType)) {
     return NextResponse.json({ error: 'Invalid interviewee type.' }, { status: 400 })
   }
-  if (advertiserHistoryStatus !== 'yes' && advertiserHistoryStatus !== 'no') {
-    return NextResponse.json({ error: 'Advertiser history must be checked before continuing.' }, { status: 400 })
+  // Optional: reps often genuinely don't know, so a blank answer defaults to
+  // 'not_aware' rather than forcing a guess just to submit the form.
+  if (advertiserHistoryStatus && !['yes', 'no', 'not_aware'].includes(advertiserHistoryStatus)) {
+    return NextResponse.json({ error: 'Invalid advertiser history value.' }, { status: 400 })
   }
   if (advertiserHistoryStatus === 'yes' && !advertiserHistoryDetails?.trim()) {
     return NextResponse.json({ error: 'Please note the publication, space and approximate period.' }, { status: 400 })
@@ -83,7 +86,7 @@ export async function POST(request: NextRequest) {
       media_positioning_snapshot: media.positioning_statement,
       media_audience_reach_snapshot: media.audience_reach,
       media_narrative_snapshot: media.editorial_narrative_focus,
-      advertiser_history_status: advertiserHistoryStatus,
+      advertiser_history_status: advertiserHistoryStatus || 'not_aware',
       advertiser_history_details: advertiserHistoryDetails?.trim() || null,
       stage: 'input',
     })

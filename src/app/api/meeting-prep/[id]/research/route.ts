@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_RESEARCH_RESERVE } from '@/lib/claude/tokens'
+import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_RESEARCH_RESERVE, HAIKU_PRICING } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
 import { parseResearchSections, researchSectionsComplete } from '@/lib/meeting-prep'
 import type { MeetingPrepResearchSections } from '@/types'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
+// repairFormat only reorganises text Claude already wrote under fixed markers —
+// no research, no rewriting — so it runs on Haiku (1/3 the cost) rather than
+// re-running the whole pass on Sonnet.
+const REPAIR_MODEL = 'claude-haiku-4-5'
 export const maxDuration = 300
 
 interface Params {
@@ -34,7 +38,9 @@ TODAY'S DATE IS ${todayStr}. The current year is ${currentYear}. Your training d
 
 RECENCY: financial/market data no older than 24 months; biographical/career information may extend to 5 years; quotes and news no older than 12 months wherever possible. Older data is only acceptable if labelled with its date.
 
-You have a budget of up to ${MAX_WEB_SEARCHES} web searches — spend them well across BOTH the interviewee and the organisation, and stop searching once you have enough to write all four sections. Append a recency qualifier ("${currentYear}", "latest", a month/year) to queries chasing current facts. Cite source URLs for every factual claim, with the publication date where available. If something cannot be verified, write N/A rather than falling back to training-data assumptions.`
+You have a budget of up to ${MAX_WEB_SEARCHES} web searches — spend them well across BOTH the interviewee and the organisation, and stop searching once you have enough to write all four sections. Append a recency qualifier ("${currentYear}", "latest", a month/year) to queries chasing current facts. Cite source URLs for every factual claim, with the publication date where available. If something cannot be verified, write N/A rather than falling back to training-data assumptions.
+
+Search silently — do not narrate your plan or announce what you're about to search for before doing it (e.g. never write "I'll research X first"). Go straight to searching, then straight to the section markers and content.`
 }
 
 function subjectBlock(session: Record<string, unknown>) {
@@ -54,7 +60,9 @@ Editorial Narrative Focus: ${session.media_narrative_snapshot || 'N/A'}
 --- ADVERTISER HISTORY (already checked manually — do not re-research this) ---
 ${session.advertiser_history_status === 'yes'
     ? `Previously advertised with TRC: ${session.advertiser_history_details}`
-    : 'No previous advertising history on record.'}`
+    : session.advertiser_history_status === 'no'
+    ? 'No previous advertising history on record.'
+    : 'Not checked / unknown — do not assume either way.'}`
 }
 
 export async function POST(_request: NextRequest, { params }: Params) {
@@ -122,6 +130,10 @@ export async function POST(_request: NextRequest, { params }: Params) {
       let promptTokens = 0
       let outputTokens = 0
       let webSearches = 0
+      // Accumulated per-call since research and repairFormat run on different
+      // models (Sonnet vs Haiku) — a single blended calculateCost() over the
+      // combined token totals would price the Haiku portion at Sonnet rates.
+      let cost = 0
 
       // Soft deadline: abort generation with time to spare so we always reach
       // the persist step below, rather than being hard-killed at Vercel's limit
@@ -133,9 +145,26 @@ export async function POST(_request: NextRequest, { params }: Params) {
         try { activeStream?.abort() } catch {}
       }, SOFT_DEADLINE_MS)
 
+      // The soft-deadline abort only targets the streaming research pass
+      // (`activeStream`) — repairFormat runs as a separate, non-streaming call
+      // that isn't wired to that timer at all, so on its own it could still run
+      // past Vercel's hard cap if the first pass finished close to the deadline.
+      // Track wall-clock time directly and skip the repair pass rather than
+      // risk a hard kill with nothing persisted.
+      const requestStartedAt = Date.now()
+      const HARD_CAP_MS = maxDuration * 1000
+      const REPAIR_MARGIN_MS = 40_000
+
       async function runResearchPass(extraInstruction?: string): Promise<string> {
         let fullText = ''
         let searchesThisPass = 0
+        let startUsage: Record<string, unknown> = {}
+        let passOutputTokens = 0
+        // `message_delta` is the ONLY event carrying the API's output-token
+        // count, and it arrives once at the end of a message. A pass we cut
+        // short at the soft deadline never sees it.
+        let sawFinalUsage = false
+        let reportedSearches: number | undefined
         // Only allow as many searches as remain in the run's total budget.
         const perPass = Math.max(0, Math.min(MAX_WEB_SEARCHES, TOTAL_SEARCH_BUDGET - webSearches))
         const tools: WebSearchTool20250305[] = perPass > 0
@@ -158,32 +187,62 @@ export async function POST(_request: NextRequest, { params }: Params) {
         })
         activeStream = claudeStream
 
+        // Usage is tracked from stream events (not finalMessage) so it stays
+        // valid even when we abort at the soft deadline — finalMessage()
+        // rejects on abort, which previously dropped the whole pass's token
+        // cost from the ledger (only the search count survived).
         try {
           for await (const event of claudeStream) {
-            // Server-executed tools (web_search) stream as `server_tool_use`.
-            if (event.type === 'content_block_start' && event.content_block.type === 'server_tool_use' && event.content_block.name === 'web_search') {
+            if (event.type === 'message_start') {
+              startUsage = (event.message.usage ?? {}) as unknown as Record<string, unknown>
+            } else if (
+              event.type === 'content_block_start' &&
+              event.content_block.type === 'server_tool_use' &&
+              event.content_block.name === 'web_search'
+            ) {
               searchesThisPass += 1
               send({ status: 'web_search_start' })
-            }
-            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
               fullText += event.delta.text
+            } else if (event.type === 'message_delta') {
+              const du = event.usage as
+                | { output_tokens?: number; server_tool_use?: { web_search_requests?: number } }
+                | undefined
+              if (typeof du?.output_tokens === 'number') {
+                passOutputTokens = du.output_tokens
+                sawFinalUsage = true
+              }
+              if (typeof du?.server_tool_use?.web_search_requests === 'number') {
+                reportedSearches = du.server_tool_use.web_search_requests
+              }
             }
           }
         } catch (e) {
           if (!aborted) throw e // swallow ONLY our own soft-deadline abort
         }
 
-        try {
-          const finalMsg = await claudeStream.finalMessage()
-          const reportedSearches = (finalMsg.usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use?.web_search_requests
-          const usage = parseUsage(finalMsg.usage, reportedSearches ?? searchesThisPass)
-          promptTokens += totalPromptTokens(usage)
-          outputTokens += usage.outputTokens
-          webSearches += usage.webSearches ?? 0
-        } catch {
-          // Aborted mid-stream — usage isn't finalised; count the searches seen.
-          webSearches += searchesThisPass
+        // Recover the output-token count when the pass was cut short. Without
+        // this, passOutputTokens stays 0 and the pass bills as if Claude wrote
+        // nothing — output is the expensive side, so the ledger under-counts
+        // by most of the real cost. countTokens is free and uses the same
+        // tokenizer, so counting the text we actually received is exact.
+        if (!sawFinalUsage && fullText.trim()) {
+          try {
+            const counted = await anthropic.messages.countTokens({
+              model: CLAUDE_MODEL,
+              messages: [{ role: 'user', content: fullText }],
+            })
+            passOutputTokens = counted.input_tokens
+          } catch (countErr) {
+            console.error('Research output-token recount failed; pass will under-report:', countErr)
+          }
         }
+
+        const usage = parseUsage({ ...startUsage, output_tokens: passOutputTokens }, reportedSearches ?? searchesThisPass)
+        promptTokens += totalPromptTokens(usage)
+        outputTokens += usage.outputTokens
+        webSearches += usage.webSearches ?? 0
+        cost += calculateCost(usage) // Sonnet pricing (default)
 
         activeStream = null
         return fullText
@@ -202,7 +261,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
         // is a trivial restructuring task the model does reliably.
         async function repairFormat(rawText: string): Promise<string> {
           const message = await anthropic.messages.create({
-            model: CLAUDE_MODEL,
+            model: REPAIR_MODEL,
             max_tokens: 8000,
             system: `You reformat existing research. Output the research below reorganised into EXACTLY these four sections, each introduced by its literal marker line on its own line, in this order and nothing else:
 <<<SECTION:INTERVIEWEE>>>
@@ -215,6 +274,7 @@ Preserve ALL content, sources, citations and wording exactly — do NOT research
           const usage = parseUsage(message.usage as unknown, 0)
           promptTokens += totalPromptTokens(usage)
           outputTokens += usage.outputTokens
+          cost += calculateCost(usage, HAIKU_PRICING)
           return message.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
         }
 
@@ -225,7 +285,11 @@ Preserve ALL content, sources, citations and wording exactly — do NOT research
         // under the markers — fast, no new research. We deliberately do NOT run a
         // second full research pass (the old validation "reframe"): that doubled
         // the runtime and overran the function time limit, leaving runs stuck.
-        if (!researchSectionsComplete(sections) && !aborted) {
+        // Also skip it outright if too little time remains before the hard cap —
+        // better to fail cleanly (session marked 'failed', user retries) than to
+        // risk Vercel killing the function mid-repair with nothing persisted.
+        const timeLeftMs = HARD_CAP_MS - (Date.now() - requestStartedAt)
+        if (!researchSectionsComplete(sections) && !aborted && timeLeftMs > REPAIR_MARGIN_MS) {
           send({ status: 'refining' })
           const repaired = parseResearchSections(await repairFormat(firstText))
           if (researchSectionsComplete(repaired)) sections = repaired
@@ -233,7 +297,6 @@ Preserve ALL content, sources, citations and wording exactly — do NOT research
 
         clearTimeout(deadlineTimer)
 
-        const cost = calculateCost({ inputTokens: promptTokens, outputTokens, webSearches })
         const totalTokens = promptTokens + outputTokens
 
         // The model occasionally returns text without the <<<SECTION:…>>> markers
@@ -280,7 +343,7 @@ Preserve ALL content, sources, citations and wording exactly — do NOT research
         })
 
         if (researchOk) {
-          send({ done: true, sections })
+          send({ done: true, sections, usage: { tokens_total: totalTokens, web_searches: webSearches, cost_usd: cost } })
         } else {
           send({ error: 'The research came back incomplete. Please run it again.' })
         }
