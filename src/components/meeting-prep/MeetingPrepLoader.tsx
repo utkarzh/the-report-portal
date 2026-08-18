@@ -6,9 +6,13 @@ import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 // One shared "generating" mark used across every stage of the flow — a
 // designed Lottie animation instead of a hand-rolled CSS/Framer Motion
 // effect. Picks randomly between the two provided animations each time the
-// loader appears, and forces grayscale so whatever colors are baked into the
-// source file always render in the app's black/white theme.
+// loader appears, and re-tints whatever colors are baked into the source file
+// to the app's golden theme, since neither source ships in brand colors.
 type Variant = 'research' | 'points' | 'planteo' | 'final'
+
+// Brand gold, same value used elsewhere in the app (EntityCard, transcription
+// indicators, etc.) — kept as one constant so the loader always matches it.
+const GOLD = '#c8973f'
 
 const LOTTIE_SOURCES = ['/animations/cooking-preloader.lottie', '/animations/ai.lottie']
 
@@ -55,8 +59,18 @@ function GeneratingEmblem() {
   // than picking once for the whole session or re-rolling on every render.
   const [src] = useState(() => LOTTIE_SOURCES[Math.floor(Math.random() * LOTTIE_SOURCES.length)])
   return (
-    <div className="h-36 w-36" style={{ filter: 'grayscale(1) contrast(1.15)' }}>
-      <DotLottieReact src={src} loop autoplay />
+    <div className="relative h-36 w-36 overflow-hidden">
+      {/* Flatten the source animation to a pure luminance map, then tint it
+          with mix-blend-mode: color — the overlay's hue/saturation (gold)
+          replaces the base's, while the base's luminosity (the animation's
+          actual shading) is kept. This reads as gold regardless of whatever
+          colors are baked into the source .lottie file, and unlike an SVG
+          filter referenced via `filter: url(#id)`, mix-blend-mode has none of
+          that technique's cross-browser flakiness. */}
+      <div className="absolute inset-0" style={{ filter: 'grayscale(1) contrast(1.1)' }}>
+        <DotLottieReact src={src} loop autoplay />
+      </div>
+      <div className="pointer-events-none absolute inset-0" style={{ backgroundColor: GOLD, mixBlendMode: 'color' }} />
     </div>
   )
 }

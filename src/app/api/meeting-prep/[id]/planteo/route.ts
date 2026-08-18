@@ -70,6 +70,26 @@ export async function POST(request: NextRequest, { params }: Params) {
     libraryText = libraryRow?.template_text || ''
   }
 
+  // Only the Company CEO formula is a fixed, literal script the client wants
+  // reproduced with zero adaptation (reps adapt it live in the room) — no
+  // prompt wording can guarantee an LLM reproduces text with zero drift across
+  // regenerations, so for this variant we serve it verbatim and skip the API
+  // call entirely. The Government Official formula is a strategic framework
+  // ("use the approved research to...", "where appropriate...") that genuinely
+  // needs the model to reason and personalise per interview — it must still go
+  // through the normal generation path below, using the formula as guidance.
+  if (session.interviewee_type === 'company_ceo' && libraryText && libraryText.trim()) {
+    const text = libraryText
+    const updates: Record<string, unknown> = { planteo_output: text }
+    if (!isRegenerate) {
+      updates.stage = 'planteo_pending'
+      updates.planteo_prompt_snapshot = promptText
+      updates.planteo_library_snapshot = libraryText
+    }
+    await supabaseAdmin.from('meeting_prep_sessions').update(updates).eq('id', session.id)
+    return NextResponse.json({ planteo: text, usage: { tokens_total: 0, cost_usd: 0 } })
+  }
+
   const researchContext = researchSectionsToPrompt(session.research_sections as MeetingPrepResearchSections)
   const points = ((session.presentation_points || []) as string[]).map((p, i) => `${i + 1}. ${p}`).join('\n')
   const anthropic = getAnthropicClient()

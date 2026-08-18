@@ -37,6 +37,19 @@ function missingHeadings(text: string): string[] {
   return missing
 }
 
+// The approved planteo (session.planteo_output) is either the client's fixed,
+// verbatim formula or a prior AI draft — either way it was already approved by
+// the rep at the planteo stage, so the assembly pass must not be trusted to
+// retype it identically. Replace whatever the model wrote for section 6 with
+// the approved text exactly, keeping only the heading line it generated.
+function spliceApprovedPlanteo(output: string, approvedPlanteo: string): string {
+  if (!approvedPlanteo.trim()) return output
+  const lines = output.split('\n')
+  const headingIdx = lines.findIndex((l) => /planteo/i.test(l) && l.trim().length < 100)
+  if (headingIdx === -1) return output
+  return [...lines.slice(0, headingIdx + 1), '', approvedPlanteo.trim()].join('\n')
+}
+
 export async function POST(_request: NextRequest, { params }: Params) {
   const supabase = createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -122,6 +135,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
     if (missing.length > 0 && timeLeftMs > CORRECTIVE_PASS_MARGIN_MS) {
       output = await runPass(`Your draft was missing or unclear on these required sections: ${missing.join(', ')}. Regenerate the FULL document with all six sections present, in the required order.`)
     }
+    output = spliceApprovedPlanteo(output, session.planteo_output || '')
 
     const cost = calculateCost({ inputTokens: promptTokens, outputTokens })
     const totalTokens = promptTokens + outputTokens
