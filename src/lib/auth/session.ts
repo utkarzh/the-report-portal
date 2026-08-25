@@ -51,6 +51,7 @@ export function getProfileFromHeaders() {
     can_access_business_cases: h.get('x-user-can-business-cases') === 'true',
     can_access_editorial_briefs: h.get('x-user-can-editorial-briefs') === 'true',
     can_access_meeting_preparation: h.get('x-user-can-meeting-preparation') === 'true',
+    finance_role: (h.get('x-user-finance-role') || null) as Profile['finance_role'],
   }
 }
 
@@ -61,4 +62,14 @@ export function requireAdminHeader(): void {
   const role = h.get('x-user-role')
   if (!role) redirect('/login')
   if (role !== 'admin') redirect('/dashboard')
+}
+
+// Synchronous finance-admin guard (platform admins pass too — see
+// isFinanceAdmin). Used by the /finance/admin route group layout.
+export function requireFinanceAdminHeader(): void {
+  const h = headers()
+  const role = h.get('x-user-role')
+  if (!role) redirect('/login')
+  const financeRole = h.get('x-user-finance-role')
+  if (role !== 'admin' && financeRole !== 'finance_admin') redirect('/finance')
 }

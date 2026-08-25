@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { MoreVertical, Pencil, Ban, RotateCcw, Trash2 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import EditUserModal from '@/components/admin/EditUserModal'
 import type { Profile } from '@/types'
@@ -60,39 +61,45 @@ export default function UserActionsMenu({ user, currentAdminId }: { user: Profil
       <div className="relative">
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          className="p-1.5 rounded hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700"
+          className={`p-1.5 rounded-full transition-colors ${
+            menuOpen ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'
+          }`}
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-            <circle cx="12" cy="5" r="1.5" />
-            <circle cx="12" cy="12" r="1.5" />
-            <circle cx="12" cy="19" r="1.5" />
-          </svg>
+          <MoreVertical size={16} strokeWidth={1.75} />
         </button>
 
         {menuOpen && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#e5e3df] shadow-lg z-50">
+            <div className="dropdown-in origin-top-right absolute right-0 top-full mt-1.5 w-48 bg-white border border-[#e5e3df] shadow-lg z-50 py-1">
               <button
                 onClick={() => { setMenuOpen(false); setShowEditModal(true) }}
-                className="flex items-center w-full px-3 py-2.5 text-xs text-gray-700 hover:bg-gray-50"
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
               >
+                <Pencil size={14} strokeWidth={1.75} className="text-gray-400 flex-shrink-0" />
                 Edit details
               </button>
               <button
                 onClick={() => { setMenuOpen(false); setShowDeactivateModal(true) }}
                 disabled={isSelf}
-                className="flex items-center w-full px-3 py-2.5 text-xs text-gray-700 hover:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed disabled:hover:bg-white"
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors disabled:text-gray-300 disabled:cursor-not-allowed disabled:hover:bg-white"
                 title={isSelf ? 'You cannot deactivate your own account' : undefined}
               >
+                {user.status === 'active' ? (
+                  <Ban size={14} strokeWidth={1.75} className={isSelf ? 'text-gray-300' : 'text-amber-500'} />
+                ) : (
+                  <RotateCcw size={14} strokeWidth={1.75} className={isSelf ? 'text-gray-300' : 'text-emerald-600'} />
+                )}
                 {user.status === 'active' ? 'Deactivate' : 'Reactivate'}
               </button>
+              <div className="my-1 h-px bg-[#e5e3df]" />
               <button
                 onClick={() => { setMenuOpen(false); setShowDeleteModal(true) }}
                 disabled={isSelf}
-                className="flex items-center w-full px-3 py-2.5 text-xs text-red-600 hover:bg-red-50 disabled:text-gray-300 disabled:cursor-not-allowed disabled:hover:bg-white"
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-xs text-red-600 hover:bg-red-50 transition-colors disabled:text-gray-300 disabled:cursor-not-allowed disabled:hover:bg-white"
                 title={isSelf ? 'You cannot delete your own account' : undefined}
               >
+                <Trash2 size={14} strokeWidth={1.75} className={isSelf ? 'text-gray-300' : 'text-red-500'} />
                 Delete
               </button>
             </div>

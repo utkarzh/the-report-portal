@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_FINAL_DOC_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { researchSectionsToPrompt, NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
+import { researchSectionsToPrompt, advertiserHistoryToPrompt, splitPlanteoOutput, NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
 import type { MeetingPrepResearchSections } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -41,13 +41,21 @@ function missingHeadings(text: string): string[] {
 // verbatim formula or a prior AI draft — either way it was already approved by
 // the rep at the planteo stage, so the assembly pass must not be trusted to
 // retype it identically. Replace whatever the model wrote for section 6 with
-// the approved text exactly, keeping only the heading line it generated.
+// the approved text exactly, keeping only the heading line it generated. Only
+// the spoken script goes in — for the Company CEO variant, planteo_output
+// also carries an internal commercial recommendation ahead of the spoken
+// script (splitPlanteoOutput separates them), which must NOT be spliced in
+// here: it belongs in the Commercial Alert section only (per the "planteo"
+// prompt's own instruction that it "should not be spoken to the interviewee
+// as a separate section") and the assembly pass already has it via the full
+// planteo_output fed into userContent below.
 function spliceApprovedPlanteo(output: string, approvedPlanteo: string): string {
-  if (!approvedPlanteo.trim()) return output
+  const { script } = splitPlanteoOutput(approvedPlanteo)
+  if (!script.trim()) return output
   const lines = output.split('\n')
   const headingIdx = lines.findIndex((l) => /planteo/i.test(l) && l.trim().length < 100)
   if (headingIdx === -1) return output
-  return [...lines.slice(0, headingIdx + 1), '', approvedPlanteo.trim()].join('\n')
+  return [...lines.slice(0, headingIdx + 1), '', script].join('\n')
 }
 
 export async function POST(_request: NextRequest, { params }: Params) {
@@ -92,11 +100,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
     .maybeSingle()
   const promptText = promptRow?.prompt_text || ''
 
-  const advertiserBlock = session.advertiser_history_status === 'yes'
-    ? `Previously advertised with TRC: ${session.advertiser_history_details}`
-    : session.advertiser_history_status === 'no'
-    ? 'No previous advertising history on record.'
-    : 'Not checked / unknown.'
+  const advertiserBlock = advertiserHistoryToPrompt(session)
   const researchContext = researchSectionsToPrompt(session.research_sections as MeetingPrepResearchSections)
   const points = ((session.presentation_points || []) as string[]).map((p, i) => `${i + 1}. ${p}`).join('\n')
 

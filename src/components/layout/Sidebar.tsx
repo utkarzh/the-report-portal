@@ -18,6 +18,7 @@ import {
   ChevronRight,
   LogOut,
   CalendarClock,
+  Wallet,
 } from 'lucide-react'
 import type { UserRole } from '@/types'
 
@@ -31,6 +32,8 @@ interface SidebarProps {
   canAccessBusinessCases: boolean
   canAccessEditorialBriefs: boolean
   canAccessMeetingPreparation: boolean
+  canAccessFinance?: boolean
+  financeHref?: string
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
@@ -62,7 +65,7 @@ function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: bool
   )
 }
 
-export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, mobileOpen = false }: SidebarProps) {
+export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessFinance = false, financeHref = '/finance', mobileOpen = false }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
@@ -135,9 +138,27 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
       </div>
 
       <nav className="flex-1 px-3 overflow-y-auto">
-        {toolNavItems.map((item) => (
-          <NavLink key={item.href} item={item} collapsed={collapsed} pathname={pathname} />
-        ))}
+        {toolNavItems.length > 0 && (
+          <>
+            <p className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 ${collapsed ? 'lg:hidden' : ''}`}>
+              Editorial
+            </p>
+            {toolNavItems.map((item) => (
+              <NavLink key={item.href} item={item} collapsed={collapsed} pathname={pathname} />
+            ))}
+          </>
+        )}
+
+        {canAccessFinance && (
+          <>
+            <div className="mt-4 pt-4 border-t border-gray-800 mb-2">
+              <p className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 ${collapsed ? 'lg:hidden' : ''}`}>
+                Finance
+              </p>
+            </div>
+            <NavLink item={{ label: 'Caja Tool', href: financeHref, icon: Wallet }} collapsed={collapsed} pathname={pathname} />
+          </>
+        )}
 
         {role === 'admin' && (
           <>

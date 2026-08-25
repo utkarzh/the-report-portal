@@ -8,7 +8,13 @@ import type { NextRequest } from 'next/server'
 // Trailing slashes are stripped so callers can append `/path` cleanly.
 export function getBaseUrl(request: NextRequest): string {
   const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim()
-  if (fromEnv) return fromEnv.replace(/\/+$/, '')
+  if (fromEnv) {
+    // A bare domain (no scheme) is a natural way to fill in this env var, but
+    // used as-is it produces a scheme-less <a href> — undefined/broken in an
+    // email client with no page to resolve it relative to. Default to https.
+    const withScheme = /^https?:\/\//i.test(fromEnv) ? fromEnv : `https://${fromEnv}`
+    return withScheme.replace(/\/+$/, '')
+  }
 
   const forwardedHost = request.headers.get('x-forwarded-host')
   if (forwardedHost) {

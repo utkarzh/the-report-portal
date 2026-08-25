@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import Button from './Button'
 
 interface ModalProps {
@@ -37,8 +38,19 @@ export default function Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-sm shadow-xl w-full max-w-sm mx-4 p-6">
+      <div className="modal-backdrop-in absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="modal-panel-in relative bg-white rounded-sm shadow-xl w-full max-w-sm mx-4 p-6">
+        <div
+          className={`mb-4 inline-flex h-9 w-9 items-center justify-center rounded-full ${
+            confirmVariant === 'danger' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
+          }`}
+        >
+          {confirmVariant === 'danger' ? (
+            <AlertTriangle size={18} strokeWidth={1.75} />
+          ) : (
+            <CheckCircle2 size={18} strokeWidth={1.75} />
+          )}
+        </div>
         <h3 className="text-sm font-semibold text-gray-900 mb-2">{title}</h3>
         <p className="text-sm text-gray-500 mb-6">{description}</p>
         <div className="flex gap-3">

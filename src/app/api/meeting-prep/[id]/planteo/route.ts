@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_PLANTEO_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { researchSectionsToPrompt, NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
+import { researchSectionsToPrompt, advertiserHistoryToPrompt, splitPlanteoOutput, SPOKEN_PLANTEO_MARKER, NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
 import type { MeetingPrepResearchSections } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -70,45 +70,47 @@ export async function POST(request: NextRequest, { params }: Params) {
     libraryText = libraryRow?.template_text || ''
   }
 
-  // Only the Company CEO formula is a fixed, literal script the client wants
-  // reproduced with zero adaptation (reps adapt it live in the room) — no
-  // prompt wording can guarantee an LLM reproduces text with zero drift across
-  // regenerations, so for this variant we serve it verbatim and skip the API
-  // call entirely. The Government Official formula is a strategic framework
-  // ("use the approved research to...", "where appropriate...") that genuinely
-  // needs the model to reason and personalise per interview — it must still go
-  // through the normal generation path below, using the formula as guidance.
-  if (session.interviewee_type === 'company_ceo' && libraryText && libraryText.trim()) {
-    const text = libraryText
-    const updates: Record<string, unknown> = { planteo_output: text }
-    if (!isRegenerate) {
-      updates.stage = 'planteo_pending'
-      updates.planteo_prompt_snapshot = promptText
-      updates.planteo_library_snapshot = libraryText
-    }
-    await supabaseAdmin.from('meeting_prep_sessions').update(updates).eq('id', session.id)
-    return NextResponse.json({ planteo: text, usage: { tokens_total: 0, cost_usd: 0 } })
-  }
-
   const researchContext = researchSectionsToPrompt(session.research_sections as MeetingPrepResearchSections)
   const points = ((session.presentation_points || []) as string[]).map((p, i) => `${i + 1}. ${p}`).join('\n')
+  const advertiserBlock = advertiserHistoryToPrompt(session)
   const anthropic = getAnthropicClient()
 
-  const system = `${promptText}\n\n--- APPROVED PLANTEO LIBRARY FORMULA FOR THIS VARIANT (source of truth — do not deviate) ---\n${libraryText || '(no formula has been added to the Planteo Library yet for this variant — use the structure described in your instructions above as closely as possible, and note in the output where the approved formula is still pending)'}\n\n${NO_PREAMBLE_INSTRUCTION}`
+  // Only the Company CEO formula is a fixed, literal script the client wants
+  // spoken with zero adaptation (reps adapt it live in the room) — no prompt
+  // wording can guarantee an LLM reproduces text with zero drift across
+  // regenerations, so the script itself is never sent through the model; it
+  // is appended verbatim in code below. What DOES still need the model is the
+  // internal commercial recommendation (Rule A/B in the "planteo" prompt) that
+  // the final document's Commercial Alert section depends on — so this call
+  // is scoped to producing ONLY that recommendation, never the spoken text.
+  // The Government Official formula, by contrast, is a strategic framework
+  // ("use the approved research to...", "where appropriate...") that needs
+  // the model to write and personalise the whole thing every time.
+  const isCeoFixedFormula = session.interviewee_type === 'company_ceo' && Boolean(libraryText && libraryText.trim())
+  const previousRecommendation = splitPlanteoOutput(session.planteo_output || '').recommendation
 
-  const userContent = isRegenerate
-    ? `${researchContext}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\n--- CURRENT PLANTEO (sales rep wants changes) ---\n${session.planteo_output || ''}\n\n--- SALES REP'S FEEDBACK ---\n${(feedback || '').trim() || 'Improve this planteo.'}\n\nThe current planteo above is shown in full. Your reply must be the FULL replacement script from start to finish, not just the part the feedback is about. If the feedback targets one part (e.g. "the opening" or "the closing line"), keep everything else from the current version and change only what was targeted — never reply with just the changed portion, a summary, or a shorter excerpt.`
-    : `${researchContext}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\nBuild the planteo now.`
+  const system = isCeoFixedFormula
+    ? `${promptText}\n\n--- TASK FOR THIS CALL ---\nDetermine and output ONLY the internal commercial recommendation for this Company CEO (the "Recommended offer / Basis / Why" format described above), using the approved research, advertiser history, and presentation points below. This recommendation is for the sales representative only — never speak it to the interviewee, and never write, reproduce, or paraphrase the spoken planteo/formula itself: the approved formula is appended separately, verbatim, by the system.\n\n${NO_PREAMBLE_INSTRUCTION}`
+    : `${promptText}\n\n--- APPROVED PLANTEO LIBRARY FORMULA FOR THIS VARIANT (source of truth — do not deviate) ---\n${libraryText || '(no formula has been added to the Planteo Library yet for this variant — use the structure described in your instructions above as closely as possible, and note in the output where the approved formula is still pending)'}\n\n${NO_PREAMBLE_INSTRUCTION}`
+
+  const userContent = isCeoFixedFormula
+    ? isRegenerate
+      ? `${researchContext}\n\n--- ADVERTISER HISTORY ---\n${advertiserBlock}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\n--- CURRENT RECOMMENDATION (sales rep wants changes) ---\n${previousRecommendation || '(none yet)'}\n\n--- SALES REP'S FEEDBACK ---\n${(feedback || '').trim() || 'Improve this recommendation.'}\n\nRe-determine the commercial recommendation, taking the feedback into account. Reply with only the updated recommendation.`
+      : `${researchContext}\n\n--- ADVERTISER HISTORY ---\n${advertiserBlock}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\nDetermine the commercial recommendation now.`
+    : isRegenerate
+      ? `${researchContext}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\n--- CURRENT PLANTEO (sales rep wants changes) ---\n${session.planteo_output || ''}\n\n--- SALES REP'S FEEDBACK ---\n${(feedback || '').trim() || 'Improve this planteo.'}\n\nThe current planteo above is shown in full. Your reply must be the FULL replacement script from start to finish, not just the part the feedback is about. If the feedback targets one part (e.g. "the opening" or "the closing line"), keep everything else from the current version and change only what was targeted — never reply with just the changed portion, a summary, or a shorter excerpt.`
+      : `${researchContext}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\nBuild the planteo now.`
 
   try {
     const message = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 2048,
+      max_tokens: isCeoFixedFormula ? 1024 : 2048,
       system,
       messages: [{ role: 'user', content: userContent }],
     })
 
-    const text = extractAfterMarker(message.content.map((b) => (b.type === 'text' ? b.text : '')).join(''))
+    const modelReply = extractAfterMarker(message.content.map((b) => (b.type === 'text' ? b.text : '')).join(''))
+    const text = isCeoFixedFormula ? `${modelReply}\n\n${SPOKEN_PLANTEO_MARKER}\n\n${(libraryText as string).trim()}` : modelReply
     const usage = parseUsage(message.usage as unknown, 0)
     const promptTokens = totalPromptTokens(usage)
     const totalTokens = promptTokens + usage.outputTokens
@@ -116,13 +118,13 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     // Backstop for the prompt instruction above: on a regenerate, if the reply
     // is drastically shorter than what it's replacing, the model likely wrote
-    // only the changed portion instead of the full script. There's no fixed
-    // item count to verify here (unlike presentation points), so use a length
-    // ratio instead. The API call already happened and is billed regardless,
-    // so persist its real cost before failing rather than losing it in the
-    // catch block below, which logs status only, no token/cost data.
-    const previousLength = (session.planteo_output || '').length
-    if (isRegenerate && previousLength > 200 && text.length < previousLength * 0.2) {
+    // only the changed portion instead of the full thing. Compares like for
+    // like — just the recommendation for the CEO fixed-formula path (the
+    // spoken script never changes, so including it would make the ratio
+    // meaningless), the full script otherwise.
+    const previousLength = isCeoFixedFormula ? previousRecommendation.length : (session.planteo_output || '').length
+    const newLength = isCeoFixedFormula ? modelReply.length : text.length
+    if (isRegenerate && previousLength > 50 && newLength < previousLength * 0.2) {
       await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
       await logUsageEvent({
         userId: user.id,

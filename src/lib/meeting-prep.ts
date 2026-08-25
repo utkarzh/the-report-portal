@@ -178,6 +178,37 @@ export function parsePoints(text: string): string[] {
   return points.length > 0 ? points : [text.trim()].filter(Boolean)
 }
 
+// Renders the session's advertiser-history fields into prompt text. Shared by
+// the planteo route (needs it to compute the CEO commercial recommendation)
+// and the final-document route (needs it for the Commercial Alert section) —
+// previously duplicated inline in final-document/route.ts.
+export function advertiserHistoryToPrompt(session: { advertiser_history_status?: string | null; advertiser_history_details?: string | null }): string {
+  return session.advertiser_history_status === 'yes'
+    ? `Previously advertised with TRC: ${session.advertiser_history_details}`
+    : session.advertiser_history_status === 'no'
+    ? 'No previous advertising history on record.'
+    : 'Not checked / unknown.'
+}
+
+// For the Company CEO variant, planteo_output is two parts: an AI-determined
+// commercial recommendation (Recommended offer / Basis / Why — genuinely
+// computed per session from advertiser history + revenue, per the Rule A/B
+// thresholds in the "planteo" prompt) followed by this marker, followed by
+// the approved Planteo Library formula reproduced verbatim. The recommendation
+// must never be spoken to the interviewee or duplicated as its own section in
+// the final document (the Commercial Alert section already shows it) — only
+// the text after this marker is the actual spoken script.
+export const SPOKEN_PLANTEO_MARKER = '<<<SPOKEN_PLANTEO>>>'
+
+export function splitPlanteoOutput(text: string): { recommendation: string; script: string } {
+  const idx = text.indexOf(SPOKEN_PLANTEO_MARKER)
+  if (idx === -1) return { recommendation: '', script: text.trim() }
+  return {
+    recommendation: text.slice(0, idx).trim(),
+    script: text.slice(idx + SPOKEN_PLANTEO_MARKER.length).trim(),
+  }
+}
+
 export function researchSectionsToPrompt(sections: MeetingPrepResearchSections): string {
   return `--- INTERVIEWEE RESEARCH ---
 ${sections.interviewee || '(missing)'}

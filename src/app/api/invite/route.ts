@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { email, role, tokenLimit, fullName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation } = body
+  const { email, role, tokenLimit, fullName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, financeRole } = body
 
   if (!email || !role) {
     return NextResponse.json({ error: 'email and role are required' }, { status: 400 })
@@ -78,6 +78,11 @@ export async function POST(request: NextRequest) {
       can_access_business_cases: role === 'admin' ? true : canAccessBusinessCases === true,
       can_access_editorial_briefs: role === 'admin' ? true : canAccessEditorialBriefs === true,
       can_access_meeting_preparation: role === 'admin' ? true : canAccessMeetingPreparation === true,
+      // Platform admins reach finance through role === 'admin' — never store a
+      // finance_role for them (see canAccessFinance/isFinanceAdmin). Finance
+      // Admin is only ever granted to Admin accounts, so a normal-user invite
+      // can only carry 'field', regardless of what the client sends.
+      finance_role: role === 'admin' ? null : (financeRole === 'field' ? 'field' : null),
       invited_by: user.id,
     })
     .select('id, token')

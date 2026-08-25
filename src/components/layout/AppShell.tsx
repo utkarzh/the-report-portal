@@ -17,9 +17,11 @@ interface Props {
   canAccessBusinessCases: boolean
   canAccessEditorialBriefs: boolean
   canAccessMeetingPreparation: boolean
+  canAccessFinance?: boolean
+  financeHref?: string
 }
 
-export default function AppShell({ children, role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation }: Props) {
+export default function AppShell({ children, role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessFinance, financeHref }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
 
@@ -57,6 +59,8 @@ export default function AppShell({ children, role, tokenUsed, tokenLimit, userNa
         canAccessBusinessCases={canAccessBusinessCases}
         canAccessEditorialBriefs={canAccessEditorialBriefs}
         canAccessMeetingPreparation={canAccessMeetingPreparation}
+        canAccessFinance={canAccessFinance}
+        financeHref={financeHref}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />

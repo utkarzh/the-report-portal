@@ -2,6 +2,12 @@ export type UserRole = 'admin' | 'user'
 export type UserStatus = 'active' | 'inactive'
 export type InviteStatus = 'pending' | 'accepted' | 'expired'
 
+// Finance module (Cash Box) — see docs/cashbox-requirements.md. Deliberately
+// NOT folded into role: platform admins keep full access via role === 'admin'
+// (see canAccessFinance/isFinanceAdmin in src/lib/access.ts); finance_role is
+// how everyone else gets in. null = no finance access at all.
+export type FinanceRole = 'finance_admin' | 'field' | null
+
 export interface Profile {
   id: string
   email: string
@@ -17,6 +23,7 @@ export interface Profile {
   can_access_business_cases: boolean
   can_access_editorial_briefs: boolean
   can_access_meeting_preparation: boolean
+  finance_role: FinanceRole
   created_at: string
   updated_at: string
 }
@@ -31,6 +38,7 @@ export interface Invitation {
   can_access_business_cases: boolean
   can_access_editorial_briefs: boolean
   can_access_meeting_preparation: boolean
+  finance_role: FinanceRole
   token: string
   status: InviteStatus
   invited_by: string | null
@@ -38,6 +46,222 @@ export interface Invitation {
   created_at: string
   expires_at: string
   accepted_at: string | null
+}
+
+// ------------------------------------------------------------
+// Cash Box (finance) module
+// ------------------------------------------------------------
+export type FinanceProjectStatus = 'active' | 'closed'
+export type FinanceProjectRole = 'director' | 'sales_rep'
+export type FinanceExpenseCategory =
+  | 'transport'
+  | 'accommodation'
+  | 'communications'
+  | 'other_services'
+  | 'printing_office'
+  | 'bank_charges'
+export type FinanceExpenseStatus = 'pending' | 'verified' | 'rejected'
+export type FinanceFlagSeverity = 'info' | 'warn' | 'crit'
+
+// Title-case renderings of the client's own category headers (see
+// EXCEL_CATEGORY_HEADERS in finance-categories.ts, which is the same
+// wording verbatim in the ALL-CAPS form her Excel template uses) — kept in
+// sync on purpose so the on-screen category names match the document she
+// supplied, not a paraphrase invented before we had it.
+export const FINANCE_EXPENSE_CATEGORY_LABELS: Record<FinanceExpenseCategory, string> = {
+  transport: 'Transport / Trips',
+  accommodation: 'Accommodation',
+  communications: 'Communication',
+  other_services: 'Other Professional Services',
+  printing_office: 'Information / Materials',
+  bank_charges: 'Bank Expenses',
+}
+
+export interface FinanceProject {
+  id: string
+  name: string
+  country: string
+  settlement_currency: 'USD' | 'EUR'
+  exchange_rate: number
+  media_publication: string
+  local_currency: string
+  // Admin-authored, project-specific rules (e.g. "no taxi over $40", "ignore
+  // weekend expenses") fed into both AI receipt passes as strict
+  // requirements — see lib/finance-ai.ts. Empty string = no extra rules.
+  ai_rules: string
+  status: FinanceProjectStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FinanceProjectMember {
+  id: string
+  project_id: string
+  user_id: string
+  project_role: FinanceProjectRole
+  added_by: string | null
+  created_at: string
+  // Joined convenience fields, populated by the API layer, not the DB row.
+  full_name?: string | null
+  email?: string | null
+}
+
+export interface FinanceFunding {
+  id: string
+  project_id: string
+  amount: number
+  date_sent: string
+  proof_image_path: string
+  recorded_by: string | null
+  created_at: string
+}
+
+export interface FinanceExpense {
+  id: string
+  project_id: string
+  logged_by: string | null
+  // Snapshotted at logging time, not just a live join — so removing this
+  // person from the project, or deleting their account outright, never
+  // makes their past expenses show up nameless.
+  logged_by_name: string
+  category: FinanceExpenseCategory
+  sub_line: string | null
+  concept: string
+  expense_date: string
+  reference: string | null
+  vendor: string | null
+  local_amount: number
+  local_currency: string
+  exchange_rate_used: number
+  settlement_amount: number
+  receipt_file_path: string | null
+  receipt_id: string | null
+  nights: number | null
+  prior_approval_granted: boolean
+  caja_id: string | null
+  // The AI's always-present, one-line take on the receipt (see finance-ai.ts)
+  // — what Finance reads in the transaction list instead of opening the image.
+  ai_note: string | null
+  status: FinanceExpenseStatus
+  rejection_reason: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FinanceExpenseFlag {
+  id: string
+  expense_id: string
+  flag_type: string
+  severity: FinanceFlagSeverity
+  message: string
+  resolved: boolean
+  created_at: string
+}
+
+export interface FinanceReceipt {
+  id: string
+  project_id: string
+  uploaded_by: string | null
+  file_path: string
+  file_type: string
+  ai_extraction: unknown
+  created_at: string
+}
+
+// ------------------------------------------------------------
+// Weekly caja (Phase 2) — brief Epic F
+// ------------------------------------------------------------
+export type FinanceCajaStage =
+  | 'draft'
+  | 'ready'
+  | 'submitted'
+  | 'under_review'
+  | 'incidents'
+  | 'resubmitted'
+  | 'approved'
+  | 'closed'
+export type FinanceAuditVerdict = 'pass' | 'pass_with_observations' | 'review_required' | 'high_risk'
+
+export interface FinanceCaja {
+  id: string
+  project_id: string
+  week_number: number
+  week_start: string
+  week_end: string
+  stage: FinanceCajaStage
+  cash_confirmed_amount: number | null
+  cash_confirmed_at: string | null
+  cash_confirmed_by: string | null
+  submitted_at: string | null
+  submitted_by: string | null
+  approved_at: string | null
+  approved_by: string | null
+  audit_verdict: FinanceAuditVerdict | null
+  audit_report: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FinanceCajaEvent {
+  id: string
+  caja_id: string
+  from_stage: string | null
+  to_stage: string
+  comment: string | null
+  actor_id: string | null
+  created_at: string
+}
+
+// ------------------------------------------------------------
+// Incidents (Phase 2) — brief Epic G
+// ------------------------------------------------------------
+export type FinanceIncidentStatus = 'open' | 'resolved'
+
+export interface FinanceIncident {
+  id: string
+  caja_id: string
+  expense_id: string | null
+  description: string
+  required_action: string
+  due_date: string | null
+  status: FinanceIncidentStatus
+  created_by: string | null
+  created_at: string
+}
+
+export interface FinanceIncidentMessage {
+  id: string
+  incident_id: string
+  author_id: string | null
+  message: string
+  created_at: string
+  author_name?: string | null
+}
+
+// ------------------------------------------------------------
+// Inter-project transfers (Phase 2) — brief Epic J
+// ------------------------------------------------------------
+export interface FinanceTransfer {
+  id: string
+  from_project_id: string
+  to_project_id: string
+  amount: number
+  reason: string
+  created_by: string | null
+  created_at: string
+}
+
+export interface FinanceNotification {
+  id: string
+  user_id: string
+  type: string
+  message: string
+  link: string | null
+  read: boolean
+  created_at: string
 }
 
 export interface Category {
@@ -99,6 +323,9 @@ export type UsageWorkflow =
   | 'meeting_prep_points'
   | 'meeting_prep_planteo'
   | 'meeting_prep_final_document'
+  | 'finance_receipt_extraction'
+  | 'finance_receipt_verification'
+  | 'finance_audit_report'
 
 export interface UsageEvent {
   id: string

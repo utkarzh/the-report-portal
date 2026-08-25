@@ -120,8 +120,26 @@ body {
 }
 .fade-up { animation: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
+/* Dropdown/menu entrance — quick scale+fade from the trigger corner */
+@keyframes dropdown-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.dropdown-in { animation: dropdown-in 0.14s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Modal entrance — backdrop fade + panel pop */
+@keyframes modal-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+.modal-backdrop-in { animation: modal-backdrop-in 0.15s ease-out both; }
+
+@keyframes modal-panel-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-panel-in { animation: modal-panel-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
 @media (prefers-reduced-motion: reduce) {
-  .gemini-aurora, .gemini-bloom, .gemini-sparkle, .flow-line, .fade-up { animation: none; }
+  .gemini-aurora, .gemini-bloom, .gemini-sparkle, .flow-line, .fade-up,
+  .dropdown-in, .modal-backdrop-in, .modal-panel-in { animation: none; }
 }
 
 /* Regenerating-content shimmer — a soft light band sweeping across the dimmed

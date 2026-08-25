@@ -23,6 +23,7 @@ const defaultForm = {
   canAccessBusinessCases: false,
   canAccessEditorialBriefs: false,
   canAccessMeetingPreparation: false,
+  financeRole: '' as '' | 'finance_admin' | 'field',
 }
 
 // Admins get an invite link (they set a password on signup). Normal users have
@@ -83,6 +84,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
           canAccessBusinessCases: form.canAccessBusinessCases,
           canAccessEditorialBriefs: form.canAccessEditorialBriefs,
           canAccessMeetingPreparation: form.canAccessMeetingPreparation,
+          financeRole: form.financeRole || null,
         }),
       }),
     })
@@ -281,7 +283,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
                     Monthly Token Limit
                   </label>
                   <p className="text-xs text-gray-500 bg-gray-50 border border-[#e5e3df] px-3 py-2.5">
-                    Admins have no token limit.
+                    Admins have no token limit, and are automatically Finance Admins with full Cash Box access — no separate flag needed.
                   </p>
                 </div>
               ) : (
@@ -326,6 +328,11 @@ export default function InviteUserModal({ open, onClose }: Props) {
                       label="Meeting Preparation"
                       checked={form.canAccessMeetingPreparation}
                       onChange={(v) => setForm(p => ({ ...p, canAccessMeetingPreparation: v }))}
+                    />
+                    <ModuleCheckbox
+                      label="Finance (Cash Box) — Field"
+                      checked={form.financeRole === 'field'}
+                      onChange={(v) => setForm(p => ({ ...p, financeRole: v ? 'field' : '' }))}
                     />
                   </div>
                 </div>

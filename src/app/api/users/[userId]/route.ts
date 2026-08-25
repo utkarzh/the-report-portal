@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()
-    const { fullName, role, tokenLimit, status, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation } = body
+    const { fullName, role, tokenLimit, status, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, financeRole } = body
 
     if (user.id === params.userId && (role !== undefined || status !== undefined)) {
       return NextResponse.json({ error: 'You cannot change your own role or status.' }, { status: 403 })
@@ -59,12 +59,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       updates.can_access_business_cases = true
       updates.can_access_editorial_briefs = true
       updates.can_access_meeting_preparation = true
+      // Platform admins reach finance through role === 'admin', not this column.
+      updates.finance_role = null
     } else {
       if (canAccessInterview !== undefined) updates.can_access_interview = canAccessInterview === true
       if (canAccessTranscriptions !== undefined) updates.can_access_transcriptions = canAccessTranscriptions === true
       if (canAccessBusinessCases !== undefined) updates.can_access_business_cases = canAccessBusinessCases === true
       if (canAccessEditorialBriefs !== undefined) updates.can_access_editorial_briefs = canAccessEditorialBriefs === true
       if (canAccessMeetingPreparation !== undefined) updates.can_access_meeting_preparation = canAccessMeetingPreparation === true
+      // Finance Admin is only ever granted to Admin accounts — a normal user
+      // can be a Field director/rep, never a Finance Admin, regardless of
+      // what the client sends (the UI already only offers 'field', this is
+      // the server-side enforcement of the same rule).
+      if (financeRole !== undefined) updates.finance_role = financeRole === 'field' ? 'field' : null
     }
 
     const { error } = await supabaseAdmin

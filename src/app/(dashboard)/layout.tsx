@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getProfileFromHeaders } from '@/lib/auth/session'
+import { canAccessFinance, isFinanceAdmin } from '@/lib/access'
 import AppShell from '@/components/layout/AppShell'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -17,6 +18,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       canAccessBusinessCases={profile.can_access_business_cases}
       canAccessEditorialBriefs={profile.can_access_editorial_briefs}
       canAccessMeetingPreparation={profile.can_access_meeting_preparation}
+      canAccessFinance={canAccessFinance(profile)}
+      financeHref={isFinanceAdmin(profile) ? '/finance/admin' : '/finance'}
     >
       {children}
     </AppShell>

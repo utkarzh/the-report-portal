@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { sendLoginCodeEmail } from '@/lib/email/smtp'
+import { getBaseUrl } from '@/lib/url'
 
 // POST /api/auth/login-init — first step of the smart login form.
 // Given an email, decides how the user signs in:
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await sendLoginCodeEmail({ code, userEmail: email })
+    await sendLoginCodeEmail({ code, userEmail: email, baseUrl: getBaseUrl(request) })
   } catch (err) {
     console.error('Failed to send login code email:', err)
     return NextResponse.json(

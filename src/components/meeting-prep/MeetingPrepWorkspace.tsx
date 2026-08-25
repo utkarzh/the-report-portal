@@ -13,6 +13,7 @@ import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimer
 import DeleteMeetingPrepButton from '@/components/meeting-prep/DeleteMeetingPrepButton'
 import MeetingPrepLoader from '@/components/meeting-prep/MeetingPrepLoader'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
+import { splitPlanteoOutput, SPOKEN_PLANTEO_MARKER } from '@/lib/meeting-prep'
 import type { MeetingPrepSession, MeetingPrepResearchSections, MeetingPrepStage } from '@/types'
 
 marked.use({ gfm: true, breaks: true })
@@ -1286,7 +1287,15 @@ function PlanteoCard({
   planteoUndo: string | null
   onUndo: () => void
 }) {
-  const [draft, setDraft] = useState(planteo)
+  // For the Company CEO variant, `planteo` is an internal recommendation, a
+  // marker, then the verbatim fixed script — split so the rep sees the
+  // recommendation clearly labeled as internal-only, never the raw marker,
+  // and so editing only ever touches the spoken script (the recommendation
+  // is a Regenerate concern, not a manual-edit one). Government Official
+  // sessions have no marker, so `recommendation` is always '' there and this
+  // renders exactly as it did before.
+  const { recommendation, script } = splitPlanteoOutput(planteo)
+  const [draft, setDraft] = useState(script)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -1296,6 +1305,17 @@ function PlanteoCard({
     el.setSelectionRange(el.value.length, el.value.length)
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [editing])
+
+  function saveEdit() {
+    onSaveEdit(recommendation ? `${recommendation}\n\n${SPOKEN_PLANTEO_MARKER}\n\n${draft}` : draft)
+  }
+
+  const recommendationBox = recommendation && (
+    <div className="mb-3 rounded-lg border border-[#c8973f]/30 bg-[#c8973f]/5 p-3">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#a07530]">Internal recommendation — not spoken to the interviewee</p>
+      <div className="prose-research text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: marked.parse(recommendation) as string }} />
+    </div>
+  )
 
   return (
     <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
@@ -1307,22 +1327,29 @@ function PlanteoCard({
       <div className="mt-4">
         {busy ? (
           <div className="relative overflow-hidden rounded-lg">
-            <div
-              className="prose-research pointer-events-none select-none text-sm text-gray-800 opacity-25"
-              dangerouslySetInnerHTML={{ __html: marked.parse(planteo || '_Not yet written_') as string }}
-            />
+            <div className="pointer-events-none select-none opacity-25">
+              {recommendationBox}
+              <div
+                className="prose-research text-sm text-gray-800"
+                dangerouslySetInnerHTML={{ __html: marked.parse(script || '_Not yet written_') as string }}
+              />
+            </div>
             <div className="content-shimmer absolute inset-0" />
           </div>
         ) : editing ? (
           <div>
+            {recommendationBox}
             <Textarea ref={textareaRef} value={draft} onChange={(e) => setDraft(e.target.value)} rows={14} className="text-sm" label="" />
             <div className="mt-3 flex gap-3">
-              <button onClick={() => onSaveEdit(draft)} className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900">Save</button>
+              <button onClick={saveEdit} className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900">Save</button>
               <button onClick={() => setEditing(false)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
             </div>
           </div>
         ) : (
-          <div className="prose-research text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: marked.parse(planteo) as string }} />
+          <div>
+            {recommendationBox}
+            <div className="prose-research text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: marked.parse(script) as string }} />
+          </div>
         )}
       </div>
 
@@ -1332,12 +1359,17 @@ function PlanteoCard({
             <div className="rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-4">
               <Textarea
                 label="What to change"
-                placeholder="e.g. Tighten the opening paragraph. Lean more on the investment-attraction angle."
+                placeholder={recommendation
+                  ? 'e.g. Recommend a higher tier given their recent funding round.'
+                  : 'e.g. Tighten the opening paragraph. Lean more on the investment-attraction angle.'}
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={3}
                 disabled={busy}
               />
+              {recommendation && (
+                <p className="mt-2 text-[11px] text-gray-400">Only the internal recommendation above is regenerated — the approved spoken script never changes.</p>
+              )}
               <div className="mt-3 flex gap-3">
                 <button
                   disabled={busy}
@@ -1351,7 +1383,7 @@ function PlanteoCard({
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => { setEditing(true); setDraft(planteo) }} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
+              <button onClick={() => { setEditing(true); setDraft(script) }} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
                 <Pencil size={13} /> Edit
               </button>
               <button onClick={() => setShowFeedback(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">

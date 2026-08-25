@@ -27,6 +27,17 @@ export const HAIKU_PRICING: ModelPricing = {
   cacheRead: 0.10,
 }
 
+// claude-opus-5 — used for finance receipt extraction, where reading messy
+// handwritten/low-quality field photos accurately matters more than cost.
+// 5x Sonnet, matching Anthropic's standard Opus:Sonnet pricing ratio.
+export const OPUS_PRICING: ModelPricing = {
+  input: 15.0,
+  output: 75.0,
+  cacheWrite5m: 18.75,
+  cacheWrite1h: 30.0,
+  cacheRead: 1.50,
+}
+
 // Back-compat exports (Sonnet). The analytics cost-breakdown derivation uses
 // the output price; it's a Sonnet-based approximation for the in/out/search
 // split and doesn't affect the accurate per-event cost stored in the ledger.
