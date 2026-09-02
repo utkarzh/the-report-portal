@@ -42,6 +42,11 @@ CREATE TABLE public.profiles (
     can_access_editorial_briefs BOOLEAN NOT NULL DEFAULT FALSE,
     -- Commercial Meeting Preparation module — off until an admin enables it.
     can_access_meeting_preparation BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Interview Request Letter & Email Generator module — off until an admin enables it.
+    can_access_interview_letter_generator BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Cash Box (finance) module. NULL = no finance access at all. Deliberately
+    -- NOT folded into the can_access_* flags above — see migration 017.
+    finance_role TEXT CHECK (finance_role IN ('finance_admin', 'field')),
     -- One-device-one-login: the id of the currently-authorised device session.
     -- Set to a fresh UUID on every successful sign-in; the browser stores the
     -- same value in the `device_session` cookie. Middleware signs out any device
@@ -84,6 +89,8 @@ CREATE TABLE public.invitations (
     can_access_business_cases   BOOLEAN NOT NULL DEFAULT FALSE,
     can_access_editorial_briefs BOOLEAN NOT NULL DEFAULT FALSE,
     can_access_meeting_preparation BOOLEAN NOT NULL DEFAULT FALSE,
+    can_access_interview_letter_generator BOOLEAN NOT NULL DEFAULT FALSE,
+    finance_role TEXT CHECK (finance_role IN ('finance_admin', 'field')),
     token       TEXT        NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
     status      invite_status NOT NULL DEFAULT 'pending',
     invited_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -356,7 +363,8 @@ BEGIN
         id, email, full_name, role, token_limit, status,
         can_access_interview, can_access_transcriptions,
         can_access_business_cases, can_access_editorial_briefs,
-        can_access_meeting_preparation
+        can_access_meeting_preparation, finance_role,
+        can_access_interview_letter_generator
     )
     VALUES (
         NEW.id,
@@ -377,7 +385,13 @@ BEGIN
         CASE WHEN v_role = 'admin' THEN TRUE
              ELSE COALESCE(v_invite.can_access_editorial_briefs, FALSE) END,
         CASE WHEN v_role = 'admin' THEN TRUE
-             ELSE COALESCE(v_invite.can_access_meeting_preparation, FALSE) END
+             ELSE COALESCE(v_invite.can_access_meeting_preparation, FALSE) END,
+        -- Platform admins reach finance through role = 'admin' instead — this
+        -- column stays NULL for them by design (see canAccessFinance/isFinanceAdmin).
+        CASE WHEN v_role = 'admin' THEN NULL
+             ELSE v_invite.finance_role END,
+        CASE WHEN v_role = 'admin' THEN TRUE
+             ELSE COALESCE(v_invite.can_access_interview_letter_generator, FALSE) END
     );
 
     IF v_invite.id IS NOT NULL THEN
@@ -1034,3 +1048,655 @@ CREATE POLICY "Authenticated users can read advertiser tracker"
     ON public.meeting_prep_advertiser_tracker FOR SELECT TO authenticated USING (TRUE);
 CREATE POLICY "Admins can manage advertiser tracker"
     ON public.meeting_prep_advertiser_tracker FOR ALL USING (public.user_role() = 'admin');
+
+-- ============================================================
+-- CASH BOX (FINANCE) MODULE (see migrations 017-020)
+-- ============================================================
+-- Reconciled final shape: finance_projects/finance_expenses below already
+-- include every column added across 017 (base), 019 (traveler_count,
+-- local_currency, logged_by_name, ai_note, sub_line) and 020 (ai_rules) —
+-- do not re-run those as separate ALTERs against a fresh install.
+
+-- ------------------------------------------------------------
+-- PROJECTS (017 base + 019 traveler_count/local_currency + 020 ai_rules)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_projects (
+    id                  UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name                TEXT        NOT NULL,
+    country             TEXT        NOT NULL,
+    settlement_currency TEXT        NOT NULL CHECK (settlement_currency IN ('USD', 'EUR')),
+    exchange_rate       NUMERIC(12, 6) NOT NULL,
+    media_publication   TEXT        NOT NULL DEFAULT '',
+    status              TEXT        NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed')),
+    created_by          UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    traveler_count      INTEGER     NOT NULL DEFAULT 1 CHECK (traveler_count IN (1, 2)),
+    local_currency      TEXT        NOT NULL DEFAULT '',
+    -- Admin-authored, project-specific rules fed into both AI receipt passes
+    -- as strict requirements (see lib/finance-ai.ts). Empty = no extra rules.
+    ai_rules            TEXT        NOT NULL DEFAULT '',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER finance_projects_updated_at
+    BEFORE UPDATE ON public.finance_projects
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- PROJECT MEMBERS (017) — exactly one director, N sales reps
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_project_members (
+    id           UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id   UUID        NOT NULL REFERENCES public.finance_projects(id) ON DELETE CASCADE,
+    user_id      UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    project_role TEXT        NOT NULL CHECK (project_role IN ('director', 'sales_rep')),
+    added_by     UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (project_id, user_id)
+);
+
+CREATE UNIQUE INDEX idx_finance_one_director_per_project
+    ON public.finance_project_members(project_id) WHERE project_role = 'director';
+CREATE INDEX idx_finance_project_members_user
+    ON public.finance_project_members(user_id);
+
+-- ------------------------------------------------------------
+-- FUNDINGS (017)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_fundings (
+    id                UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id        UUID        NOT NULL REFERENCES public.finance_projects(id) ON DELETE CASCADE,
+    amount            NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+    date_sent         DATE        NOT NULL,
+    proof_image_path  TEXT        NOT NULL,
+    recorded_by       UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_finance_fundings_project
+    ON public.finance_fundings(project_id, date_sent);
+
+-- ------------------------------------------------------------
+-- RECEIPTS (018) — must exist before finance_expenses.receipt_id
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_receipts (
+    id            UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id    UUID        NOT NULL REFERENCES public.finance_projects(id) ON DELETE CASCADE,
+    uploaded_by   UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    file_path     TEXT        NOT NULL,
+    file_type     TEXT        NOT NULL,
+    ai_extraction JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_finance_receipts_project ON public.finance_receipts(project_id);
+
+-- ------------------------------------------------------------
+-- WEEKLY CAJA (018) — must exist before finance_expenses.caja_id
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_cajas (
+    id                     UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id             UUID        NOT NULL REFERENCES public.finance_projects(id) ON DELETE CASCADE,
+    week_number            INTEGER     NOT NULL,
+    week_start             DATE        NOT NULL,
+    week_end               DATE        NOT NULL,
+    stage                  TEXT        NOT NULL DEFAULT 'draft'
+        CHECK (stage IN ('draft', 'ready', 'submitted', 'under_review', 'incidents', 'resubmitted', 'approved', 'closed')),
+    cash_confirmed_amount  NUMERIC(12, 2),
+    cash_confirmed_at      TIMESTAMPTZ,
+    cash_confirmed_by      UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    submitted_at           TIMESTAMPTZ,
+    submitted_by           UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    approved_at            TIMESTAMPTZ,
+    approved_by            UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    audit_verdict          TEXT        CHECK (audit_verdict IN ('pass', 'pass_with_observations', 'review_required', 'high_risk')),
+    audit_report           TEXT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (project_id, week_number)
+);
+
+CREATE TRIGGER finance_cajas_updated_at
+    BEFORE UPDATE ON public.finance_cajas
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- EXPENSES + FLAGS
+-- (017 base + 018's receipt_id/nights/prior_approval_granted/caja_id
+--  + 019's logged_by_name/ai_note/sub_line)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_expenses (
+    id                     UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id             UUID        NOT NULL REFERENCES public.finance_projects(id) ON DELETE CASCADE,
+    logged_by              UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    -- Snapshotted at logging time, not just a live join — so removing this
+    -- person from the project, or deleting their account, never makes their
+    -- past expenses show up nameless.
+    logged_by_name         TEXT        NOT NULL DEFAULT '',
+    category               TEXT        NOT NULL CHECK (category IN (
+                                'transport', 'accommodation', 'communications',
+                                'other_services', 'printing_office', 'bank_charges'
+                            )),
+    concept                TEXT        NOT NULL,
+    expense_date           DATE        NOT NULL,
+    reference              TEXT,
+    vendor                 TEXT,
+    local_amount           NUMERIC(12, 2) NOT NULL CHECK (local_amount > 0),
+    local_currency         TEXT        NOT NULL,
+    exchange_rate_used     NUMERIC(12, 6) NOT NULL,
+    settlement_amount      NUMERIC(12, 2) NOT NULL CHECK (settlement_amount > 0),
+    receipt_file_path      TEXT,
+    receipt_id             UUID        REFERENCES public.finance_receipts(id) ON DELETE SET NULL,
+    nights                 INTEGER,
+    prior_approval_granted BOOLEAN     NOT NULL DEFAULT FALSE,
+    caja_id                UUID        REFERENCES public.finance_cajas(id) ON DELETE SET NULL,
+    -- The AI's always-present, one-line take on the receipt (see finance-ai.ts).
+    ai_note                TEXT,
+    sub_line                TEXT,
+    status                 TEXT        NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'verified', 'rejected')),
+    rejection_reason       TEXT,
+    reviewed_by            UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    reviewed_at            TIMESTAMPTZ,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_finance_expenses_project_status
+    ON public.finance_expenses(project_id, status);
+
+CREATE TRIGGER finance_expenses_updated_at
+    BEFORE UPDATE ON public.finance_expenses
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+CREATE TABLE IF NOT EXISTS public.finance_expense_flags (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    expense_id  UUID        NOT NULL REFERENCES public.finance_expenses(id) ON DELETE CASCADE,
+    flag_type   TEXT        NOT NULL,
+    severity    TEXT        NOT NULL CHECK (severity IN ('info', 'warn', 'crit')),
+    message     TEXT        NOT NULL,
+    resolved    BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_finance_expense_flags_expense
+    ON public.finance_expense_flags(expense_id);
+
+-- ------------------------------------------------------------
+-- CAJA EVENTS (018)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_caja_events (
+    id         UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    caja_id    UUID        NOT NULL REFERENCES public.finance_cajas(id) ON DELETE CASCADE,
+    from_stage TEXT,
+    to_stage   TEXT        NOT NULL,
+    comment    TEXT,
+    actor_id   UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_finance_caja_events_caja ON public.finance_caja_events(caja_id, created_at);
+
+-- ------------------------------------------------------------
+-- INCIDENTS (018)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_incidents (
+    id              UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    caja_id         UUID        NOT NULL REFERENCES public.finance_cajas(id) ON DELETE CASCADE,
+    expense_id      UUID        REFERENCES public.finance_expenses(id) ON DELETE SET NULL,
+    description     TEXT        NOT NULL,
+    required_action TEXT        NOT NULL,
+    due_date        DATE,
+    status          TEXT        NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+    created_by      UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.finance_incident_messages (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    incident_id UUID        NOT NULL REFERENCES public.finance_incidents(id) ON DELETE CASCADE,
+    author_id   UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    message     TEXT        NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_finance_incidents_caja ON public.finance_incidents(caja_id);
+CREATE INDEX idx_finance_incident_messages_incident ON public.finance_incident_messages(incident_id, created_at);
+
+-- ------------------------------------------------------------
+-- TRANSFERS (018)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_transfers (
+    id              UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    from_project_id UUID        NOT NULL REFERENCES public.finance_projects(id) ON DELETE CASCADE,
+    to_project_id   UUID        NOT NULL REFERENCES public.finance_projects(id) ON DELETE CASCADE,
+    amount          NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+    reason          TEXT        NOT NULL DEFAULT '',
+    created_by      UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (from_project_id <> to_project_id)
+);
+
+CREATE INDEX idx_finance_transfers_from ON public.finance_transfers(from_project_id);
+CREATE INDEX idx_finance_transfers_to ON public.finance_transfers(to_project_id);
+
+-- ------------------------------------------------------------
+-- NOTIFICATIONS (018)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.finance_notifications (
+    id         UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id    UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    type       TEXT        NOT NULL,
+    message    TEXT        NOT NULL,
+    link       TEXT,
+    read       BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_finance_notifications_user ON public.finance_notifications(user_id, read, created_at DESC);
+
+-- ------------------------------------------------------------
+-- HELPER FUNCTIONS (017) — must be created after finance_project_members
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.is_finance_admin()
+RETURNS BOOLEAN AS $$
+    SELECT public.user_role() = 'admin'
+        OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND finance_role = 'finance_admin'
+        );
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.is_finance_project_member(p_project_id UUID)
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.finance_project_members
+        WHERE project_id = p_project_id AND user_id = auth.uid()
+    );
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
+-- ------------------------------------------------------------
+-- STORAGE — private bucket for funding proofs + receipt images (017)
+-- ------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('finance-receipts', 'finance-receipts', FALSE)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Project members manage finance receipts storage"
+    ON storage.objects FOR ALL TO authenticated
+    USING (
+        bucket_id = 'finance-receipts'
+        AND (
+            public.is_finance_admin()
+            OR public.is_finance_project_member(((storage.foldername(name))[1])::uuid)
+        )
+    )
+    WITH CHECK (
+        bucket_id = 'finance-receipts'
+        AND (
+            public.is_finance_admin()
+            OR public.is_finance_project_member(((storage.foldername(name))[1])::uuid)
+        )
+    );
+
+-- ------------------------------------------------------------
+-- ROW LEVEL SECURITY
+-- ------------------------------------------------------------
+ALTER TABLE public.finance_projects            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_project_members     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_fundings            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_expenses            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_expense_flags       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_receipts            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_cajas               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_caja_events         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_incidents           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_incident_messages   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_transfers           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.finance_notifications       ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Finance admins manage projects"
+    ON public.finance_projects FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read their own projects"
+    ON public.finance_projects FOR SELECT
+    USING (public.is_finance_project_member(id));
+
+CREATE POLICY "Finance admins manage project members"
+    ON public.finance_project_members FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read their own project roster"
+    ON public.finance_project_members FOR SELECT
+    USING (public.is_finance_project_member(project_id));
+
+CREATE POLICY "Finance admins manage fundings"
+    ON public.finance_fundings FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read their own project fundings"
+    ON public.finance_fundings FOR SELECT
+    USING (public.is_finance_project_member(project_id));
+
+CREATE POLICY "Finance admins manage expenses"
+    ON public.finance_expenses FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read their own project expenses"
+    ON public.finance_expenses FOR SELECT
+    USING (public.is_finance_project_member(project_id));
+CREATE POLICY "Members log expenses on their own projects"
+    ON public.finance_expenses FOR INSERT
+    WITH CHECK (public.is_finance_project_member(project_id) AND logged_by = auth.uid());
+
+CREATE POLICY "Finance admins manage expense flags"
+    ON public.finance_expense_flags FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read flags on their own project expenses"
+    ON public.finance_expense_flags FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.finance_expenses e
+            WHERE e.id = expense_id AND public.is_finance_project_member(e.project_id)
+        )
+    );
+
+CREATE POLICY "Finance admins manage receipts"
+    ON public.finance_receipts FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read their own project receipts"
+    ON public.finance_receipts FOR SELECT
+    USING (public.is_finance_project_member(project_id));
+CREATE POLICY "Members upload receipts on their own projects"
+    ON public.finance_receipts FOR INSERT
+    WITH CHECK (public.is_finance_project_member(project_id) AND uploaded_by = auth.uid());
+
+CREATE POLICY "Finance admins manage cajas"
+    ON public.finance_cajas FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read own project cajas"
+    ON public.finance_cajas FOR SELECT USING (public.is_finance_project_member(project_id));
+CREATE POLICY "Members manage draft cajas on own projects"
+    ON public.finance_cajas FOR INSERT
+    WITH CHECK (public.is_finance_project_member(project_id));
+CREATE POLICY "Members update own project cajas"
+    ON public.finance_cajas FOR UPDATE USING (public.is_finance_project_member(project_id));
+
+CREATE POLICY "Finance admins manage caja events"
+    ON public.finance_caja_events FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read own project caja events"
+    ON public.finance_caja_events FOR SELECT
+    USING (EXISTS (SELECT 1 FROM public.finance_cajas c WHERE c.id = caja_id AND public.is_finance_project_member(c.project_id)));
+CREATE POLICY "Members log own project caja events"
+    ON public.finance_caja_events FOR INSERT
+    WITH CHECK (EXISTS (SELECT 1 FROM public.finance_cajas c WHERE c.id = caja_id AND public.is_finance_project_member(c.project_id)));
+
+CREATE POLICY "Finance admins manage incidents"
+    ON public.finance_incidents FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read own project incidents"
+    ON public.finance_incidents FOR SELECT
+    USING (EXISTS (SELECT 1 FROM public.finance_cajas c WHERE c.id = caja_id AND public.is_finance_project_member(c.project_id)));
+
+CREATE POLICY "Finance admins manage incident messages"
+    ON public.finance_incident_messages FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read+post own project incident messages"
+    ON public.finance_incident_messages FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM public.finance_incidents i JOIN public.finance_cajas c ON c.id = i.caja_id
+        WHERE i.id = incident_id AND public.is_finance_project_member(c.project_id)
+    ));
+CREATE POLICY "Members post own project incident messages"
+    ON public.finance_incident_messages FOR INSERT
+    WITH CHECK (EXISTS (
+        SELECT 1 FROM public.finance_incidents i JOIN public.finance_cajas c ON c.id = i.caja_id
+        WHERE i.id = incident_id AND public.is_finance_project_member(c.project_id)
+    ) AND author_id = auth.uid());
+
+CREATE POLICY "Finance admins manage transfers"
+    ON public.finance_transfers FOR ALL USING (public.is_finance_admin());
+CREATE POLICY "Members read transfers touching their projects"
+    ON public.finance_transfers FOR SELECT
+    USING (public.is_finance_project_member(from_project_id) OR public.is_finance_project_member(to_project_id));
+
+CREATE POLICY "Users manage their own notifications"
+    ON public.finance_notifications FOR ALL USING (user_id = auth.uid());
+CREATE POLICY "Finance admins insert notifications"
+    ON public.finance_notifications FOR INSERT WITH CHECK (public.is_finance_admin());
+
+-- ============================================================
+-- INTERVIEW REQUEST LETTER & EMAIL GENERATOR MODULE (see migration 021)
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- LETTER TEMPLATES (exactly 2 fixed variants) + version history
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.interview_letter_templates (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company     TEXT        NOT NULL UNIQUE
+        CHECK (company IN ('TRC', 'GFDI')),
+    structure   JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    updated_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO public.interview_letter_templates (company, structure)
+SELECT 'TRC', $seed$[
+  {"key": "salutation", "type": "fixed", "label": "Salutation", "content": "Dear [Recipient],"},
+  {"key": "opening", "type": "variable", "label": "Opening / Why-Now Hook", "instructions": "Open by introducing The Report Company and state the why-now hook — the specific reason this interview request is timely for this recipient right now.", "wordBudget": 60},
+  {"key": "publication_context", "type": "variable", "label": "Publication & Media Partner Context", "instructions": "Introduce the media partner publication, its standing, and why this publication is the right platform for the recipient's story.", "wordBudget": 70},
+  {"key": "value_proposition", "type": "variable", "label": "Value to the Recipient", "instructions": "Explain what the recipient and their organisation gain from participating — visibility, positioning, audience reached.", "wordBudget": 70},
+  {"key": "ask", "type": "variable", "label": "The Ask", "instructions": "Make the specific interview request: format, approximate time commitment, and next step.", "wordBudget": 50},
+  {"key": "closing", "type": "fixed", "label": "Closing", "content": "We would be delighted to schedule this at your earliest convenience. Thank you for your consideration.\n\nWarm regards,\nThe Report Company"}
+]$seed$::jsonb;
+
+INSERT INTO public.interview_letter_templates (company, structure)
+SELECT 'GFDI', $seed$[
+  {"key": "salutation", "type": "fixed", "label": "Salutation", "content": "Dear [Recipient],"},
+  {"key": "opening", "type": "variable", "label": "Opening / Why-Now Hook", "instructions": "Open by introducing the Global Foreign Direct Investment (GFDI) platform and state the why-now hook — the specific reason this interview request is timely for this recipient right now.", "wordBudget": 60},
+  {"key": "publication_context", "type": "variable", "label": "Publication & Media Partner Context", "instructions": "Introduce the media partner publication, its standing, and why this publication is the right platform for the recipient's story.", "wordBudget": 70},
+  {"key": "value_proposition", "type": "variable", "label": "Value to the Recipient", "instructions": "Explain what the recipient and their organisation gain from participating — visibility, positioning, audience reached, investment narrative.", "wordBudget": 70},
+  {"key": "ask", "type": "variable", "label": "The Ask", "instructions": "Make the specific interview request: format, approximate time commitment, and next step.", "wordBudget": 50},
+  {"key": "closing", "type": "fixed", "label": "Closing", "content": "We would be delighted to schedule this at your earliest convenience. Thank you for your consideration.\n\nWarm regards,\nGFDI"}
+]$seed$::jsonb;
+
+CREATE TRIGGER interview_letter_templates_updated_at
+    BEFORE UPDATE ON public.interview_letter_templates
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+CREATE TABLE IF NOT EXISTS public.interview_letter_templates_versions (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company     TEXT        NOT NULL
+        CHECK (company IN ('TRC', 'GFDI')),
+    structure   JSONB       NOT NULL,
+    saved_by    UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_interview_letter_templates_versions_company_created
+    ON public.interview_letter_templates_versions(company, created_at DESC);
+
+-- ------------------------------------------------------------
+-- RESEARCH PROMPT (admin-editable, one versioned singleton per company)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.interview_letter_research_prompts (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company     TEXT        NOT NULL UNIQUE
+        CHECK (company IN ('TRC', 'GFDI')),
+    prompt_text TEXT        NOT NULL DEFAULT '',
+    updated_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO public.interview_letter_research_prompts (company, prompt_text)
+SELECT 'TRC', $seed$You are a research assistant supporting The Report Company's editorial team as they prepare an Interview Request Letter. Research ONLY what the letter needs — a handful of short, sourced, letter-relevant facts about the project country, the media partner, and the commercial/editorial context — not a general company or country dossier.
+
+Actively look for a genuine why-now / event hook (a live publication window, a recent announcement, a regional milestone) even if the user already supplied one — the editor needs something to compare it against. If the user supplied a hook, still search for the strongest alternative; do not simply restate their hook back to them.
+
+Produce exactly two sections, each introduced by its own marker line on its own line (no other text on that line), in this exact order:
+
+<<<HOOK>>>
+One to two sentences: the strongest why-now hook you found, written ready to drop into a letter. If the user already supplied a hook and your research didn't surface anything better, refine their hook rather than inventing a new one.
+
+<<<BULLETS>>>
+4-8 short bullets (one per line, each starting with "- "), each a single sourced fact relevant to this letter, with an inline markdown source link and date where available.
+
+End your response immediately after the bullets with no further commentary.$seed$
+WHERE NOT EXISTS (SELECT 1 FROM public.interview_letter_research_prompts WHERE company = 'TRC');
+
+INSERT INTO public.interview_letter_research_prompts (company, prompt_text)
+SELECT 'GFDI', $seed$You are a research assistant supporting the Global Foreign Direct Investment (GFDI) editorial team as they prepare an Interview Request Letter. Research ONLY what the letter needs — a handful of short, sourced, letter-relevant facts about the project country, the media partner, and the commercial/editorial context — not a general company or country dossier.
+
+Actively look for a genuine why-now / event hook (a live publication window, a recent announcement, a regional milestone) even if the user already supplied one — the editor needs something to compare it against. If the user supplied a hook, still search for the strongest alternative; do not simply restate their hook back to them.
+
+Produce exactly two sections, each introduced by its own marker line on its own line (no other text on that line), in this exact order:
+
+<<<HOOK>>>
+One to two sentences: the strongest why-now hook you found, written ready to drop into a letter. If the user already supplied a hook and your research didn't surface anything better, refine their hook rather than inventing a new one.
+
+<<<BULLETS>>>
+4-8 short bullets (one per line, each starting with "- "), each a single sourced fact relevant to this letter, with an inline markdown source link and date where available.
+
+End your response immediately after the bullets with no further commentary.$seed$
+WHERE NOT EXISTS (SELECT 1 FROM public.interview_letter_research_prompts WHERE company = 'GFDI');
+
+DROP TRIGGER IF EXISTS interview_letter_research_prompts_updated_at ON public.interview_letter_research_prompts;
+CREATE TRIGGER interview_letter_research_prompts_updated_at
+    BEFORE UPDATE ON public.interview_letter_research_prompts
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+CREATE TABLE IF NOT EXISTS public.interview_letter_research_prompts_versions (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company     TEXT        NOT NULL
+        CHECK (company IN ('TRC', 'GFDI')),
+    prompt_text TEXT        NOT NULL,
+    saved_by    UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_interview_letter_research_prompts_versions_company_created
+    ON public.interview_letter_research_prompts_versions(company, created_at DESC);
+
+-- ------------------------------------------------------------
+-- PROJECTS (one row per run; the workflow state machine)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.interview_letter_projects (
+    id                          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id                     UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+
+    company                     TEXT        NOT NULL
+        CHECK (company IN ('TRC', 'GFDI')),
+    project_country             TEXT        NOT NULL,
+    media_partner               TEXT        NOT NULL,
+    media_partner_country       TEXT        NOT NULL DEFAULT '',
+    hook_input                  TEXT        NOT NULL DEFAULT '',
+
+    -- `research` is a JSON array of bullet strings, each carrying its own
+    -- inline "[Source, date](url)" citation.
+    research                    JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    hook_ai_suggestion          TEXT,
+    confirmed_hook               TEXT,
+    hook_source                 TEXT
+        CHECK (hook_source IN ('user', 'ai')),
+
+    template_structure_snapshot JSONB,
+
+    -- Array shadowing the template structure: [{key, type, label, content,
+    -- status:'pending'|'locked', lastFeedback}]
+    paragraphs                  JSONB       NOT NULL DEFAULT '[]'::jsonb,
+
+    master_letter                TEXT,
+    master_email                 TEXT,
+
+    research_prompt_snapshot    TEXT,
+    letter_prompt_snapshot      TEXT,
+    email_prompt_snapshot       TEXT,
+
+    stage                       TEXT        NOT NULL DEFAULT 'input'
+        CHECK (stage IN (
+            'input', 'researching', 'hook_review',
+            'letter_generating', 'letter_review', 'letter_approved',
+            'email_generating', 'email_review', 'complete', 'failed'
+        )),
+    error                       TEXT,
+
+    tokens_input                INTEGER     DEFAULT 0,
+    tokens_output                INTEGER     DEFAULT 0,
+    tokens_total                 INTEGER     DEFAULT 0,
+    web_searches                 INTEGER     DEFAULT 0,
+    cost_usd                     NUMERIC(10, 6) DEFAULT 0,
+
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_interview_letter_projects_user_id
+    ON public.interview_letter_projects(user_id);
+CREATE INDEX idx_interview_letter_projects_created
+    ON public.interview_letter_projects(created_at DESC);
+
+CREATE TRIGGER interview_letter_projects_updated_at
+    BEFORE UPDATE ON public.interview_letter_projects
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- PERSONALIZED OUTPUTS — one row per recipient, unlimited per project
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.interview_letter_personalizations (
+    id                    UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id            UUID        NOT NULL REFERENCES public.interview_letter_projects(id) ON DELETE CASCADE,
+    recipient_name        TEXT,
+    recipient_title       TEXT,
+    recipient_organisation TEXT,
+    recipient_sector      TEXT,
+    recipient_context     TEXT,
+    letter_text           TEXT        NOT NULL DEFAULT '',
+    email_text            TEXT        NOT NULL DEFAULT '',
+    tokens_total          INTEGER     DEFAULT 0,
+    cost_usd              NUMERIC(10, 6) DEFAULT 0,
+    created_by            UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_interview_letter_personalizations_project
+    ON public.interview_letter_personalizations(project_id, created_at DESC);
+
+-- ------------------------------------------------------------
+-- ROW LEVEL SECURITY
+-- ------------------------------------------------------------
+ALTER TABLE public.interview_letter_templates              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_letter_templates_versions      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_letter_research_prompts        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_letter_research_prompts_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_letter_projects             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_letter_personalizations     ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can read letter templates"
+    ON public.interview_letter_templates FOR SELECT TO authenticated USING (TRUE);
+CREATE POLICY "Admins can update letter templates"
+    ON public.interview_letter_templates FOR UPDATE USING (public.user_role() = 'admin');
+
+CREATE POLICY "Admins can manage letter template versions"
+    ON public.interview_letter_templates_versions FOR ALL USING (public.user_role() = 'admin');
+
+CREATE POLICY "Authenticated users can read letter research prompts"
+    ON public.interview_letter_research_prompts FOR SELECT TO authenticated USING (TRUE);
+CREATE POLICY "Admins can update letter research prompts"
+    ON public.interview_letter_research_prompts FOR UPDATE USING (public.user_role() = 'admin');
+
+CREATE POLICY "Admins can manage letter research prompt versions"
+    ON public.interview_letter_research_prompts_versions FOR ALL USING (public.user_role() = 'admin');
+
+CREATE POLICY "Users can read own letter projects"
+    ON public.interview_letter_projects FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Admins can read all letter projects"
+    ON public.interview_letter_projects FOR SELECT USING (public.user_role() = 'admin');
+CREATE POLICY "Users can insert own letter projects"
+    ON public.interview_letter_projects FOR INSERT WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Users can update own letter projects"
+    ON public.interview_letter_projects FOR UPDATE USING (user_id = auth.uid());
+CREATE POLICY "Admins can delete letter projects"
+    ON public.interview_letter_projects FOR DELETE USING (public.user_role() = 'admin');
+
+CREATE POLICY "Users can read own project personalizations"
+    ON public.interview_letter_personalizations FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.interview_letter_projects p
+            WHERE p.id = project_id AND (p.user_id = auth.uid() OR public.user_role() = 'admin')
+        )
+    );
+CREATE POLICY "Users can insert own project personalizations"
+    ON public.interview_letter_personalizations FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.interview_letter_projects p
+            WHERE p.id = project_id AND p.user_id = auth.uid()
+        )
+    );

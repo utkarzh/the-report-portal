@@ -23,6 +23,7 @@ export interface Profile {
   can_access_business_cases: boolean
   can_access_editorial_briefs: boolean
   can_access_meeting_preparation: boolean
+  can_access_interview_letter_generator: boolean
   finance_role: FinanceRole
   created_at: string
   updated_at: string
@@ -38,6 +39,7 @@ export interface Invitation {
   can_access_business_cases: boolean
   can_access_editorial_briefs: boolean
   can_access_meeting_preparation: boolean
+  can_access_interview_letter_generator: boolean
   finance_role: FinanceRole
   token: string
   status: InviteStatus
@@ -326,6 +328,11 @@ export type UsageWorkflow =
   | 'finance_receipt_extraction'
   | 'finance_receipt_verification'
   | 'finance_audit_report'
+  | 'interview_letter_research'
+  | 'interview_letter_letter'
+  | 'interview_letter_email'
+  | 'interview_letter_personalize'
+  | 'interview_letter_template_generate'
 
 export interface UsageEvent {
   id: string
@@ -601,4 +608,97 @@ export interface MeetingPrepPrompt {
   prompt_text: string
   updated_by: string | null
   updated_at: string
+}
+
+// ── Interview Request Letter & Email Generator (Module 5) ─────────────────
+export type InterviewLetterCompany = 'TRC' | 'GFDI'
+
+export type InterviewLetterStage =
+  | 'input'
+  | 'researching'
+  | 'hook_review'
+  | 'letter_generating'
+  | 'letter_review'
+  | 'letter_approved'
+  | 'email_generating'
+  | 'email_review'
+  | 'complete'
+  | 'failed'
+
+export type InterviewLetterParagraphType = 'fixed' | 'variable'
+
+// Shape of one slot inside a template's `structure` array.
+export interface InterviewLetterParagraphSlot {
+  key: string
+  type: InterviewLetterParagraphType
+  label: string
+  content?: string // fixed slots only — immutable wording
+  instructions?: string // variable slots only — what the model should write
+  wordBudget?: number // variable slots only
+}
+
+// Shape of one entry inside a project's `paragraphs` array — the template
+// slot plus per-project generation state.
+export interface InterviewLetterParagraph extends InterviewLetterParagraphSlot {
+  content: string
+  status: 'pending' | 'locked'
+  lastFeedback?: string
+}
+
+export interface InterviewLetterTemplate {
+  id: string
+  company: InterviewLetterCompany
+  structure: InterviewLetterParagraphSlot[]
+  updated_by: string | null
+  updated_at: string
+}
+
+export interface InterviewLetterProject {
+  id: string
+  user_id: string | null
+  company: InterviewLetterCompany
+  project_country: string
+  media_partner: string
+  media_partner_country: string
+  hook_input: string
+  // Bullet strings, each already carrying its own inline "[Source, date](url)"
+  // markdown citation — same convention as the rest of the app (meeting-prep,
+  // documents): sources live inline in the text, not as a separate structured
+  // field. See templateStructureToPrompt / research route.
+  research: string[]
+  hook_ai_suggestion: string | null
+  confirmed_hook: string | null
+  hook_source: 'user' | 'ai' | null
+  template_structure_snapshot: InterviewLetterParagraphSlot[] | null
+  paragraphs: InterviewLetterParagraph[]
+  master_letter: string | null
+  master_email: string | null
+  research_prompt_snapshot: string | null
+  letter_prompt_snapshot: string | null
+  email_prompt_snapshot: string | null
+  stage: InterviewLetterStage
+  error: string | null
+  tokens_input: number
+  tokens_output: number
+  tokens_total: number
+  web_searches: number
+  cost_usd: number
+  created_at: string
+  updated_at: string
+}
+
+export interface InterviewLetterPersonalization {
+  id: string
+  project_id: string
+  recipient_name: string | null
+  recipient_title: string | null
+  recipient_organisation: string | null
+  recipient_sector: string | null
+  recipient_context: string | null
+  letter_text: string
+  email_text: string
+  tokens_total: number
+  cost_usd: number
+  created_by: string | null
+  created_at: string
 }

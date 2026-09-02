@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import type { PromptVersion, CategoryPromptVersion, DocType, InterviewType, MeetingPrepPromptKey } from '@/types'
+import type { PromptVersion, CategoryPromptVersion, DocType, InterviewType, MeetingPrepPromptKey, InterviewLetterCompany } from '@/types'
 
 type Version = PromptVersion | CategoryPromptVersion
 
 interface Props {
-  type: 'general' | 'category' | 'transcript' | 'document' | 'meeting_prep_planteo' | 'meeting_prep_prompt'
+  type: 'general' | 'category' | 'transcript' | 'document' | 'meeting_prep_planteo' | 'meeting_prep_prompt' | 'interview_letter_template' | 'interview_letter_research_prompt'
   categoryId?: string
   // Required when type === 'document' — selects which module's prompt history.
   docType?: DocType
@@ -14,6 +14,8 @@ interface Props {
   variant?: InterviewType
   // Required when type === 'meeting_prep_prompt'.
   promptKey?: MeetingPrepPromptKey
+  // Required when type === 'interview_letter_template' or 'interview_letter_research_prompt'.
+  company?: InterviewLetterCompany
   currentPromptText?: string
   refreshKey?: number
   onRestore: (promptText: string) => void
@@ -26,7 +28,7 @@ function formatDate(iso: string) {
   })
 }
 
-export default function PromptVersionHistory({ type, categoryId, docType, variant, promptKey, currentPromptText, refreshKey, onRestore }: Props) {
+export default function PromptVersionHistory({ type, categoryId, docType, variant, promptKey, company, currentPromptText, refreshKey, onRestore }: Props) {
   // Endpoints per prompt type. For 'document', the list is filtered by docType;
   // restore/delete target a version id directly (the row carries its doc_type).
   const listUrl =
@@ -35,6 +37,8 @@ export default function PromptVersionHistory({ type, categoryId, docType, varian
     : type === 'document' ? `/api/document-prompt/versions?docType=${docType}`
     : type === 'meeting_prep_planteo' ? `/api/meeting-prep/planteo-library/${variant}/versions`
     : type === 'meeting_prep_prompt' ? `/api/meeting-prep/prompts/${promptKey}/versions`
+    : type === 'interview_letter_template' ? `/api/interview-letters/templates/${company}/versions`
+    : type === 'interview_letter_research_prompt' ? `/api/interview-letters/research-prompt/${company}/versions`
     : `/api/categories/${categoryId}/versions`
   const itemUrl = (id: string) =>
     type === 'general' ? `/api/prompts/versions/${id}`
@@ -42,6 +46,8 @@ export default function PromptVersionHistory({ type, categoryId, docType, varian
     : type === 'document' ? `/api/document-prompt/versions/${id}`
     : type === 'meeting_prep_planteo' ? `/api/meeting-prep/planteo-library/${variant}/versions/${id}`
     : type === 'meeting_prep_prompt' ? `/api/meeting-prep/prompts/${promptKey}/versions/${id}`
+    : type === 'interview_letter_template' ? `/api/interview-letters/templates/${company}/versions/${id}`
+    : type === 'interview_letter_research_prompt' ? `/api/interview-letters/research-prompt/${company}/versions/${id}`
     : `/api/categories/${categoryId}/versions/${id}`
 
   const [open, setOpen] = useState(false)

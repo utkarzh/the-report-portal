@@ -70,6 +70,19 @@ export const MEETING_PREP_POINTS_RESERVE = 20_000
 export const MEETING_PREP_PLANTEO_RESERVE = 20_000
 export const MEETING_PREP_FINAL_DOC_RESERVE = 40_000
 
+// Interview Request Letter & Email Generator module — research is scoped to
+// letter-relevant facts only (not a full company/country dossier like
+// meeting-prep's four-section research), so it's sized well below
+// MEETING_PREP_RESEARCH_RESERVE. Letter generation is one call producing every
+// variable paragraph at once (marker-delimited, short per-paragraph word
+// budgets); email and personalize reuse already-approved text as context and
+// produce short output.
+export const INTERVIEW_LETTER_RESEARCH_RESERVE = 60_000
+export const INTERVIEW_LETTER_LETTER_RESERVE = 30_000
+export const INTERVIEW_LETTER_EMAIL_RESERVE = 15_000
+export const INTERVIEW_LETTER_PERSONALIZE_RESERVE = 20_000
+export const INTERVIEW_LETTER_TEMPLATE_GENERATE_RESERVE = 20_000
+
 export interface UsageBreakdown {
   inputTokens: number                // uncached input (billed at full input price)
   outputTokens: number

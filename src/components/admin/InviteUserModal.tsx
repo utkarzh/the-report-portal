@@ -23,6 +23,7 @@ const defaultForm = {
   canAccessBusinessCases: false,
   canAccessEditorialBriefs: false,
   canAccessMeetingPreparation: false,
+  canAccessInterviewLetterGenerator: false,
   financeRole: '' as '' | 'finance_admin' | 'field',
 }
 
@@ -84,6 +85,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
           canAccessBusinessCases: form.canAccessBusinessCases,
           canAccessEditorialBriefs: form.canAccessEditorialBriefs,
           canAccessMeetingPreparation: form.canAccessMeetingPreparation,
+          canAccessInterviewLetterGenerator: form.canAccessInterviewLetterGenerator,
           financeRole: form.financeRole || null,
         }),
       }),
@@ -328,6 +330,11 @@ export default function InviteUserModal({ open, onClose }: Props) {
                       label="Meeting Preparation"
                       checked={form.canAccessMeetingPreparation}
                       onChange={(v) => setForm(p => ({ ...p, canAccessMeetingPreparation: v }))}
+                    />
+                    <ModuleCheckbox
+                      label="Interview Letters"
+                      checked={form.canAccessInterviewLetterGenerator}
+                      onChange={(v) => setForm(p => ({ ...p, canAccessInterviewLetterGenerator: v }))}
                     />
                     <ModuleCheckbox
                       label="Finance (Cash Box) — Field"

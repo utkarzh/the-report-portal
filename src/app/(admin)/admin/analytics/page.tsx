@@ -40,8 +40,13 @@ const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
   finance_receipt_extraction: 'Cash Box — receipt extraction',
   finance_receipt_verification: 'Cash Box — receipt verification',
   finance_audit_report: 'Cash Box — audit report',
+  interview_letter_research: 'Interview letter — research',
+  interview_letter_letter: 'Interview letter — letter',
+  interview_letter_email: 'Interview letter — email',
+  interview_letter_personalize: 'Interview letter — personalize',
+  interview_letter_template_generate: 'Interview letter — template from document',
 }
-const WORKFLOW_ORDER: UsageWorkflow[] = ['research', 'research_questions', 'transcript_refine', 'transcript_translate', 'business_case', 'editorial_brief', 'meeting_prep_research', 'meeting_prep_points', 'meeting_prep_planteo', 'meeting_prep_final_document', 'finance_receipt_extraction', 'finance_receipt_verification', 'finance_audit_report', 'input_validation']
+const WORKFLOW_ORDER: UsageWorkflow[] = ['research', 'research_questions', 'transcript_refine', 'transcript_translate', 'business_case', 'editorial_brief', 'meeting_prep_research', 'meeting_prep_points', 'meeting_prep_planteo', 'meeting_prep_final_document', 'interview_letter_research', 'interview_letter_letter', 'interview_letter_email', 'interview_letter_personalize', 'interview_letter_template_generate', 'finance_receipt_extraction', 'finance_receipt_verification', 'finance_audit_report', 'input_validation']
 
 // Resolves a range key to concrete bounds + how the trend should be bucketed.
 // `start`/`end` are ISO strings (null start = "from the beginning").

@@ -18,6 +18,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       canAccessBusinessCases={profile.can_access_business_cases}
       canAccessEditorialBriefs={profile.can_access_editorial_briefs}
       canAccessMeetingPreparation={profile.can_access_meeting_preparation}
+      canAccessInterviewLetterGenerator={profile.can_access_interview_letter_generator}
       canAccessFinance={canAccessFinance(profile)}
       financeHref={isFinanceAdmin(profile) ? '/finance/admin' : '/finance'}
     >

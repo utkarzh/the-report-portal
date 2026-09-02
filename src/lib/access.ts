@@ -8,6 +8,7 @@ export interface ModuleAccess {
   can_access_business_cases: boolean
   can_access_editorial_briefs: boolean
   can_access_meeting_preparation: boolean
+  can_access_interview_letter_generator: boolean
   finance_role: FinanceRole
 }
 
@@ -31,6 +32,12 @@ export function canAccessMeetingPreparation(
   p: Pick<ModuleAccess, 'role' | 'can_access_meeting_preparation'>,
 ): boolean {
   return p.role === 'admin' || p.can_access_meeting_preparation
+}
+
+export function canAccessInterviewLetterGenerator(
+  p: Pick<ModuleAccess, 'role' | 'can_access_interview_letter_generator'>,
+): boolean {
+  return p.role === 'admin' || p.can_access_interview_letter_generator
 }
 
 // Cash Box (finance) module. Deliberately NOT folded into the editorial
@@ -57,6 +64,7 @@ export function landingPathFor(p: ModuleAccess): string {
   if (canAccessBusinessCases(p)) return '/business-cases'
   if (canAccessEditorialBriefs(p)) return '/editorial-briefs'
   if (canAccessMeetingPreparation(p)) return '/meeting-preparation'
+  if (canAccessInterviewLetterGenerator(p)) return '/interview-letters'
   if (canAccessFinance(p)) return isFinanceAdmin(p) ? '/finance/admin' : '/finance'
   return '/no-access'
 }

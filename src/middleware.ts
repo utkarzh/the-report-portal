@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessFinance, isFinanceAdmin, landingPathFor } from '@/lib/access'
+import { canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessInterviewLetterGenerator, canAccessFinance, isFinanceAdmin, landingPathFor } from '@/lib/access'
 import type { UserRole, FinanceRole } from '@/types'
 
 // Normal users are automatically signed out 10 days after they last signed in.
@@ -128,14 +128,14 @@ export async function middleware(request: NextRequest) {
   }
 
   const requestHeaders = new Headers(request.headers)
-  for (const key of ['x-user-id', 'x-user-role', 'x-user-name', 'x-user-tokens-used', 'x-user-token-limit', 'x-user-can-interview', 'x-user-can-transcriptions', 'x-user-can-business-cases', 'x-user-can-editorial-briefs', 'x-user-can-meeting-preparation', 'x-user-finance-role']) {
+  for (const key of ['x-user-id', 'x-user-role', 'x-user-name', 'x-user-tokens-used', 'x-user-token-limit', 'x-user-can-interview', 'x-user-can-transcriptions', 'x-user-can-business-cases', 'x-user-can-editorial-briefs', 'x-user-can-meeting-preparation', 'x-user-can-interview-letters', 'x-user-finance-role']) {
     requestHeaders.delete(key)
   }
 
   if (user && !isPublicRoute) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role, status, full_name, tokens_used, token_limit, active_session_id, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, finance_role')
+      .select('role, status, full_name, tokens_used, token_limit, active_session_id, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, finance_role')
       .eq('id', user.id)
       .single()
 
@@ -190,18 +190,20 @@ export async function middleware(request: NextRequest) {
       can_access_business_cases: profile.can_access_business_cases,
       can_access_editorial_briefs: profile.can_access_editorial_briefs,
       can_access_meeting_preparation: profile.can_access_meeting_preparation,
+      can_access_interview_letter_generator: profile.can_access_interview_letter_generator,
       finance_role: profile.finance_role as FinanceRole,
     }
-    const blockedFromInterview = pathname.startsWith('/interview') && !canAccessInterview(access)
+    const blockedFromInterview = pathname.startsWith('/interview') && !pathname.startsWith('/interview-letters') && !canAccessInterview(access)
     const blockedFromTranscriptions = pathname.startsWith('/transcriptions') && !canAccessTranscriptions(access)
     const blockedFromBusinessCases = pathname.startsWith('/business-cases') && !canAccessBusinessCases(access)
     const blockedFromEditorialBriefs = pathname.startsWith('/editorial-briefs') && !canAccessEditorialBriefs(access)
     const blockedFromMeetingPreparation = pathname.startsWith('/meeting-preparation') && !canAccessMeetingPreparation(access)
+    const blockedFromInterviewLetters = pathname.startsWith('/interview-letters') && !canAccessInterviewLetterGenerator(access)
     // /finance/admin needs finance-admin (or platform admin); plain /finance
     // needs any finance access at all.
     const blockedFromFinanceAdmin = pathname.startsWith('/finance/admin') && !isFinanceAdmin(access)
     const blockedFromFinance = pathname.startsWith('/finance') && !pathname.startsWith('/finance/admin') && !canAccessFinance(access)
-    if (blockedFromInterview || blockedFromTranscriptions || blockedFromBusinessCases || blockedFromEditorialBriefs || blockedFromMeetingPreparation || blockedFromFinanceAdmin || blockedFromFinance) {
+    if (blockedFromInterview || blockedFromTranscriptions || blockedFromBusinessCases || blockedFromEditorialBriefs || blockedFromMeetingPreparation || blockedFromInterviewLetters || blockedFromFinanceAdmin || blockedFromFinance) {
       const url = request.nextUrl.clone()
       url.pathname = landingPathFor(access)
       url.search = ''
@@ -219,6 +221,7 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set('x-user-can-business-cases', String(canAccessBusinessCases(access)))
     requestHeaders.set('x-user-can-editorial-briefs', String(canAccessEditorialBriefs(access)))
     requestHeaders.set('x-user-can-meeting-preparation', String(canAccessMeetingPreparation(access)))
+    requestHeaders.set('x-user-can-interview-letters', String(canAccessInterviewLetterGenerator(access)))
     requestHeaders.set('x-user-finance-role', profile.finance_role ?? '')
   }
 
