@@ -9,6 +9,7 @@ export interface ModuleAccess {
   can_access_editorial_briefs: boolean
   can_access_meeting_preparation: boolean
   can_access_interview_letter_generator: boolean
+  can_access_sales_negotiation_coach: boolean
   finance_role: FinanceRole
 }
 
@@ -40,6 +41,12 @@ export function canAccessInterviewLetterGenerator(
   return p.role === 'admin' || p.can_access_interview_letter_generator
 }
 
+export function canAccessSalesNegotiationCoach(
+  p: Pick<ModuleAccess, 'role' | 'can_access_sales_negotiation_coach'>,
+): boolean {
+  return p.role === 'admin' || p.can_access_sales_negotiation_coach
+}
+
 // Cash Box (finance) module. Deliberately NOT folded into the editorial
 // can_access_* flags above — see docs/cashbox-requirements.md Epic A and the
 // note in migration 017. Platform admins ('admin') keep full, unrestricted
@@ -65,6 +72,7 @@ export function landingPathFor(p: ModuleAccess): string {
   if (canAccessEditorialBriefs(p)) return '/editorial-briefs'
   if (canAccessMeetingPreparation(p)) return '/meeting-preparation'
   if (canAccessInterviewLetterGenerator(p)) return '/interview-letters'
+  if (canAccessSalesNegotiationCoach(p)) return '/sales-coach'
   if (canAccessFinance(p)) return isFinanceAdmin(p) ? '/finance/admin' : '/finance'
   return '/no-access'
 }

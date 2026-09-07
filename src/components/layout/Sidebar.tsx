@@ -20,6 +20,7 @@ import {
   CalendarClock,
   Wallet,
   Mail,
+  Handshake,
 } from 'lucide-react'
 import type { UserRole } from '@/types'
 
@@ -34,6 +35,7 @@ interface SidebarProps {
   canAccessEditorialBriefs: boolean
   canAccessMeetingPreparation: boolean
   canAccessInterviewLetterGenerator: boolean
+  canAccessSalesNegotiationCoach: boolean
   canAccessFinance?: boolean
   financeHref?: string
   mobileOpen?: boolean
@@ -67,7 +69,7 @@ function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: bool
   )
 }
 
-export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessInterviewLetterGenerator, canAccessFinance = false, financeHref = '/finance', mobileOpen = false }: SidebarProps) {
+export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessInterviewLetterGenerator, canAccessSalesNegotiationCoach, canAccessFinance = false, financeHref = '/finance', mobileOpen = false }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
@@ -80,6 +82,7 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
     ...(canAccessEditorialBriefs ? [{ label: 'Editorial Briefs', href: '/editorial-briefs', icon: FileText }] : []),
     ...(canAccessMeetingPreparation ? [{ label: 'Meeting Preparation', href: '/meeting-preparation', icon: CalendarClock }] : []),
     ...(canAccessInterviewLetterGenerator ? [{ label: 'Interview Letters', href: '/interview-letters', icon: Mail }] : []),
+    ...(canAccessSalesNegotiationCoach ? [{ label: 'Sales Coach', href: '/sales-coach', icon: Handshake }] : []),
   ]
 
   useEffect(() => {

@@ -24,6 +24,7 @@ export interface Profile {
   can_access_editorial_briefs: boolean
   can_access_meeting_preparation: boolean
   can_access_interview_letter_generator: boolean
+  can_access_sales_negotiation_coach: boolean
   finance_role: FinanceRole
   created_at: string
   updated_at: string
@@ -40,6 +41,7 @@ export interface Invitation {
   can_access_editorial_briefs: boolean
   can_access_meeting_preparation: boolean
   can_access_interview_letter_generator: boolean
+  can_access_sales_negotiation_coach: boolean
   finance_role: FinanceRole
   token: string
   status: InviteStatus
@@ -712,5 +714,122 @@ export interface InterviewLetterPersonalization {
   tokens_total: number
   cost_usd: number
   created_by: string | null
+  created_at: string
+}
+
+// ------------------------------------------------------------
+// Sales Negotiation Coach module (US-033→048)
+// ------------------------------------------------------------
+export type SalesCoachKnowledgeKey = 'project_prompt' | 'manual' | 'method' | 'examples'
+export type SalesCoachOutcome = 'signed' | 'retorno' | 'lost' | 'uncertain'
+export type SalesCoachStage =
+  | 'draft' | 'transcribing' | 'transcribed' | 'analyzing' | 'complete' | 'failed'
+
+// The brief's qualifier-based AI-assessed commercial position values (US-040).
+export type SalesCoachAssessedPosition =
+  | 'Positive/Won'
+  | 'Apparent Positive/Won — confirmation required'
+  | 'Controlled retorno'
+  | 'Open retorno'
+  | 'Open, low-confidence retorno'
+  | 'Negative/Lost'
+  | 'Uncertain — insufficient evidence'
+  | 'Management review recommended'
+
+export interface SalesCoachParticipant {
+  name: string
+  // "position" for company reps, "role" for TRC members — both stored here.
+  role: string
+}
+
+export interface SalesCoachKnowledgeDoc {
+  id: string
+  doc_key: SalesCoachKnowledgeKey
+  content: string
+  updated_by: string | null
+  updated_at: string
+}
+
+// One evaluated criterion in the structured Report Card.
+export interface SalesCoachCriterion {
+  key: string            // stable slug, e.g. 'sales_offer_buildup'
+  label: string          // display, e.g. 'Sales Offer Build-up'
+  verdict: 'pass' | 'warn' | 'fail' | 'na' | 'uv' // uv = audio verification required
+  quote?: string
+  reason?: string
+  scored: boolean        // counts toward the Execution Score (na/uv → false)
+}
+
+export interface SalesCoachObjection {
+  objection: string
+  handled: string
+  trc_improved_response?: string
+  principle?: string
+}
+
+// The structured Report Card the model returns (validated in code, US-039).
+export interface SalesCoachReportCard {
+  company: string
+  declared_outcome: SalesCoachOutcome | null
+  assessed_position: SalesCoachAssessedPosition
+  execution_score: number
+  execution_denominator: number
+  summary: string
+  criteria: SalesCoachCriterion[]
+  objections: SalesCoachObjection[]
+  discrepancy?: string | null
+  management_review: boolean
+  coaching_question: string
+}
+
+export interface SalesCoachNegotiation {
+  id: string
+  user_id: string | null
+  submitted_by_name: string
+  country: string | null
+  media_publication: string | null
+  company: string | null
+  interviewee_name: string | null
+  interviewee_position: string | null
+  company_reps: SalesCoachParticipant[]
+  trc_members: SalesCoachParticipant[]
+  other_comments: string | null
+  original_filename: string | null
+  audio_path: string | null
+  audio_mime: string | null
+  transcribe_job_id: string | null
+  uploaded_transcript: string | null
+  system_transcript: string | null
+  declared_outcome: SalesCoachOutcome | null
+  outcome_details: Record<string, unknown>
+  report_card: SalesCoachReportCard | null
+  report_card_markdown: string | null
+  ai_assessed_position: string | null
+  execution_score: number | null
+  execution_denominator: number | null
+  uv_criteria: string[]
+  discrepancy: string | null
+  management_review: boolean
+  project_prompt_snapshot: string | null
+  knowledge_versions: Record<string, string> | null
+  model_used: string | null
+  actual_outcome: string | null
+  actual_outcome_source: string | null
+  actual_outcome_at: string | null
+  stage: SalesCoachStage
+  error: string | null
+  tokens_input: number
+  tokens_output: number
+  tokens_total: number
+  cost_usd: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SalesCoachMessage {
+  id: string
+  negotiation_id: string
+  role: 'user' | 'assistant'
+  content: string
   created_at: string
 }

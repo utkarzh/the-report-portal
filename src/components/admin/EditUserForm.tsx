@@ -27,6 +27,7 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
     canAccessEditorialBriefs: user.can_access_editorial_briefs,
     canAccessMeetingPreparation: user.can_access_meeting_preparation,
     canAccessInterviewLetterGenerator: user.can_access_interview_letter_generator,
+    canAccessSalesNegotiationCoach: user.can_access_sales_negotiation_coach,
     financeRole: (user.finance_role || '') as '' | 'finance_admin' | 'field',
   })
   const [loading, setLoading] = useState(false)
@@ -56,6 +57,7 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
           canAccessEditorialBriefs: form.canAccessEditorialBriefs,
           canAccessMeetingPreparation: form.canAccessMeetingPreparation,
           canAccessInterviewLetterGenerator: form.canAccessInterviewLetterGenerator,
+          canAccessSalesNegotiationCoach: form.canAccessSalesNegotiationCoach,
           financeRole: form.financeRole || null,
         }),
       }),
@@ -169,6 +171,11 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
               label="Interview Letters"
               checked={form.canAccessInterviewLetterGenerator}
               onChange={(v) => setForm(p => ({ ...p, canAccessInterviewLetterGenerator: v }))}
+            />
+            <ModuleCheckbox
+              label="Sales Coach"
+              checked={form.canAccessSalesNegotiationCoach}
+              onChange={(v) => setForm(p => ({ ...p, canAccessSalesNegotiationCoach: v }))}
             />
             <ModuleCheckbox
               label="Finance (Cash Box) — Field"

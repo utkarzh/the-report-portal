@@ -20,6 +20,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       canAccessEditorialBriefs={profile.can_access_editorial_briefs}
       canAccessMeetingPreparation={profile.can_access_meeting_preparation}
       canAccessInterviewLetterGenerator={profile.can_access_interview_letter_generator}
+      canAccessSalesNegotiationCoach={profile.can_access_sales_negotiation_coach}
       canAccessFinance={canAccessFinance(profile)}
       financeHref={isFinanceAdmin(profile) ? '/finance/admin' : '/finance'}
     >

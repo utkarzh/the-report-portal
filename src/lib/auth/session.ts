@@ -52,6 +52,7 @@ export function getProfileFromHeaders() {
     can_access_editorial_briefs: h.get('x-user-can-editorial-briefs') === 'true',
     can_access_meeting_preparation: h.get('x-user-can-meeting-preparation') === 'true',
     can_access_interview_letter_generator: h.get('x-user-can-interview-letters') === 'true',
+    can_access_sales_negotiation_coach: h.get('x-user-can-sales-coach') === 'true',
     finance_role: (h.get('x-user-finance-role') || null) as Profile['finance_role'],
   }
 }
