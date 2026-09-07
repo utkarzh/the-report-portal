@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import type { PromptVersion, CategoryPromptVersion, DocType, InterviewType, MeetingPrepPromptKey, InterviewLetterCompany } from '@/types'
+import type { PromptVersion, CategoryPromptVersion, DocType, InterviewType, MeetingPrepPromptKey, InterviewLetterCompany, SalesCoachKnowledgeKey } from '@/types'
 
 type Version = PromptVersion | CategoryPromptVersion
 
 interface Props {
-  type: 'general' | 'category' | 'transcript' | 'document' | 'meeting_prep_planteo' | 'meeting_prep_prompt' | 'interview_letter_template' | 'interview_letter_research_prompt' | 'interview_letter_email_prompt'
+  type: 'general' | 'category' | 'transcript' | 'document' | 'meeting_prep_planteo' | 'meeting_prep_prompt' | 'interview_letter_template' | 'interview_letter_research_prompt' | 'interview_letter_email_prompt' | 'sales_coach_knowledge'
   categoryId?: string
   // Required when type === 'document' — selects which module's prompt history.
   docType?: DocType
@@ -16,6 +16,8 @@ interface Props {
   promptKey?: MeetingPrepPromptKey
   // Required when type === 'interview_letter_template', 'interview_letter_research_prompt', or 'interview_letter_email_prompt'.
   company?: InterviewLetterCompany
+  // Required when type === 'sales_coach_knowledge'.
+  docKey?: SalesCoachKnowledgeKey
   currentPromptText?: string
   refreshKey?: number
   onRestore: (promptText: string) => void
@@ -28,7 +30,7 @@ function formatDate(iso: string) {
   })
 }
 
-export default function PromptVersionHistory({ type, categoryId, docType, variant, promptKey, company, currentPromptText, refreshKey, onRestore }: Props) {
+export default function PromptVersionHistory({ type, categoryId, docType, variant, promptKey, company, docKey, currentPromptText, refreshKey, onRestore }: Props) {
   // Endpoints per prompt type. For 'document', the list is filtered by docType;
   // restore/delete target a version id directly (the row carries its doc_type).
   const listUrl =
@@ -40,6 +42,7 @@ export default function PromptVersionHistory({ type, categoryId, docType, varian
     : type === 'interview_letter_template' ? `/api/interview-letters/templates/${company}/versions`
     : type === 'interview_letter_research_prompt' ? `/api/interview-letters/research-prompt/${company}/versions`
     : type === 'interview_letter_email_prompt' ? `/api/interview-letters/email-prompt/${company}/versions`
+    : type === 'sales_coach_knowledge' ? `/api/sales-coach/knowledge/${docKey}/versions`
     : `/api/categories/${categoryId}/versions`
   const itemUrl = (id: string) =>
     type === 'general' ? `/api/prompts/versions/${id}`
@@ -50,6 +53,7 @@ export default function PromptVersionHistory({ type, categoryId, docType, varian
     : type === 'interview_letter_template' ? `/api/interview-letters/templates/${company}/versions/${id}`
     : type === 'interview_letter_research_prompt' ? `/api/interview-letters/research-prompt/${company}/versions/${id}`
     : type === 'interview_letter_email_prompt' ? `/api/interview-letters/email-prompt/${company}/versions/${id}`
+    : type === 'sales_coach_knowledge' ? `/api/sales-coach/knowledge/${docKey}/versions/${id}`
     : `/api/categories/${categoryId}/versions/${id}`
 
   const [open, setOpen] = useState(false)

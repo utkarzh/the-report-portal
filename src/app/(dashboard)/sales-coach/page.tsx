@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Handshake, CalendarDays } from 'lucide-react'
+import { Plus, Handshake, CalendarDays, ShieldCheck } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -61,6 +61,28 @@ export default async function SalesCoachPage() {
           <Plus size={15} /> New negotiation
         </Link>
       </div>
+
+      {profile.role === 'admin' && (
+        <div className="mt-6 rounded-xl border border-[#c8973f]/25 bg-[#fbf7ed] p-4 shadow-sm">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 rounded-lg bg-[#c8973f]/10 p-2 text-[#a07530]">
+                <ShieldCheck size={18} />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">Admin tools</p>
+                <p className="text-sm text-gray-600 mt-0.5">Manage the four TRC knowledge documents and browse every negotiation.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/admin/sales-coach" className="group inline-flex items-center gap-2 rounded-lg border border-[#c8973f]/25 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c8973f]/50 hover:text-[#a07530] hover:shadow">
+                <ShieldCheck size={14} className="text-[#a07530]" />
+                <span>Admin area</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {(!rows || rows.length === 0) ? (
         <div className="mt-6 rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500">
