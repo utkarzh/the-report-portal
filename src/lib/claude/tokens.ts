@@ -83,6 +83,12 @@ export const INTERVIEW_LETTER_EMAIL_RESERVE = 15_000
 export const INTERVIEW_LETTER_PERSONALIZE_RESERVE = 20_000
 export const INTERVIEW_LETTER_TEMPLATE_GENERATE_RESERVE = 20_000
 
+// Sales Negotiation Coach — the coaching conversation (US-043) is a multi-turn
+// chat grounded in the transcript, Report Card, and four knowledge docs. Each
+// turn is short spoken output, but the grounding context (transcript + docs) is
+// large and re-sent each turn, so the reserve covers one turn's prompt + reply.
+export const SALES_COACH_COACH_RESERVE = 40_000
+
 export interface UsageBreakdown {
   inputTokens: number                // uncached input (billed at full input price)
   outputTokens: number

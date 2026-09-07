@@ -45,8 +45,9 @@ const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
   interview_letter_email: 'Interview letter — email',
   interview_letter_personalize: 'Interview letter — personalize',
   interview_letter_template_generate: 'Interview letter — template from document',
+  sales_coach_coach: 'Sales coach — coaching',
 }
-const WORKFLOW_ORDER: UsageWorkflow[] = ['research', 'research_questions', 'transcript_refine', 'transcript_translate', 'business_case', 'editorial_brief', 'meeting_prep_research', 'meeting_prep_points', 'meeting_prep_planteo', 'meeting_prep_final_document', 'interview_letter_research', 'interview_letter_letter', 'interview_letter_email', 'interview_letter_personalize', 'interview_letter_template_generate', 'finance_receipt_extraction', 'finance_receipt_verification', 'finance_audit_report', 'input_validation']
+const WORKFLOW_ORDER: UsageWorkflow[] = ['research', 'research_questions', 'transcript_refine', 'transcript_translate', 'business_case', 'editorial_brief', 'meeting_prep_research', 'meeting_prep_points', 'meeting_prep_planteo', 'meeting_prep_final_document', 'interview_letter_research', 'interview_letter_letter', 'interview_letter_email', 'interview_letter_personalize', 'interview_letter_template_generate', 'sales_coach_coach', 'finance_receipt_extraction', 'finance_receipt_verification', 'finance_audit_report', 'input_validation']
 
 // Resolves a range key to concrete bounds + how the trend should be bucketed.
 // `start`/`end` are ISO strings (null start = "from the beginning").

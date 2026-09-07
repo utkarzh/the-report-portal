@@ -4,7 +4,8 @@ import { redirect, notFound } from 'next/navigation'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
-import type { SalesCoachNegotiation } from '@/types'
+import CoachConversation from '@/components/sales-coach/CoachConversation'
+import type { SalesCoachNegotiation, SalesCoachMessage } from '@/types'
 
 const OUTCOME_LABELS: Record<string, string> = {
   signed: 'Signed on the spot', retorno: 'Retorno', lost: 'Lost', uncertain: 'Uncertain',
@@ -26,6 +27,17 @@ export default async function NegotiationDetailPage({ params }: { params: { id: 
 
   if (!data) notFound()
   const n = data as SalesCoachNegotiation
+
+  // The coaching conversation needs something to coach on: a transcript
+  // (uploaded or system-generated) or an already-produced Report Card.
+  const canCoach = Boolean(n.system_transcript || n.uploaded_transcript || n.report_card)
+
+  const { data: msgRows } = await supabase
+    .from('sales_coach_messages')
+    .select('id, negotiation_id, role, content, created_at')
+    .eq('negotiation_id', n.id)
+    .order('created_at', { ascending: true })
+  const messages = (msgRows || []) as SalesCoachMessage[]
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
@@ -51,13 +63,16 @@ export default async function NegotiationDetailPage({ params }: { params: { id: 
           <div className="mt-4"><Field label="Other comments" value={n.other_comments} /></div>
         )}
 
-        <div className="mt-8 rounded-2xl border border-dashed border-[#d4d0c8] bg-[#faf9f7] p-8 text-center">
-          <p className="text-sm font-medium text-gray-700">Report Card &amp; coaching</p>
-          <p className="mt-1 text-sm text-gray-500">
-            {n.stage === 'transcribing'
-              ? 'The recording is being transcribed. Report Card generation and the coaching conversation are being wired up next.'
-              : 'Report Card generation and the coaching conversation are being wired up next.'}
-          </p>
+        {!n.report_card && (
+          <div className="mt-8 rounded-xl border border-dashed border-[#d4d0c8] bg-[#faf9f7] px-4 py-3 text-center">
+            <p className="text-xs text-gray-500">
+              The structured Report Card is being wired up next — for now the coach works directly from your transcript.
+            </p>
+          </div>
+        )}
+
+        <div className="mt-6">
+          <CoachConversation negotiationId={n.id} initialMessages={messages} canCoach={canCoach} />
         </div>
       </div>
     </div>

@@ -335,6 +335,7 @@ export type UsageWorkflow =
   | 'interview_letter_email'
   | 'interview_letter_personalize'
   | 'interview_letter_template_generate'
+  | 'sales_coach_coach'
 
 export interface UsageEvent {
   id: string
