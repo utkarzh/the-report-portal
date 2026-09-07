@@ -63,13 +63,29 @@ export async function GET(
     ['Media Partner', session.media_partner_country],
   ]
 
+  // Topic Outline (the "questions" export) gets the standardised centred-bold
+  // header instead of the plain heading+meta block above. Background Research
+  // isn't one of the three formatted-document tools, so it keeps the old format.
+  const header = type === 'questions'
+    ? {
+        title: 'Interview Outline',
+        name: session.full_name || '',
+        designation: session.title_position || '',
+        companyOrMinistry: session.company_org || '',
+        mediaName: session.publication || '',
+      }
+    : undefined
+  // "Leave one line of space between questions" — a wider paragraph gap than
+  // the renderer's default, topic-outline downloads only.
+  const paragraphSpacingAfter = type === 'questions' ? 240 : undefined
+
   let body: BodyInit
   let contentType: string
   if (format === 'pdf') {
     body = new Uint8Array(await renderTemplatedPdf({ markdown, heading, template, meta })) as BodyInit
     contentType = 'application/pdf'
   } else {
-    const doc = buildTemplatedDocx({ markdown, heading, template, meta })
+    const doc = buildTemplatedDocx({ markdown, heading, template, meta, header, paragraphSpacingAfter })
     body = new Uint8Array(await Packer.toBuffer(doc)) as BodyInit
     contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   }

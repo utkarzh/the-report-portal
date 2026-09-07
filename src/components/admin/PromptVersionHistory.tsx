@@ -6,7 +6,7 @@ import type { PromptVersion, CategoryPromptVersion, DocType, InterviewType, Meet
 type Version = PromptVersion | CategoryPromptVersion
 
 interface Props {
-  type: 'general' | 'category' | 'transcript' | 'document' | 'meeting_prep_planteo' | 'meeting_prep_prompt' | 'interview_letter_template' | 'interview_letter_research_prompt'
+  type: 'general' | 'category' | 'transcript' | 'document' | 'meeting_prep_planteo' | 'meeting_prep_prompt' | 'interview_letter_template' | 'interview_letter_research_prompt' | 'interview_letter_email_prompt'
   categoryId?: string
   // Required when type === 'document' — selects which module's prompt history.
   docType?: DocType
@@ -14,7 +14,7 @@ interface Props {
   variant?: InterviewType
   // Required when type === 'meeting_prep_prompt'.
   promptKey?: MeetingPrepPromptKey
-  // Required when type === 'interview_letter_template' or 'interview_letter_research_prompt'.
+  // Required when type === 'interview_letter_template', 'interview_letter_research_prompt', or 'interview_letter_email_prompt'.
   company?: InterviewLetterCompany
   currentPromptText?: string
   refreshKey?: number
@@ -39,6 +39,7 @@ export default function PromptVersionHistory({ type, categoryId, docType, varian
     : type === 'meeting_prep_prompt' ? `/api/meeting-prep/prompts/${promptKey}/versions`
     : type === 'interview_letter_template' ? `/api/interview-letters/templates/${company}/versions`
     : type === 'interview_letter_research_prompt' ? `/api/interview-letters/research-prompt/${company}/versions`
+    : type === 'interview_letter_email_prompt' ? `/api/interview-letters/email-prompt/${company}/versions`
     : `/api/categories/${categoryId}/versions`
   const itemUrl = (id: string) =>
     type === 'general' ? `/api/prompts/versions/${id}`
@@ -48,6 +49,7 @@ export default function PromptVersionHistory({ type, categoryId, docType, varian
     : type === 'meeting_prep_prompt' ? `/api/meeting-prep/prompts/${promptKey}/versions/${id}`
     : type === 'interview_letter_template' ? `/api/interview-letters/templates/${company}/versions/${id}`
     : type === 'interview_letter_research_prompt' ? `/api/interview-letters/research-prompt/${company}/versions/${id}`
+    : type === 'interview_letter_email_prompt' ? `/api/interview-letters/email-prompt/${company}/versions/${id}`
     : `/api/categories/${categoryId}/versions/${id}`
 
   const [open, setOpen] = useState(false)

@@ -22,6 +22,9 @@ export default function ProjectSetupForm({ isAtLimit }: Props) {
     mediaPartner: '',
     mediaPartnerCountry: '',
     hookInput: '',
+    senderName: '',
+    senderTitle: '',
+    senderContact: '',
   })
 
   function handleChange(field: keyof typeof form, value: string) {
@@ -103,6 +106,38 @@ export default function ProjectSetupForm({ isAtLimit }: Props) {
           This is important because AI may not know the exact planned publication window. Provide the hook
           when it&apos;s already known — or leave it blank so AI can research and propose one.
         </p>
+      </div>
+
+      <div className="pt-2 border-t border-[#e5e3df]">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mt-4 mb-3">
+          Cover Email Sender
+        </h3>
+        <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+          Who the cover email will be signed by — the letter itself has its own fixed signature and doesn&apos;t use
+          these details.
+        </p>
+        <div className="flex flex-col gap-5">
+          <Input
+            label="Sender Name *"
+            placeholder="e.g. Adrienne Mendoza"
+            value={form.senderName}
+            onChange={(e) => handleChange('senderName', e.target.value)}
+            required
+          />
+          <Input
+            label="Sender Title *"
+            placeholder="e.g. International Relations"
+            value={form.senderTitle}
+            onChange={(e) => handleChange('senderTitle', e.target.value)}
+            required
+          />
+          <Input
+            label="Sender Contact"
+            placeholder="e.g. Email, phone, or WhatsApp"
+            value={form.senderContact}
+            onChange={(e) => handleChange('senderContact', e.target.value)}
+          />
+        </div>
       </div>
 
       <div className="pt-1">

@@ -27,13 +27,16 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { company, projectCountry, mediaPartner, mediaPartnerCountry, hookInput } = body
+  const { company, projectCountry, mediaPartner, mediaPartnerCountry, hookInput, senderName, senderTitle, senderContact } = body
 
   if (!isInterviewLetterCompany(company)) {
     return NextResponse.json({ error: 'A valid company (TRC or GFDI) is required' }, { status: 400 })
   }
   if (!projectCountry?.trim() || !mediaPartner?.trim()) {
     return NextResponse.json({ error: 'Project country and media partner are required' }, { status: 400 })
+  }
+  if (!senderName?.trim() || !senderTitle?.trim()) {
+    return NextResponse.json({ error: 'Sender name and title are required — this is who the cover email will be signed by' }, { status: 400 })
   }
 
   const { data: template } = await supabaseAdmin
@@ -58,6 +61,9 @@ export async function POST(request: NextRequest) {
       media_partner: mediaPartner.trim(),
       media_partner_country: (mediaPartnerCountry || '').trim(),
       hook_input: (hookInput || '').trim(),
+      sender_name: senderName.trim(),
+      sender_title: senderTitle.trim(),
+      sender_contact: (senderContact || '').trim(),
       stage: 'input',
     })
     .select('id')

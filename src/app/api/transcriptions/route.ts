@@ -27,7 +27,10 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { audioPath, chunkPaths, filename, mime, sizeBytes, durationSeconds, topicOutline, topicOutlineFilename } = body as {
+  const {
+    audioPath, chunkPaths, filename, mime, sizeBytes, durationSeconds, topicOutline, topicOutlineFilename,
+    fullName, titlePosition, companyOrg, publication,
+  } = body as {
     audioPath?: string
     chunkPaths?: string[]
     filename?: string
@@ -36,10 +39,20 @@ export async function POST(request: NextRequest) {
     durationSeconds?: number
     topicOutline?: string
     topicOutlineFilename?: string
+    fullName?: string
+    titlePosition?: string
+    companyOrg?: string
+    publication?: string
   }
 
   if (!audioPath || typeof audioPath !== 'string') {
     return NextResponse.json({ error: 'audioPath is required' }, { status: 400 })
+  }
+  if (!fullName?.trim() || !titlePosition?.trim() || !companyOrg?.trim() || !publication?.trim()) {
+    return NextResponse.json(
+      { error: 'Interviewee name, title/position, company/ministry, and publication are all required' },
+      { status: 400 },
+    )
   }
 
   // Chunks are only used by the OpenAI path. The AssemblyAI path transcribes the
@@ -84,6 +97,10 @@ export async function POST(request: NextRequest) {
         typeof topicOutlineFilename === 'string' && topicOutlineFilename.trim()
           ? topicOutlineFilename.trim().split('/').pop()
           : null,
+      full_name: fullName.trim(),
+      title_position: titlePosition.trim(),
+      company_org: companyOrg.trim(),
+      publication: publication.trim(),
       status: 'uploaded',
     })
     .select('id')

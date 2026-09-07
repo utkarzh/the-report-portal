@@ -478,6 +478,12 @@ CREATE TABLE IF NOT EXISTS public.transcriptions (
     audio_mime                TEXT,
     audio_size_bytes          BIGINT,
     duration_seconds          NUMERIC,
+    -- Interviewee metadata (migration 024), required at upload — feeds the
+    -- standardised "Interview Transcript" document header at export time.
+    full_name                 TEXT        NOT NULL DEFAULT '',
+    title_position             TEXT        NOT NULL DEFAULT '',
+    company_org               TEXT        NOT NULL DEFAULT '',
+    publication                TEXT        NOT NULL DEFAULT '',
     status                    TEXT        NOT NULL DEFAULT 'uploaded'
         CHECK (status IN ('uploaded','transcribing','transcribed','refining','refined','failed')),
     raw_transcript            TEXT,
@@ -1566,6 +1572,69 @@ CREATE INDEX idx_interview_letter_research_prompts_versions_company_created
     ON public.interview_letter_research_prompts_versions(company, created_at DESC);
 
 -- ------------------------------------------------------------
+-- EMAIL PROMPT (admin-editable, one versioned singleton per company)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.interview_letter_email_prompts (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company     TEXT        NOT NULL UNIQUE
+        CHECK (company IN ('TRC', 'GFDI')),
+    prompt_text TEXT        NOT NULL DEFAULT '',
+    updated_by  UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO public.interview_letter_email_prompts (company, prompt_text)
+SELECT 'TRC', $seed$You are drafting the cover email that accompanies an already-approved Interview Request Letter for The Report Company's editorial team — the email a team member sends to a recipient's office, with the formal letter attached separately. This is NOT a condensed version of the letter — it is a shorter, more direct outreach message that stands on its own.
+
+Write a complete, ready-to-send email:
+- Subject line as the very first line, formatted "Subject: ...". Make it specific — reference the recipient/organisation, the publication, and the country/report topic (e.g. "ATTN: [Name] | [Publication], [Country] Business Special: Exclusive Interview").
+- A brief greeting using a generic placeholder like "Dear [Name],".
+- State plainly, in 1-2 short paragraphs, what the report is, which publication it will appear in, and the why-now hook — enough for the recipient to see why this matters right now, without repeating the letter's full narrative.
+- Mention that the official interview request letter is attached for reference.
+- If prior published examples of this report series exist, reference them briefly as social proof (e.g. links to previous country features) — otherwise omit this rather than inventing examples.
+- Cover logistics briefly: how and when the team plans to conduct interviews, and an invitation to coordinate a convenient time.
+- Close with a warm, professional sign-off using the sender's name, title, and contact details exactly as supplied — do not invent or omit any of them.
+
+Keep it concise — an email, not a letter. No corporate boilerplate, no repeating the same point twice.
+
+Before writing anything else, output the literal line <<<OUTPUT>>> on its own line, with nothing before it — no greeting, no plan, no explanation. Immediately after that line, write ONLY the email itself.$seed$
+WHERE NOT EXISTS (SELECT 1 FROM public.interview_letter_email_prompts WHERE company = 'TRC');
+
+INSERT INTO public.interview_letter_email_prompts (company, prompt_text)
+SELECT 'GFDI', $seed$You are drafting the cover email that accompanies an already-approved Interview Request Letter for the Global Foreign Direct Investment (GFDI) editorial team — the email a team member sends to a recipient's office, with the formal letter attached separately. This is NOT a condensed version of the letter — it is a shorter, more direct outreach message that stands on its own.
+
+Write a complete, ready-to-send email:
+- Subject line as the very first line, formatted "Subject: ...". Make it specific — reference the recipient/organisation, the publication, and the country/report topic (e.g. "ATTN: [Name] | [Publication], [Country] Business Special: Exclusive Interview").
+- A brief greeting using a generic placeholder like "Dear [Name],".
+- State plainly, in 1-2 short paragraphs, what the report is, which publication it will appear in, and the why-now hook — enough for the recipient to see why this matters right now, without repeating the letter's full narrative.
+- Mention that the official interview request letter is attached for reference.
+- If prior published examples of this report series exist, reference them briefly as social proof (e.g. links to previous country features) — otherwise omit this rather than inventing examples.
+- Cover logistics briefly: how and when the team plans to conduct interviews, and an invitation to coordinate a convenient time.
+- Close with a warm, professional sign-off using the sender's name, title, and contact details exactly as supplied — do not invent or omit any of them.
+
+Keep it concise — an email, not a letter. No corporate boilerplate, no repeating the same point twice.
+
+Before writing anything else, output the literal line <<<OUTPUT>>> on its own line, with nothing before it — no greeting, no plan, no explanation. Immediately after that line, write ONLY the email itself.$seed$
+WHERE NOT EXISTS (SELECT 1 FROM public.interview_letter_email_prompts WHERE company = 'GFDI');
+
+DROP TRIGGER IF EXISTS interview_letter_email_prompts_updated_at ON public.interview_letter_email_prompts;
+CREATE TRIGGER interview_letter_email_prompts_updated_at
+    BEFORE UPDATE ON public.interview_letter_email_prompts
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+CREATE TABLE IF NOT EXISTS public.interview_letter_email_prompts_versions (
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company     TEXT        NOT NULL
+        CHECK (company IN ('TRC', 'GFDI')),
+    prompt_text TEXT        NOT NULL,
+    saved_by    UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_interview_letter_email_prompts_versions_company_created
+    ON public.interview_letter_email_prompts_versions(company, created_at DESC);
+
+-- ------------------------------------------------------------
 -- PROJECTS (one row per run; the workflow state machine)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.interview_letter_projects (
@@ -1578,6 +1647,11 @@ CREATE TABLE IF NOT EXISTS public.interview_letter_projects (
     media_partner               TEXT        NOT NULL,
     media_partner_country       TEXT        NOT NULL DEFAULT '',
     hook_input                  TEXT        NOT NULL DEFAULT '',
+    -- Who this project's cover email is from — captured per project since the
+    -- real sender varies by project/reporter (migration 023).
+    sender_name                 TEXT        NOT NULL DEFAULT '',
+    sender_title                TEXT        NOT NULL DEFAULT '',
+    sender_contact               TEXT        NOT NULL DEFAULT '',
 
     -- `research` is a JSON array of bullet strings, each carrying its own
     -- inline "[Source, date](url)" citation.
@@ -1656,6 +1730,8 @@ ALTER TABLE public.interview_letter_templates              ENABLE ROW LEVEL SECU
 ALTER TABLE public.interview_letter_templates_versions      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interview_letter_research_prompts        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interview_letter_research_prompts_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_letter_email_prompts           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_letter_email_prompts_versions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interview_letter_projects             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interview_letter_personalizations     ENABLE ROW LEVEL SECURITY;
 
@@ -1674,6 +1750,14 @@ CREATE POLICY "Admins can update letter research prompts"
 
 CREATE POLICY "Admins can manage letter research prompt versions"
     ON public.interview_letter_research_prompts_versions FOR ALL USING (public.user_role() = 'admin');
+
+CREATE POLICY "Authenticated users can read letter email prompts"
+    ON public.interview_letter_email_prompts FOR SELECT TO authenticated USING (TRUE);
+CREATE POLICY "Admins can update letter email prompts"
+    ON public.interview_letter_email_prompts FOR UPDATE USING (public.user_role() = 'admin');
+
+CREATE POLICY "Admins can manage letter email prompt versions"
+    ON public.interview_letter_email_prompts_versions FOR ALL USING (public.user_role() = 'admin');
 
 CREATE POLICY "Users can read own letter projects"
     ON public.interview_letter_projects FOR SELECT USING (user_id = auth.uid());

@@ -50,13 +50,36 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This project is not at the email review stage.' }, { status: 409 })
   }
 
-  const system = `You are revising the reusable general email drafted from an approved Interview Request Letter for The Report Company, per the editor's feedback. This email must remain a single, standard, concise email — ready to send as-is to 50-60 contacts, with the confirmed why-now hook included.
+  const { data: promptRow } = await supabaseAdmin
+    .from('interview_letter_email_prompts')
+    .select('prompt_text')
+    .eq('company', project.company)
+    .maybeSingle()
 
-Your reply is not a comment or a diff — it is the ENTIRE, FINAL, ONLY text this email will contain afterward: subject line, greeting, body, sign-off.
+  if (!promptRow?.prompt_text?.trim()) {
+    return NextResponse.json(
+      { error: `No email prompt is configured for ${project.company} yet. Ask an admin to set one up before regenerating the email.` },
+      { status: 422 },
+    )
+  }
+
+  const system = `${promptRow.prompt_text}
+
+You are REVISING a previous draft of this email per the editor's feedback below, not writing a fresh one from scratch. Your reply is not a comment or a diff — it is the ENTIRE, FINAL, ONLY text this email will contain afterward.
 
 ${NO_PREAMBLE_INSTRUCTION}`
 
-  const userContent = `--- APPROVED LETTER (for reference) ---
+  const userContent = `--- PROJECT CONTEXT ---
+Company: ${project.company}
+Project country: ${project.project_country}
+Media partner: ${project.media_partner}${project.media_partner_country ? ` (${project.media_partner_country})` : ''}
+
+--- SENDER (who this email is from) ---
+Name: ${project.sender_name || '(not supplied)'}
+Title: ${project.sender_title || '(not supplied)'}
+Contact: ${project.sender_contact || '(not supplied)'}
+
+--- APPROVED LETTER (for reference) ---
 ${project.master_letter}
 
 --- CONFIRMED WHY-NOW HOOK ---
@@ -88,6 +111,7 @@ ${(feedback || '').trim() || 'Improve this email.'}`
       .from('interview_letter_projects')
       .update({
         master_email: emailText,
+        email_prompt_snapshot: system,
         tokens_input: (project.tokens_input || 0) + promptTokens,
         tokens_output: (project.tokens_output || 0) + usage.outputTokens,
         tokens_total: (project.tokens_total || 0) + totalTokens,

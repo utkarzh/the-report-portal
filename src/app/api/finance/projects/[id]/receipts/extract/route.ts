@@ -36,8 +36,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!storagePath || !storagePath.startsWith(`${params.id}/`)) {
     return NextResponse.json({ error: 'Invalid storage path' }, { status: 400 })
   }
-  if (!mimeType?.startsWith('image/')) {
-    return NextResponse.json({ error: 'Only image receipts can be read automatically right now — PDFs can still be logged manually.' }, { status: 400 })
+  if (!mimeType?.startsWith('image/') && mimeType !== 'application/pdf') {
+    return NextResponse.json({ error: 'Only image or PDF receipts can be read automatically.' }, { status: 400 })
   }
 
   const { data: blob, error: dlError } = await supabaseAdmin.storage.from('finance-receipts').download(storagePath)

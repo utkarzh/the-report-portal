@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
   const { data: row } = await supabaseAdmin
     .from('transcriptions')
-    .select('user_id, title, raw_transcript, refined_transcript, translated_transcript, translation_language')
+    .select('user_id, title, raw_transcript, refined_transcript, translated_transcript, translation_language, full_name, title_position, company_org, publication')
     .eq('id', params.id)
     .single()
 
@@ -56,6 +56,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     : variant === 'translated' ? `Translated${row.translation_language ? ` (${row.translation_language})` : ''}`
     : 'Raw'
   const heading = `${title} — ${label} transcript`
+  const header = {
+    title: 'Interview Transcript',
+    name: row.full_name || '',
+    designation: row.title_position || '',
+    companyOrMinistry: row.company_org || '',
+    mediaName: row.publication || '',
+  }
 
   let body: BodyInit
   let contentType: string
@@ -66,7 +73,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     contentType = 'application/pdf'
   } else {
     // Highlight [[ … ]] client-confirmation spans yellow on the refined variant.
-    const doc = buildTemplatedDocx({ markdown: text, heading, template, highlightConfirm: variant === 'refined' })
+    const doc = buildTemplatedDocx({ markdown: text, heading, template, highlightConfirm: variant === 'refined', header })
     body = new Uint8Array(await Packer.toBuffer(doc)) as BodyInit
     contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   }

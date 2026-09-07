@@ -50,10 +50,7 @@ export function paragraphMarkersComplete(parsed: Record<string, string>, keys: s
 }
 
 // Pulls a leading "Subject: ..." line off a generated email so the UI can
-// show it as its own field instead of duplicating it inline with the body —
-// the email is otherwise just a condensed version of the letter (see
-// EMAIL_SYSTEM in the email route), so the subject line is the one part
-// worth calling out on its own.
+// show it as its own field instead of duplicating it inline with the body.
 export function splitEmailSubject(emailText: string): { subject: string | null; body: string } {
   const lines = emailText.split('\n')
   const match = (lines[0] || '').trim().match(/^subject:\s*(.+)$/i)

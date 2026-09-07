@@ -2,18 +2,21 @@ import {
   Document, Paragraph, TextRun, Footer, PageNumber,
   AlignmentType, type ISectionOptions,
 } from 'docx'
+import { LETTER_W, LETTER_H, GREY_FOOT, INK, SZ } from '@/lib/docx-template'
 import {
-  MARGIN, LETTER_W, LETTER_H, CONTENT_W_PORTRAIT,
-  NAVY, INK, GREY_FOOT, SZ, FONT,
-} from '@/lib/docx-template'
+  STANDARD_FONT, STANDARD_BODY_SIZE, STANDARD_LINE_SPACING, STANDARD_MARGIN_TWIPS,
+  buildStandardHeader,
+} from '@/lib/docx-standard-format'
 
 // Interview Request Letter .docx template — a short, single-page business
 // letter, not long-form markdown. Sibling builder to meeting-prep-docx.ts:
-// own simple cover block, body renders the letter's ordered paragraphs as
-// plain Paragraph runs (no need for the full markdown->docx lexer/renderer
-// this content never has headings, tables or lists), reusing the shared page
-// geometry and palette constants for visual consistency with every other
-// export in the app.
+// body renders the letter's ordered paragraphs as plain Paragraph runs (no
+// need for the full markdown->docx lexer/renderer — this content never has
+// headings, tables or lists). Page geometry/font/spacing follow the shared
+// "fully formatted" document standard (docx-standard-format.ts), not
+// docx-template.ts's own MARGIN/SZ.body/FONT — those stay symmetric-margin/
+// 10.5pt Calibri for Business Cases, Editorial Briefs, and Meeting Prep,
+// which this module deliberately doesn't touch.
 export interface InterviewLetterDocMeta {
   company: string
   project_country: string
@@ -21,16 +24,24 @@ export interface InterviewLetterDocMeta {
   created_at: string
 }
 
-function coverBlock(meta: InterviewLetterDocMeta): Paragraph[] {
+// The master letter is never personalized (recipient details only exist on a
+// POST .../personalize output, which isn't exported to docx) — so the header
+// uses the same literal bracket-placeholder convention as the letter's own
+// fixed salutation slot ("Dear [Recipient],").
+function letterHeader(meta: InterviewLetterDocMeta): Paragraph[] {
   const dateStr = formatMonthYear(meta.created_at)
   return [
-    new Paragraph({
-      spacing: { after: 40 },
-      children: [new TextRun({ text: meta.company, bold: true, size: SZ.coverSub, color: NAVY, font: FONT })],
+    ...buildStandardHeader({
+      title: 'Interview Request',
+      name: '[Recipient Name]',
+      designation: '[Title]',
+      companyOrMinistry: '[Organisation]',
+      mediaName: meta.media_partner,
     }),
     new Paragraph({
-      spacing: { after: 300 },
-      children: [new TextRun({ text: `${meta.media_partner} · ${meta.project_country} · ${dateStr}`, size: SZ.coverMeta, color: '595959', font: FONT })],
+      alignment: AlignmentType.RIGHT,
+      spacing: { after: 300, line: STANDARD_LINE_SPACING },
+      children: [new TextRun({ text: dateStr, size: STANDARD_BODY_SIZE, color: '595959', font: STANDARD_FONT })],
     }),
   ]
 }
@@ -43,9 +54,9 @@ function letterBody(letterText: string): Paragraph[] {
     .map(
       (para) =>
         new Paragraph({
-          spacing: { after: 220 },
+          spacing: { after: 220, line: STANDARD_LINE_SPACING },
           children: para.split('\n').flatMap((line, i, arr) => {
-            const run = new TextRun({ text: line, size: SZ.body, color: INK, font: FONT })
+            const run = new TextRun({ text: line, size: STANDARD_BODY_SIZE, color: INK, font: STANDARD_FONT })
             return i < arr.length - 1 ? [run, new TextRun({ text: '', break: 1 })] : [run]
           }),
         }),
@@ -59,25 +70,23 @@ export function buildInterviewLetterDocx(letterText: string, meta: InterviewLett
         new Paragraph({
           alignment: AlignmentType.CENTER,
           children: [
-            new TextRun({ text: `${meta.company} — Interview Request Letter · Page `, size: SZ.footer, color: GREY_FOOT, font: FONT }),
-            new TextRun({ children: [PageNumber.CURRENT], size: SZ.footer, color: GREY_FOOT, font: FONT }),
+            new TextRun({ text: `${meta.company} — Interview Request Letter · Page `, size: SZ.footer, color: GREY_FOOT, font: STANDARD_FONT }),
+            new TextRun({ children: [PageNumber.CURRENT], size: SZ.footer, color: GREY_FOOT, font: STANDARD_FONT }),
           ],
         }),
       ],
     })
 
-  const margin = { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN }
-
   const sections: ISectionOptions[] = [
     {
-      properties: { page: { size: { width: LETTER_W, height: LETTER_H }, margin } },
+      properties: { page: { size: { width: LETTER_W, height: LETTER_H }, margin: STANDARD_MARGIN_TWIPS } },
       footers: { default: footer() },
-      children: [...coverBlock(meta), ...letterBody(letterText)],
+      children: [...letterHeader(meta), ...letterBody(letterText)],
     },
   ]
 
   return new Document({
-    styles: { default: { document: { run: { font: FONT, size: SZ.body, color: INK } } } },
+    styles: { default: { document: { run: { font: STANDARD_FONT, size: STANDARD_BODY_SIZE, color: INK } } } },
     sections,
   })
 }

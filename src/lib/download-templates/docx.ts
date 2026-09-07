@@ -18,6 +18,7 @@ import {
 } from 'docx'
 import { markdownToParagraphs } from '@/lib/docx-render'
 import { LETTERHEAD_LOGO_PNG_BASE64 } from '@/lib/letterhead-logo'
+import { STANDARD_MARGIN_TWIPS, buildStandardHeader, type StandardDocumentHeaderMeta } from '@/lib/docx-standard-format'
 import { BRAND_INFO, type DownloadTemplate } from './registry'
 import { templateBands } from './bands'
 
@@ -34,12 +35,14 @@ import { templateBands } from './bands'
 // they do in the existing letterhead downloads.
 // ────────────────────────────────────────────────────────────────────────────
 
-// A4 geometry (twips; 1in = 1440). The sample PDF is A4 (595×841 pt).
+// A4 geometry (twips; 1in = 1440). The sample PDF is A4 (595×841 pt). Margins
+// follow the shared "fully formatted" document standard (1.9cm sides, 2.5cm
+// top/bottom) — see docx-standard-format.ts.
 const A4_W = 11906
 const A4_H = 16838
-const MARGIN_X = 1100
-const MARGIN_TOP = 2000
-const MARGIN_BOTTOM = 2000
+const MARGIN_X = STANDARD_MARGIN_TWIPS.left
+const MARGIN_TOP = STANDARD_MARGIN_TWIPS.top
+const MARGIN_BOTTOM = STANDARD_MARGIN_TWIPS.bottom
 const HEADER_DIST = 560
 const FOOTER_DIST = 560
 const CONTENT_W_TWIPS = A4_W - MARGIN_X * 2
@@ -52,17 +55,14 @@ const BLUE = '2E74B5'
 const GREY = '595959'
 const INK = '1A1A1A'
 
-// Body face. The client's own templates are set in Times New Roman, and the PDF
-// builder renders in Tinos (metric-compatible with it), so naming it here keeps
-// the Word download looking like both. Word resolves this by name from the
-// reader's installed fonts — nothing is embedded, and every Word install has it.
-// Without this the document inherited Word's own default (Aptos/Calibri), which
-// matched neither the sample nor the PDF of the same template.
-const FONT = 'Times New Roman'
+// Body face — Calibri 11pt, per the shared "fully formatted" document standard
+// (docx-standard-format.ts). Previously Times New Roman/10.5pt to match the
+// client's own sample artwork; the branded header/footer bands are images and
+// are unaffected by this, only the body text face changed.
+const FONT = 'Calibri'
 
-// Half-points, mirroring the PDF type scale in pdf.tsx so the two formats of one
-// template agree: body 10.5pt, doc heading 18pt, h2 14pt, h3 12pt.
-const SZ = { body: 21, h1: 36, h2: 28, h3: 24 }
+// Half-points. Body is 11pt per the standard; heading sizes unchanged.
+const SZ = { body: 22, h1: 36, h2: 28, h3: 24 }
 
 // ── Image-band header / footer ──────────────────────────────────────────────
 
@@ -221,9 +221,23 @@ export interface TemplatedDocxOptions {
   meta?: [string, string | null | undefined][]
   /** Highlight [[…]] client-confirmation spans yellow (refined transcripts). */
   highlightConfirm?: boolean
+  /**
+   * When set, renders the standardised centred-bold three-line header
+   * (title / name, designation, company / "For publication in media") INSTEAD
+   * of `heading` + `meta` — used for Topic Outline and Transcript downloads.
+   * Background Research downloads omit this and keep the plain heading+meta
+   * format unchanged.
+   */
+  header?: StandardDocumentHeaderMeta
+  /**
+   * Extra space (twips) after each body paragraph, beyond the default —
+   * used by Topic Outline downloads for the "one line of space between
+   * questions" rule.
+   */
+  paragraphSpacingAfter?: number
 }
 
-export function buildTemplatedDocx({ markdown, heading, template, meta, highlightConfirm }: TemplatedDocxOptions): Document {
+export function buildTemplatedDocx({ markdown, heading, template, meta, highlightConfirm, header, paragraphSpacingAfter }: TemplatedDocxOptions): Document {
   const metaParas = (meta ?? [])
     .filter(([, v]) => v)
     .map(
@@ -236,6 +250,14 @@ export function buildTemplatedDocx({ markdown, heading, template, meta, highligh
           ],
         }),
     )
+
+  const headBlock = header
+    ? buildStandardHeader(header)
+    : [
+        new Paragraph({ text: heading, heading: HeadingLevel.HEADING_1 }),
+        ...metaParas,
+        ...(metaParas.length ? [new Paragraph({ text: '', spacing: { after: 120 } })] : []),
+      ]
 
   const section: ISectionOptions = {
     properties: {
@@ -254,10 +276,8 @@ export function buildTemplatedDocx({ markdown, heading, template, meta, highligh
     headers: { default: buildHeader(template) },
     footers: { default: buildFooter(template) },
     children: [
-      new Paragraph({ text: heading, heading: HeadingLevel.HEADING_1 }),
-      ...metaParas,
-      ...(metaParas.length ? [new Paragraph({ text: '', spacing: { after: 120 } })] : []),
-      ...markdownToParagraphs(markdown, { highlightConfirm }),
+      ...headBlock,
+      ...markdownToParagraphs(markdown, { highlightConfirm, paragraphSpacingAfter }),
     ],
   }
 

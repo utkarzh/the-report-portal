@@ -11,6 +11,21 @@ const CLAUDE_MODEL = 'claude-sonnet-4-6'
 // persist runs (300s = Vercel Pro max; Hobby still caps at 60s).
 export const maxDuration = 300
 
+// Fixed, non-admin-editable output contract for the Topic Outline (this is
+// what gets exported as "Interview Outline" — see docx-standard-format.ts and
+// the download route). Appended AFTER the admin's general/category prompt so
+// it takes precedence, mirroring the Document module's OUTPUT_CONTRACT
+// pattern (placed last on purpose to override the admin prompt).
+const TOPIC_OUTLINE_FORMAT_CONTRACT = `--- OUTPUT FORMATTING RULES (MANDATORY — apply exactly) ---
+This will be exported as a one-page, fully formatted "Interview Outline" (Calibri 11pt, 1.15 line spacing, 1.9cm side / 2.5cm top-bottom margins). Follow these rules precisely, with no exceptions:
+
+- LENGTH: keep the entire set of questions to roughly 400-500 words total (theme labels plus questions combined) so the whole thing fits on ONE page. Be selective — fewer, sharper questions beat an exhaustive list.
+- STRUCTURE: group questions under short theme labels, each as its own markdown heading ("### Theme Label"). Leave exactly one blank line between consecutive questions — each question is its own paragraph, never bundled with another.
+- BOLDING: within each question, bold (**word**) exactly ONE word that signals that question's theme. Do not bold anything else — no full phrases, no extra words, nothing outside the heading and that one word per question.
+- ITALICS: italicise (*text*) publication names, foreign-language phrases, and titles of artworks (books, films, paintings, and similar) wherever they appear. Do not italicise anything else.
+- CASE: standard sentence case throughout. Capitalise only proper nouns, publication/book titles, days, months, holidays, and acronyms/initialisms — never title-case a whole question or heading.
+- Output ONLY the theme headings and questions in this format — no numbering, no preamble, no closing commentary.`
+
 export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -106,9 +121,10 @@ Media Partner Country: ${session.media_partner_country}`
   // chains research → questions in one sitting (same prefix as /api/generate).
   const CACHE_1H = { type: 'ephemeral' as const, ttl: '1h' as const }
 
-  const systemBlocks = systemPrompt
-    ? [{ type: 'text' as const, text: systemPrompt, cache_control: CACHE_1H }]
-    : undefined
+  const systemBlocks = [
+    ...(systemPrompt ? [{ type: 'text' as const, text: systemPrompt, cache_control: CACHE_1H }] : []),
+    { type: 'text' as const, text: TOPIC_OUTLINE_FORMAT_CONTRACT },
+  ]
 
   const userContentBlocks = [
     {

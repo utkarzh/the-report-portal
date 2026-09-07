@@ -402,6 +402,12 @@ export interface Transcription {
   audio_mime: string | null
   audio_size_bytes: number | null
   duration_seconds: number | null
+  // Interviewee metadata, required at upload — feeds the standardised
+  // "Interview Transcript" document header at export time.
+  full_name: string
+  title_position: string
+  company_org: string
+  publication: string
   status: TranscriptionStatus
   raw_transcript: string | null
   refined_transcript: string | null
@@ -661,6 +667,12 @@ export interface InterviewLetterProject {
   media_partner: string
   media_partner_country: string
   hook_input: string
+  // Who this project's cover email is from — supplied per project (Screen 1)
+  // since the real sender varies by project/reporter, unlike the letter's
+  // fixed per-company template.
+  sender_name: string
+  sender_title: string
+  sender_contact: string
   // Bullet strings, each already carrying its own inline "[Source, date](url)"
   // markdown citation — same convention as the rest of the app (meeting-prep,
   // documents): sources live inline in the text, not as a separate structured

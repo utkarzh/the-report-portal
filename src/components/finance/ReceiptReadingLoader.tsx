@@ -34,19 +34,31 @@ function GeneratingEmblem() {
   )
 }
 
-export default function ReceiptReadingLoader() {
+interface Props {
+  // Set when reading more than one receipt in a batch, to show which one is
+  // in flight — the elapsed-time hints below still drive the per-file copy.
+  batch?: { index: number; total: number; fileName: string }
+}
+
+export default function ReceiptReadingLoader({ batch }: Props) {
   const [elapsedSecs, setElapsedSecs] = useState(0)
 
   useEffect(() => {
+    setElapsedSecs(0)
     const timer = setInterval(() => setElapsedSecs(s => s + 1), 1000)
     return () => clearInterval(timer)
-  }, [])
+  }, [batch?.index])
 
   const hint = HINTS[Math.min(Math.floor(elapsedSecs / 3), HINTS.length - 1)]
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-8 text-center">
       <GeneratingEmblem />
+      {batch && (
+        <p className="text-xs font-semibold uppercase tracking-widest text-[#a07530]">
+          Receipt {batch.index} of {batch.total} · {batch.fileName}
+        </p>
+      )}
       <p key={hint} className="fade-up text-sm font-medium text-gray-700">{hint}</p>
     </div>
   )

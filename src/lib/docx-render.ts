@@ -67,15 +67,21 @@ export function letterheadHeaderFooter() {
   }
 }
 
-// Splits a plain-text segment into bold-aware runs, optionally highlighted.
+// Splits a plain-text segment into bold/italic-aware runs, optionally
+// highlighted. Longest-match-first so "***x***" (bold+italic) is never
+// misparsed as separate "**" and "*" tokens.
 function styledRuns(text: string, highlight: boolean): TextRun[] {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((p) => p !== '')
+  const parts = text.split(/(\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*)/g).filter((p) => p !== '')
   if (parts.length === 0) return [new TextRun({ text: '', highlight: highlight ? 'yellow' : undefined })]
   return parts.map((p) => {
-    const bold = p.startsWith('**') && p.endsWith('**')
+    const boldItalic = p.startsWith('***') && p.endsWith('***')
+    const bold = !boldItalic && p.startsWith('**') && p.endsWith('**')
+    const italics = !boldItalic && !bold && p.startsWith('*') && p.endsWith('*')
+    const stripped = boldItalic ? p.slice(3, -3) : bold ? p.slice(2, -2) : italics ? p.slice(1, -1) : p
     return new TextRun({
-      text: bold ? p.slice(2, -2) : p,
-      bold: bold || undefined,
+      text: stripped,
+      bold: boldItalic || bold || undefined,
+      italics: boldItalic || italics || undefined,
       highlight: highlight ? 'yellow' : undefined,
     })
   })
@@ -97,11 +103,20 @@ function inlineRuns(text: string, highlightConfirm: boolean): TextRun[] {
   return runs.length > 0 ? runs : [new TextRun('')]
 }
 
+// Line spacing throughout is the standard 1.15 (see docx-standard-format.ts —
+// duplicated here as a literal rather than imported, since this renderer is
+// also used for content that predates that standard and shouldn't gain a new
+// cross-file dependency for one constant).
+const LINE_SPACING = 276
+
 export function markdownToParagraphs(
   text: string,
-  opts: { highlightConfirm?: boolean } = {},
+  opts: { highlightConfirm?: boolean; paragraphSpacingAfter?: number } = {},
 ): Paragraph[] {
   const highlight = Boolean(opts.highlightConfirm)
+  // Default 120 twips between paragraphs; callers needing a more generous,
+  // blank-line-like gap (e.g. between interview questions) can override it.
+  const spacingAfter = opts.paragraphSpacingAfter ?? 120
   const paras: Paragraph[] = []
   const blocks = text.replace(/\r\n/g, '\n').split(/\n{2,}/)
 
@@ -120,6 +135,7 @@ export function markdownToParagraphs(
               level === 1 ? HeadingLevel.HEADING_1
               : level === 2 ? HeadingLevel.HEADING_2
               : HeadingLevel.HEADING_3,
+            spacing: { line: LINE_SPACING },
           }),
         )
         continue
@@ -127,7 +143,7 @@ export function markdownToParagraphs(
 
       const li = /^[-*]\s+(.*)$/.exec(line)
       if (li) {
-        paras.push(new Paragraph({ children: inlineRuns(li[1], highlight), bullet: { level: 0 } }))
+        paras.push(new Paragraph({ children: inlineRuns(li[1], highlight), bullet: { level: 0 }, spacing: { after: spacingAfter, line: LINE_SPACING } }))
         continue
       }
 
@@ -136,13 +152,13 @@ export function markdownToParagraphs(
         paras.push(
           new Paragraph({
             children: [new TextRun({ text: `${sp[1]} `, bold: true }), ...inlineRuns(sp[2], highlight)],
-            spacing: { after: 160 },
+            spacing: { after: 160, line: LINE_SPACING },
           }),
         )
         continue
       }
 
-      paras.push(new Paragraph({ children: inlineRuns(line, highlight), spacing: { after: 120 } }))
+      paras.push(new Paragraph({ children: inlineRuns(line, highlight), spacing: { after: spacingAfter, line: LINE_SPACING } }))
     }
   }
 

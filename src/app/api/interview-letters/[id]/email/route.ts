@@ -13,12 +13,6 @@ interface Params {
   params: { id: string }
 }
 
-const EMAIL_SYSTEM = `You are turning an approved Interview Request Letter into a single, standard, reusable general email for The Report Company's editorial team — the fast-path output they will send as-is to 50-60 contacts, with no further editing needed.
-
-Keep the letter's core narrative, but reduce background detail to what an email reader needs. State plainly why the opportunity matters, and include the confirmed why-now hook. Write a complete email: subject line, greeting using a generic placeholder like "[Recipient]", body, sign-off. Concise — shorter than the letter.
-
-${NO_PREAMBLE_INSTRUCTION}`
-
 export async function POST(_request: NextRequest, { params }: Params) {
   const supabase = createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -57,13 +51,38 @@ export async function POST(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'The letter must be approved before generating the email.' }, { status: 409 })
   }
 
-  const userContent = `--- APPROVED LETTER ---
+  const { data: promptRow } = await supabaseAdmin
+    .from('interview_letter_email_prompts')
+    .select('prompt_text')
+    .eq('company', project.company)
+    .maybeSingle()
+
+  if (!promptRow?.prompt_text?.trim()) {
+    return NextResponse.json(
+      { error: `No email prompt is configured for ${project.company} yet. Ask an admin to set one up before generating the email.` },
+      { status: 422 },
+    )
+  }
+
+  const system = `${promptRow.prompt_text}\n\n${NO_PREAMBLE_INSTRUCTION}`
+
+  const userContent = `--- PROJECT CONTEXT ---
+Company: ${project.company}
+Project country: ${project.project_country}
+Media partner: ${project.media_partner}${project.media_partner_country ? ` (${project.media_partner_country})` : ''}
+
+--- SENDER (who this email is from) ---
+Name: ${project.sender_name || '(not supplied)'}
+Title: ${project.sender_title || '(not supplied)'}
+Contact: ${project.sender_contact || '(not supplied)'}
+
+--- APPROVED LETTER (attached separately — reference it, do not repeat it verbatim) ---
 ${project.master_letter}
 
 --- CONFIRMED WHY-NOW HOOK ---
 ${project.confirmed_hook || ''}
 
-Write the general email now.`
+Write the cover email now.`
 
   const anthropic = getAnthropicClient()
 
@@ -71,7 +90,7 @@ Write the general email now.`
     const message = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 1500,
-      system: EMAIL_SYSTEM,
+      system,
       messages: [{ role: 'user', content: userContent }],
     })
 
@@ -85,7 +104,7 @@ Write the general email now.`
       .from('interview_letter_projects')
       .update({
         master_email: emailText,
-        email_prompt_snapshot: EMAIL_SYSTEM,
+        email_prompt_snapshot: system,
         stage: 'email_review',
         tokens_input: (project.tokens_input || 0) + promptTokens,
         tokens_output: (project.tokens_output || 0) + usage.outputTokens,

@@ -34,8 +34,9 @@ interface EntryInput {
 
 const VALID_CATEGORIES = new Set(Object.keys(FINANCE_EXPENSE_CATEGORY_LABELS))
 
-function guessImageMimeType(path: string): string {
+function guessFileMimeType(path: string): string {
   const ext = path.split('.').pop()?.toLowerCase()
+  if (ext === 'pdf') return 'application/pdf'
   if (ext === 'png') return 'image/png'
   if (ext === 'webp') return 'image/webp'
   if (ext === 'gif') return 'image/gif'
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   let verifications: EntryVerification[] | null = null
   const imagePath = receiptFilePath || null
   let resolvedImagePath = imagePath
-  let resolvedMimeType: string | null = imagePath ? guessImageMimeType(imagePath) : null
+  let resolvedMimeType: string | null = imagePath ? guessFileMimeType(imagePath) : null
   if (receiptId) {
     const { data: receiptRow } = await supabaseAdmin
       .from('finance_receipts')
@@ -110,10 +111,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       .maybeSingle()
     if (receiptRow?.file_path) {
       resolvedImagePath = receiptRow.file_path
-      resolvedMimeType = receiptRow.file_type || guessImageMimeType(receiptRow.file_path)
+      resolvedMimeType = receiptRow.file_type || guessFileMimeType(receiptRow.file_path)
     }
   }
-  if (resolvedImagePath && resolvedMimeType?.startsWith('image/')) {
+  if (resolvedImagePath && (resolvedMimeType?.startsWith('image/') || resolvedMimeType === 'application/pdf')) {
     try {
       const { data: blob, error: dlError } = await supabaseAdmin.storage.from('finance-receipts').download(resolvedImagePath)
       if (!dlError && blob) {

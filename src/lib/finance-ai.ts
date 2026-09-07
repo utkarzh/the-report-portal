@@ -47,6 +47,15 @@ const CATEGORIES: FinanceExpenseCategory[] = [
 ]
 const ALL_SUB_LINES = Array.from(new Set(Object.values(SUB_LINES_BY_CATEGORY).flat()))
 
+// PDFs go in as a 'document' block (Messages API, no beta header needed);
+// everything else (photos, screenshots) is an 'image' block as before.
+function receiptContentBlock(base64: string, mediaType: string) {
+  if (mediaType === 'application/pdf') {
+    return { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64 } }
+  }
+  return { type: 'image' as const, source: { type: 'base64' as const, media_type: mediaType as 'image/jpeg', data: base64 } }
+}
+
 const EXTRACTION_SCHEMA = {
   type: 'object',
   properties: {
@@ -115,7 +124,7 @@ Every entry needs aiComment: one short, genuinely useful sentence a busy finance
       {
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType as 'image/jpeg', data: imageBase64 } },
+          receiptContentBlock(imageBase64, mediaType),
           { type: 'text', text: 'Extract this receipt per your instructions.' },
         ],
       },
@@ -230,7 +239,7 @@ For each submitted entry (given in order below), compare it against the receipt.
       {
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType as 'image/jpeg', data: imageBase64 } },
+          receiptContentBlock(imageBase64, mediaType),
           {
             type: 'text',
             text: `Here is what was finally submitted, as a JSON array in order:\n${JSON.stringify(

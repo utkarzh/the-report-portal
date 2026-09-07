@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, FileAudio, X, Loader2, ChevronUp, ChevronDown, FileText } from 'lucide-react'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import Input from '@/components/ui/Input'
 import { TRANSCRIPTION_AUDIO_BUCKET, TRANSCRIPTION_PROVIDER } from '@/lib/transcriptions'
 import { OUTLINE_ACCEPT, OUTLINE_EXT_RE, extractOutlineText } from '@/lib/outline-extract'
 
@@ -34,6 +35,16 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
   const [uploadInfo, setUploadInfo] = useState({ done: 0, total: 0 })
   const [error, setError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  // Interviewee metadata — required so the exported transcript can carry the
+  // standardised "Interview Transcript / Name, Designation, Company / For
+  // publication in Media" header (see docx-standard-format.ts).
+  const [interviewee, setInterviewee] = useState({
+    fullName: '',
+    titlePosition: '',
+    companyOrg: '',
+    publication: '',
+  })
+  const intervieweeComplete = Object.values(interviewee).every((v) => v.trim())
 
   const busy = phase !== 'idle' && phase !== 'error'
 
@@ -109,6 +120,10 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
 
   async function handleStart() {
     if (files.length === 0 || busy) return
+    if (!intervieweeComplete) {
+      setError('Interviewee name, title/position, company/ministry, and publication are all required.')
+      return
+    }
     setError(null)
     setProgress(0)
     setUploadInfo({ done: 0, total: 0 })
@@ -212,6 +227,10 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
           durationSeconds,
           topicOutline: outlineText || undefined,
           topicOutlineFilename: outlineFile?.name || undefined,
+          fullName: interviewee.fullName,
+          titlePosition: interviewee.titlePosition,
+          companyOrg: interviewee.companyOrg,
+          publication: interviewee.publication,
         }),
       })
 
@@ -237,6 +256,33 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
 
   return (
     <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+      <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Input
+          label="Interviewee Full Name *"
+          value={interviewee.fullName}
+          onChange={(e) => setInterviewee((p) => ({ ...p, fullName: e.target.value }))}
+          disabled={busy}
+        />
+        <Input
+          label="Title / Position *"
+          value={interviewee.titlePosition}
+          onChange={(e) => setInterviewee((p) => ({ ...p, titlePosition: e.target.value }))}
+          disabled={busy}
+        />
+        <Input
+          label="Company / Organization / Ministry *"
+          value={interviewee.companyOrg}
+          onChange={(e) => setInterviewee((p) => ({ ...p, companyOrg: e.target.value }))}
+          disabled={busy}
+        />
+        <Input
+          label="Publication *"
+          value={interviewee.publication}
+          onChange={(e) => setInterviewee((p) => ({ ...p, publication: e.target.value }))}
+          disabled={busy}
+        />
+      </div>
+
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
@@ -415,7 +461,7 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
         <button
           type="button"
           onClick={handleStart}
-          disabled={files.length === 0 || busy}
+          disabled={files.length === 0 || busy || !intervieweeComplete}
           className="inline-flex items-center justify-center gap-2 bg-black px-5 py-2.5 text-sm font-medium uppercase tracking-wide text-white transition-colors hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy && <Loader2 size={15} className="animate-spin" />}

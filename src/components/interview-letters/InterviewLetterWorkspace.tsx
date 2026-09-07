@@ -63,9 +63,7 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
   )
 }
 
-// The email is a condensed version of the letter plus a subject line (see
-// EMAIL_SYSTEM in the email route) — pulling the subject into its own row
-// makes that one real difference visible instead of burying it in the body.
+// Pulling the subject into its own row keeps it from being buried in the body.
 function EmailPreview({ text }: { text: string }) {
   const { subject, body } = splitEmailSubject(text)
   return (
@@ -419,6 +417,12 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                 {project.master_letter}
               </div>
             </div>
+            {project.sender_name && (
+              <p className="text-xs text-gray-400">
+                The cover email will be signed by {project.sender_name}
+                {project.sender_title ? `, ${project.sender_title}` : ''}.
+              </p>
+            )}
             <Button type="button" onClick={handleGenerateEmail} loading={busy} arrow>
               <Sparkles size={14} className="mr-1.5 inline" /> Generate General Email
             </Button>
