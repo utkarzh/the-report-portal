@@ -12,10 +12,10 @@
 -- the four admin-managed TRC knowledge documents in a fixed authority order, and
 -- generates a structured Report Card + an interactive coaching conversation.
 --
--- Mirrors the meeting-prep module's shape (014): a per-user access flag, four
--- versioned knowledge singletons (like meeting_prep_prompt), one row per
+-- Mirrors the shape of the meeting-prep module (014): a per-user access flag,
+-- four versioned knowledge singletons (like meeting_prep_prompt), one row per
 -- negotiation carrying the whole workflow state + structured analysis, and a
--- dedicated coaching-message table (the app's old generic refinement-chat table
+-- dedicated coaching-message table (the previous generic refinement-chat table
 -- was removed, so this module gets its own — US-043).
 --
 -- Depends on 001: update_updated_at(), user_role(), profiles, uuid_generate_v4().
@@ -117,7 +117,7 @@ SELECT k.doc_key, k.content FROM (VALUES
     ('project_prompt', 'PLACEHOLDER — Sales Coach Project Prompt. This is the main system instruction and the highest authority document. Replace with the TRC-delivered content. It should instruct the coach to use submission context to identify participants and interpret the recording, treat physical/off-audio events (including a signed agreement) as factual metadata unless a material inconsistency requires clarification, and preserve the declared-outcome-vs-AI-assessed-position distinction rather than treating the declared outcome as conclusive.'),
     ('manual', 'PLACEHOLDER — Manual: TRC Overcoming Objections. Replace with the TRC-delivered content (includes the suggested planteo build-up formula referenced when Sales Offer Build-up / Offer Articulation score weak).'),
     ('method', 'PLACEHOLDER — TRC Sales Coaching Method. Replace with the TRC-delivered content.'),
-    ('examples', 'PLACEHOLDER — TRC Successful Negotiation Examples. Used ONLY for pattern recognition; its specific facts, dialogue or outcomes are never imported into the analysis of a different negotiation. Replace with the TRC-delivered content.')
+    ('examples', 'PLACEHOLDER — TRC Successful Negotiation Examples. Used ONLY for pattern recognition. Its specific facts, dialogue or outcomes are never imported into the analysis of a different negotiation. Replace with the TRC-delivered content.')
 ) AS k(doc_key, content)
 WHERE NOT EXISTS (SELECT 1 FROM public.sales_coach_knowledge s WHERE s.doc_key = k.doc_key);
 
@@ -167,8 +167,8 @@ CREATE TABLE IF NOT EXISTS public.sales_coach_negotiations (
     uploaded_transcript    TEXT,
     system_transcript      TEXT,
 
-    -- Step 3: declared outcome (US-036) — stored separately from the AI's
-    -- assessed position (US-040), never collapsed into one column.
+    -- Step 3: declared outcome (US-036) — stored separately from the
+    -- AI-assessed position (US-040), never collapsed into one column.
     declared_outcome       TEXT
         CHECK (declared_outcome IN ('signed', 'retorno', 'lost', 'uncertain')),
     outcome_details        JSONB       NOT NULL DEFAULT '{}'::jsonb,
