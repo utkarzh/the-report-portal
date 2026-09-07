@@ -3,12 +3,12 @@
 -- ============================================================
 -- Run this on an EXISTING database created from an earlier 001. Idempotent /
 -- safe to re-run (IF NOT EXISTS / WHERE NOT EXISTS / DROP POLICY IF EXISTS /
--- CREATE OR REPLACE throughout; never drops or alters existing data). Merged
+-- CREATE OR REPLACE throughout, and never drops or alters existing data). Merged
 -- into 001_schema.sql for fresh installs.
 --
 -- New module (see docs — TRC Sales Negotiation Coach user stories US-033→048):
 -- a Sales Executive submits a negotiation (context + audio/transcript + declared
--- outcome); the system transcribes (reusing the AssemblyAI pipeline), assembles
+-- outcome). The system transcribes (reusing the AssemblyAI pipeline), assembles
 -- the four admin-managed TRC knowledge documents in a fixed authority order, and
 -- generates a structured Report Card + an interactive coaching conversation.
 --
@@ -139,7 +139,7 @@ CREATE INDEX IF NOT EXISTS idx_sales_coach_knowledge_versions_key_created
     ON public.sales_coach_knowledge_versions(doc_key, created_at DESC);
 
 -- ------------------------------------------------------------
--- 3. NEGOTIATIONS (US-034→045) — one row per negotiation; the workflow record
+-- 3. NEGOTIATIONS (US-034→045) — one row per negotiation, the workflow record
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.sales_coach_negotiations (
     id                     UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS public.sales_coach_negotiations (
     other_comments         TEXT,
     original_filename      TEXT,
 
-    -- Step 2: upload (US-035). Original audio is retained; the uploaded
+    -- Step 2: upload (US-035). Original audio is retained, and the uploaded
     -- transcript is kept DISTINCT from the system-generated one (US-045).
     audio_path             TEXT,
     audio_mime             TEXT,
@@ -240,7 +240,7 @@ ALTER TABLE public.sales_coach_knowledge_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales_coach_negotiations       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales_coach_messages           ENABLE ROW LEVEL SECURITY;
 
--- Knowledge: any authenticated user may read (needed at analysis time); only
+-- Knowledge: any authenticated user may read (needed at analysis time). Only
 -- admins write. API-route writes go through the service role.
 DROP POLICY IF EXISTS "Authenticated users can read sales coach knowledge" ON public.sales_coach_knowledge;
 CREATE POLICY "Authenticated users can read sales coach knowledge"
@@ -253,7 +253,7 @@ DROP POLICY IF EXISTS "Admins can manage sales coach knowledge versions" ON publ
 CREATE POLICY "Admins can manage sales coach knowledge versions"
     ON public.sales_coach_knowledge_versions FOR ALL USING (public.user_role() = 'admin');
 
--- Negotiations: a Sales Executive sees only their own; admins see all (US-044/045).
+-- Negotiations: a Sales Executive sees only their own. Admins see all (US-044/045).
 DROP POLICY IF EXISTS "Users read own negotiations" ON public.sales_coach_negotiations;
 CREATE POLICY "Users read own negotiations"
     ON public.sales_coach_negotiations FOR SELECT USING (user_id = auth.uid());
@@ -290,7 +290,7 @@ VALUES ('sales-coach-audio', 'sales-coach-audio', FALSE)
 ON CONFLICT (id) DO NOTHING;
 
 -- Object paths are "<user_id>/<negotiation_id>/<file>". Users manage only their
--- own folder; admins may read all. The service role bypasses these for the
+-- own folder. Admins may read all. The service role bypasses these for the
 -- server-side transcription download.
 DROP POLICY IF EXISTS "Users manage own sales coach audio" ON storage.objects;
 CREATE POLICY "Users manage own sales coach audio"
