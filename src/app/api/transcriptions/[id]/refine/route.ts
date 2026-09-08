@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const { data: row } = await supabaseAdmin
     .from('transcriptions')
-    .select('id, user_id, raw_transcript, translated_transcript, topic_outline, tokens_input, tokens_output, tokens_total, cost_usd')
+    .select('id, user_id, raw_transcript, translated_transcript, topic_outline, full_name, title_position, company_org, publication, tokens_input, tokens_output, tokens_total, cost_usd')
     .eq('id', params.id)
     .single()
 
@@ -97,16 +97,40 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     `Use the brackets sparingly and never for anything that isn't a real confirmation item. ` +
     `Never use single brackets or any other marker for this.`
 
+  // The refining prompt refers to "form fields" for the interviewee header
+  // (name / title / organisation / publication). Those values only exist on
+  // the transcriptions row — if they aren't sent, the model has nothing to
+  // fill the header with and falls back to whichever publication the prompt
+  // happens to mention most (it kept writing "For publication in Newsweek").
+  const FORM_METADATA_INSTRUCTION =
+    `FORM METADATA (AUTHORITATIVE):\n` +
+    `The user's form values for the interviewee are supplied in the user message under "--- FORM METADATA ---". ` +
+    `Wherever the refining instructions refer to form fields (Interviewee Full Name, Title / Position, ` +
+    `Company / Organization / Ministry, Publication), use those supplied values verbatim. ` +
+    `Never substitute a publication or person mentioned anywhere in these instructions, in examples, or in the transcript.`
+
   const systemBlocks = [
     ...(refiningPrompt ? [{ type: 'text' as const, text: refiningPrompt, cache_control: CACHE_1H }] : []),
+    { type: 'text' as const, text: FORM_METADATA_INSTRUCTION },
     { type: 'text' as const, text: CONFIRM_MARKUP_INSTRUCTION },
   ]
 
-  // Order matters: supporting context (outline) first, then the editor's
-  // one-off instruction, then the transcript to clean. The framing text makes
-  // clear the refining prompt (system) is the primary instruction and these are
-  // secondary guidance — never content to insert into the transcript.
+  // Order matters: form metadata, then supporting context (outline), then the
+  // editor's one-off instruction, then the transcript to clean. The framing
+  // text makes clear the refining prompt (system) is the primary instruction
+  // and these are secondary guidance — never content to insert into the
+  // transcript.
   const userContentBlocks: { type: 'text'; text: string }[] = []
+
+  userContentBlocks.push({
+    type: 'text' as const,
+    text:
+      `--- FORM METADATA ---\n` +
+      `Interviewee Full Name: ${row.full_name || '(not provided)'}\n` +
+      `Title / Position: ${row.title_position || '(not provided)'}\n` +
+      `Company / Organization / Ministry: ${row.company_org || '(not provided)'}\n` +
+      `Publication: ${row.publication || '(not provided)'}`,
+  })
 
   if (row.topic_outline) {
     userContentBlocks.push({
