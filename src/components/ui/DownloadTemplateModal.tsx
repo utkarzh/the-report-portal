@@ -20,20 +20,27 @@ interface Props {
   filenameBase?: string
 }
 
-const LS_KEY = 'download-template'
+// Namespaced per document (baseUrl already includes the session/transcript
+// id) so picking a branded skin for one document — e.g. Newsweek for a single
+// research report — doesn't silently become the default for every other
+// document across every module. A single shared key previously meant one
+// Newsweek pick anywhere leaked into all future downloads everywhere.
+const LS_KEY_PREFIX = 'download-template:'
 
 export default function DownloadTemplateModal({ open, onClose, baseUrl, extraParams, filenameBase }: Props) {
   const [step, setStep] = useState<'template' | 'format'>('template')
   const [templateId, setTemplateId] = useState<string>(DEFAULT_TEMPLATE_ID)
+  const lsKey = `${LS_KEY_PREFIX}${baseUrl}`
 
   useEffect(() => {
     if (!open) return
     setStep('template')
     if (typeof window !== 'undefined') {
-      const saved = window.localStorage.getItem(LS_KEY)
-      if (saved && TEMPLATES.some((t) => t.id === saved)) setTemplateId(saved)
+      const saved = window.localStorage.getItem(lsKey)
+      setTemplateId(saved && TEMPLATES.some((t) => t.id === saved) ? saved : DEFAULT_TEMPLATE_ID)
     }
-  }, [open])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lsKey])
 
   useEffect(() => {
     if (open) document.body.style.overflow = 'hidden'
@@ -43,7 +50,7 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
 
   function pickTemplate(id: string) {
     setTemplateId(id)
-    if (typeof window !== 'undefined') window.localStorage.setItem(LS_KEY, id)
+    if (typeof window !== 'undefined') window.localStorage.setItem(lsKey, id)
     setStep('format')
   }
 
