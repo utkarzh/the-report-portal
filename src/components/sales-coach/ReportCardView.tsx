@@ -1,7 +1,7 @@
 'use client'
 
 import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Flag, Quote, MessageCircleQuestion } from 'lucide-react'
-import { formatScore, outcomeLabel, SALES_COACH_CRITERIA, positionHeadline } from '@/lib/sales-coach'
+import { formatScore, outcomeLabel, SALES_COACH_CRITERIA, positionHeadline, applicableCriteriaCount } from '@/lib/sales-coach'
 import type { SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict } from '@/types'
 
 // The Report Card as ONE document (US-039/040/041): identity header →
@@ -40,7 +40,7 @@ export interface ReportCardMeta {
   modelUsed?: string | null
 }
 
-export default function ReportCardView({ card, meta }: { card: SalesCoachReportCard; meta: ReportCardMeta }) {
+export default function ReportCardView({ card, meta, isAdmin = false }: { card: SalesCoachReportCard; meta: ReportCardMeta; isAdmin?: boolean }) {
   const scored = card.criteria.filter((c) => c.scored)
   const count = (v: SalesCoachVerdict) => scored.filter((c) => c.verdict === v).length
 
@@ -67,7 +67,12 @@ export default function ReportCardView({ card, meta }: { card: SalesCoachReportC
             <span className="text-xl text-gray-400">/ {card.execution_denominator}</span>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">Execution score · {card.execution_denominator} applicable points</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">
+              Execution score · {card.execution_denominator} applicable points
+              {card.execution_denominator === applicableCriteriaCount(card.declared_outcome)
+                ? ` · fixed for "${outcomeLabel(card.declared_outcome)}"`
+                : ' · one or more criteria need audio verification'}
+            </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${POSITION_TONE[card.assessed_position] || 'bg-stone-100 text-stone-700'}`}>
                 {positionHeadline(card.assessed_position)}
@@ -86,12 +91,18 @@ export default function ReportCardView({ card, meta }: { card: SalesCoachReportC
           </div>
         </div>
         <p className="mt-4 border-t border-[#e9e7e2] pt-4 text-[15px] font-medium leading-relaxed text-gray-900">{card.headline}</p>
-        {(card.management_review || card.discrepancy) && (
+        {((isAdmin && card.management_review) || card.discrepancy) && (
           <div className="mt-4 flex items-start gap-2.5 rounded-lg border border-[#c8973f]/30 bg-[#fbf7ed] px-4 py-3 text-sm">
             <Flag size={14} className="mt-0.5 flex-shrink-0 text-[#a07530]" />
             <div>
-              {card.management_review && <p className="font-medium text-[#a07530]">Management review recommended</p>}
-              {card.discrepancy && <p className={`text-gray-700 ${card.management_review ? 'mt-0.5 text-xs' : ''}`}>{card.discrepancy}</p>}
+              {isAdmin && card.management_review && (
+                <p className="font-medium text-[#a07530]">
+                  {card.review
+                    ? `Reviewed by ${card.review.reviewed_by_name} — confirmed outcome: ${outcomeLabel(card.review.confirmed_outcome)}`
+                    : 'Management review recommended'}
+                </p>
+              )}
+              {card.discrepancy && <p className={`text-gray-700 ${isAdmin && card.management_review ? 'mt-0.5 text-xs' : ''}`}>{card.discrepancy}</p>}
             </div>
           </div>
         )}

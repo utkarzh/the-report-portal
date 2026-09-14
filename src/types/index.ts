@@ -789,6 +789,17 @@ export interface SalesCoachAnalysisSection {
   body: string
 }
 
+// An admin's resolution of a management-review flag (US-045). Stored INSIDE
+// the card JSON (no schema change) and mirrored to the row's reserved
+// actual_outcome / actual_outcome_source / actual_outcome_at columns.
+export interface SalesCoachReview {
+  reviewed_by: string | null
+  reviewed_by_name: string
+  reviewed_at: string
+  confirmed_outcome: SalesCoachOutcome
+  note: string
+}
+
 // The structured Report Card the model returns (validated + score recomputed
 // in code, US-039). The markdown rendering in `report_card_markdown` is
 // derived from this object by renderReportCardMarkdown(), never model-written.
@@ -807,6 +818,8 @@ export interface SalesCoachReportCard {
   discrepancy?: string | null
   management_review: boolean
   coaching_question: string
+  // Set only by an admin via POST /api/sales-coach/[id]/review — never by the model.
+  review?: SalesCoachReview | null
 }
 
 export interface SalesCoachNegotiation {

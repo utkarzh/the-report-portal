@@ -92,6 +92,38 @@ export const SALES_COACH_CRITERIA: { key: string; label: string; heading: string
 const CRITERION_KEYS = SALES_COACH_CRITERIA.map((c) => c.key)
 const VERDICTS: SalesCoachVerdict[] = ['pass', 'warn', 'fail', 'na', 'uv']
 
+// Which criteria are N/A is a FIXED rule keyed to the declared outcome, not a
+// per-run model judgement — otherwise the same negotiation scored "5/7" one
+// run and "5/8" the next. The denominator is therefore static per outcome
+// path: signed 7, retorno 8, lost 6, uncertain 9 (only a rare UV lowers it).
+export const NA_BY_DECLARED_OUTCOME: Record<SalesCoachOutcome, string[]> = {
+  signed: ['space_price_retorno', 'scheduled_meeting'],
+  retorno: ['space_price_agreement'],
+  lost: ['space_price_retorno', 'space_price_agreement', 'scheduled_meeting'],
+  uncertain: [],
+}
+
+export function fixedNaCriteria(declared: SalesCoachOutcome | null | undefined): string[] {
+  return declared ? NA_BY_DECLARED_OUTCOME[declared] : []
+}
+
+export function applicableCriteriaCount(declared: SalesCoachOutcome | null | undefined): number {
+  return SALES_COACH_CRITERIA.length - fixedNaCriteria(declared).length
+}
+
+// Per-run instruction appended to the submission so the model applies the
+// table on the first pass (the validator enforces it regardless).
+export function applicabilityInstruction(declared: SalesCoachOutcome | null | undefined): string {
+  const na = fixedNaCriteria(declared)
+  const label = outcomeLabel(declared)
+  const naList = na.length
+    ? na.map((k) => { const i = CRITERION_KEYS.indexOf(k); return `${i + 1}. ${SALES_COACH_CRITERIA[i].label}` }).join('; ')
+    : 'none'
+  return `--- APPLICABLE CRITERIA (fixed rule for a negotiation declared "${label}") ---
+N/A, by rule: ${naList}. Give these the verdict "na" with a one-line note.
+Every other criterion MUST receive pass, warn or fail with evidence — "na" is not allowed for them. Use "uv" only if a specific passage needed for that criterion is missing or unintelligible in the transcript.`
+}
+
 // Points per verdict. N/A and UV are excluded from the denominator entirely
 // (US-041); a WARN is an execution gap that still earns half credit — this is
 // what makes the sample card's "6/7 applicable points" add up (5 ✅ + 2 ⚠️).
@@ -178,6 +210,18 @@ export function formatOutcomeDetails(
     rows.push({ label: 'Reason given by the client', value: s('lostReason') || 'Not recorded' })
   }
   return rows
+}
+
+// Where a negotiation stands in the management-review workflow (US-045):
+// 'none' (never flagged), 'open' (flagged, nobody has looked), 'reviewed'
+// (an admin recorded the confirmed outcome). `actual_outcome_at` is the
+// "reviewed" marker — the reserved later-outcome column, no migration needed.
+export type SalesCoachReviewStatus = 'none' | 'open' | 'reviewed'
+export function reviewStatus(
+  n: Pick<SalesCoachNegotiation, 'management_review' | 'actual_outcome_at'>,
+): SalesCoachReviewStatus {
+  if (!n.management_review) return 'none'
+  return n.actual_outcome_at ? 'reviewed' : 'open'
 }
 
 // The transcript the analysis and coaching run on. A system transcript
@@ -271,6 +315,7 @@ export function validateReportCard(
     if (byKey.has(key)) problems.push(`Duplicate criterion: ${key}`)
     byKey.set(key, c)
   }
+  const fixedNa = new Set(fixedNaCriteria(ctx.declaredOutcome))
   for (const { key, label } of SALES_COACH_CRITERIA) {
     const c = byKey.get(key)
     if (!c) {
@@ -280,9 +325,15 @@ export function validateReportCard(
     const verdict = str(c.verdict)
     if (!VERDICTS.includes(verdict as SalesCoachVerdict)) {
       problems.push(`Criterion ${label}: verdict must be one of ${VERDICTS.join('/')}`)
+      continue
     }
-    if (!str(c.reason) && !str(c.note)) {
-      problems.push(`Criterion ${label}: needs a reason (or a note for N/A)`)
+    // Applicability is a fixed rule (see NA_BY_DECLARED_OUTCOME): a model "na"
+    // outside the rule is a missing judgement, not a valid verdict.
+    if (verdict === 'na' && !fixedNa.has(key) && ctx.declaredOutcome) {
+      problems.push(`Criterion ${label} cannot be N/A for a negotiation declared "${outcomeLabel(ctx.declaredOutcome)}" — give pass, warn or fail with evidence`)
+    }
+    if (!str(c.reason) && !str(c.note) && !fixedNa.has(key)) {
+      problems.push(`Criterion ${label}: needs a reason`)
     }
   }
 
@@ -290,14 +341,15 @@ export function validateReportCard(
 
   const criteria: SalesCoachCriterion[] = SALES_COACH_CRITERIA.map(({ key, label }) => {
     const c = byKey.get(key)!
-    const verdict = str(c.verdict) as SalesCoachVerdict
+    const forcedNa = fixedNa.has(key)
+    const verdict = forcedNa ? 'na' : (str(c.verdict) as SalesCoachVerdict)
     return {
       key,
       label,
       verdict,
-      note: str(c.note) || undefined,
-      evidence: cleanEvidence(c.evidence),
-      reason: str(c.reason) || undefined,
+      note: str(c.note) || (forcedNa ? `not applicable when the outcome is ${outcomeLabel(ctx.declaredOutcome)}` : undefined),
+      evidence: forcedNa ? [] : cleanEvidence(c.evidence),
+      reason: forcedNa ? undefined : (str(c.reason) || undefined),
       scored: isScoredVerdict(verdict),
     }
   })
@@ -383,7 +435,13 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
   lines.push(`**Execution Score:** ${formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} applicable points`)
   lines.push(`**Commercial Outcome:** ${card.assessed_position}`)
   if (card.discrepancy) lines.push(`**Declared vs assessed:** ${card.discrepancy}`)
-  if (card.management_review) lines.push('**Management review:** Recommended')
+  if (card.management_review) {
+    lines.push(
+      card.review
+        ? `**Management review:** Reviewed by ${card.review.reviewed_by_name} on ${new Date(card.review.reviewed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} — confirmed outcome: ${outcomeLabel(card.review.confirmed_outcome)}${card.review.note ? `. ${card.review.note}` : ''}`
+        : '**Management review:** Recommended — not yet reviewed',
+    )
+  }
   lines.push(`**Report Summary:** ${card.report_summary}`)
   lines.push('')
 
@@ -542,12 +600,19 @@ CRITERIA — exactly these nine, in this order, each exactly once:
 3. outcome — the commercial result AS EVIDENCED IN THE TRANSCRIPT. Its verdict mirrors assessed_position: pass for Positive/Won; warn for "Apparent Positive/Won — confirmation required" or "Controlled retorno"; fail for "Open retorno", "Open, low-confidence retorno" or "Negative/Lost"; uv for "Uncertain — insufficient evidence". Put the specific space and price in note.
 4. ceo_buyin — did the CEO personally and explicitly confirm they want the company to participate, before implementation, delegation or retorno?
 5. ceo_preference — did the CEO state (not have assumed) a clear preference for a specific space/option?
-6. space_price_retorno — ONLY when the negotiation ended in a retorno: was a specific space and price carried into the follow-up? na when signed on the spot or lost outright.
-7. space_price_agreement — were the specific space, price and payment condition explicitly worked through and acknowledged by both sides? na when nothing was agreed.
+6. space_price_retorno — for a retorno: was a specific space and price carried into the follow-up with the CEO's knowledge?
+7. space_price_agreement — were the specific space, price and payment condition explicitly worked through and acknowledged by both sides?
 8. next_steps_stakeholders — were next steps, ownership and any further stakeholder (who approves, who signs, who handles production) clearly established under the CEO's direction? Implementation delegation after the decision is fine; commercial delegation before it is not.
-9. scheduled_meeting — when a retorno or further decision meeting was needed: was it fixed with a date and time? na when signed on the spot and only production coordination remains.
+9. scheduled_meeting — was the further decision meeting fixed with a date and time?
 
-VERDICTS: pass = fully met per TRC doctrine. warn = partly met / an execution gap that did not cost the deal. fail = not met. na = does not apply on this outcome path (say why in note). uv = the transcript genuinely cannot show it and the audio would need to be checked (use sparingly). Apply the judgement thresholds from the Project Prompt where it defines them; otherwise use the Manual and Method. Never award pass on assumption — the rep must make the buyer SAY it.
+APPLICABILITY IS A FIXED RULE, keyed to the DECLARED outcome (the submission tells you which criteria are N/A for this negotiation — follow it exactly):
+- Signed on the spot → 6 and 9 are N/A (7 applicable points).
+- Retorno → 7 is N/A (8 applicable points).
+- Lost → 6, 7 and 9 are N/A (6 applicable points).
+- Uncertain → nothing is N/A (9 applicable points).
+Never mark any other criterion "na". If something did not happen, that is a judgement (usually fail or warn), not N/A.
+
+VERDICTS: pass = fully met per TRC doctrine. warn = partly met / an execution gap that did not cost the deal. fail = not met. na = only the fixed-rule criteria above. uv = a specific passage needed for this criterion is missing or unintelligible in the transcript and the audio would need to be checked — rare, and never a substitute for a judgement. Apply the judgement thresholds from the Project Prompt where it defines them; otherwise use the Manual and Method. Never award pass on assumption — the rep must make the buyer SAY it.
 
 SCORE ARITHMETIC (recomputed in code — do not compute it yourself): pass = 1 point, warn = 0.5, fail = 0; na and uv are excluded from the applicable total.
 

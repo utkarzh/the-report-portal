@@ -10,9 +10,10 @@ import AudioPlayer from '@/components/transcriptions/AudioPlayer'
 import MeetingPrepLoader from '@/components/meeting-prep/MeetingPrepLoader'
 import CoachConversation from '@/components/sales-coach/CoachConversation'
 import ReportCardView from '@/components/sales-coach/ReportCardView'
+import ManagementReviewPanel from '@/components/sales-coach/ManagementReviewPanel'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
-import { formatOutcomeDetails, formatScore, outcomeLabel, pickTranscript } from '@/lib/sales-coach'
+import { formatOutcomeDetails, formatScore, outcomeLabel, pickTranscript, reviewStatus } from '@/lib/sales-coach'
 import type { SalesCoachNegotiation, SalesCoachMessage } from '@/types'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -281,8 +282,11 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
                 {formatScore(Number(n.execution_score), n.execution_denominator)}<span className="font-normal text-white/60">score</span>
               </span>
             )}
-            {n.management_review && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2.5 py-1 text-[11px] font-medium text-[#a07530]"><Flag size={11} /> Review</span>
+            {isAdmin && reviewStatus(n) === 'open' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2.5 py-1 text-[11px] font-medium text-[#a07530]"><Flag size={11} /> Needs review</span>
+            )}
+            {isAdmin && reviewStatus(n) === 'reviewed' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700"><Check size={11} /> Reviewed</span>
             )}
           </div>
         </div>
@@ -367,7 +371,12 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
             )}
           </div>
 
-          {tab === 'card' && n.report_card && <ReportCardView card={n.report_card} meta={meta} />}
+          {tab === 'card' && n.report_card && (
+            <>
+              {isAdmin && n.management_review && <ManagementReviewPanel negotiation={n} onUpdated={setN} />}
+              <ReportCardView card={n.report_card} meta={meta} isAdmin={isAdmin} />
+            </>
+          )}
           {tab === 'coach' && (
             <CoachConversation
               negotiationId={n.id}

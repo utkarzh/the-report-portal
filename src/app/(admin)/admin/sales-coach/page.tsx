@@ -15,6 +15,7 @@ export default async function SalesCoachAdminPage() {
     .from('sales_coach_negotiations')
     .select('id', { count: 'exact', head: true })
     .eq('management_review', true)
+    .is('actual_outcome_at', null)
 
   const { count: totalCount } = await supabaseAdmin
     .from('sales_coach_negotiations')
@@ -87,7 +88,7 @@ export default async function SalesCoachAdminPage() {
                 className="flex items-center justify-between px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
               >
                 <span>
-                  Flagged for management review{' '}
+                  Waiting for management review{' '}
                   <span className={reviewCount ? 'text-[#a07530] font-medium' : 'text-gray-400'}>({reviewCount ?? 0})</span>
                 </span>
                 <span aria-hidden>→</span>

@@ -1,11 +1,11 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { Flag } from 'lucide-react'
+import { Flag, CheckCircle2 } from 'lucide-react'
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
-import { SALES_COACH_STAGE_LABELS, formatScore, outcomeLabel } from '@/lib/sales-coach'
+import { SALES_COACH_STAGE_LABELS, formatScore, outcomeLabel, reviewStatus } from '@/lib/sales-coach'
 import type { SalesCoachStage } from '@/types'
 
 interface Props {
@@ -21,10 +21,10 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
 
   let query = supabaseAdmin
     .from('sales_coach_negotiations')
-    .select('id, company, country, media_publication, submitted_by_name, declared_outcome, ai_assessed_position, execution_score, execution_denominator, stage, management_review, created_at')
+    .select('id, company, country, media_publication, submitted_by_name, declared_outcome, ai_assessed_position, execution_score, execution_denominator, stage, management_review, actual_outcome, actual_outcome_at, created_at')
     .order('created_at', { ascending: false })
     .limit(200)
-  if (reviewOnly) query = query.eq('management_review', true)
+  if (reviewOnly) query = query.eq('management_review', true).is('actual_outcome_at', null)
 
   const { data: rows } = await query
 
@@ -65,7 +65,7 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
 
         {(!rows || rows.length === 0) ? (
           <div className="rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500">
-            {reviewOnly ? 'No negotiations are flagged for management review.' : 'No negotiations have been submitted yet.'}
+            {reviewOnly ? 'Nothing is waiting for management review.' : 'No negotiations have been submitted yet.'}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-[#e5e3df] bg-white">
@@ -91,9 +91,14 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
                       <div className="text-xs text-gray-400 truncate">
                         {[r.country, r.media_publication].filter(Boolean).join(' · ') || '—'}
                       </div>
-                      {r.management_review && (
+                      {reviewStatus(r) === 'open' && (
                         <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2 py-0.5 text-[10px] font-medium text-[#a07530]">
-                          <Flag size={10} /> Management review
+                          <Flag size={10} /> Needs review
+                        </span>
+                      )}
+                      {reviewStatus(r) === 'reviewed' && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                          <CheckCircle2 size={10} /> Reviewed · {outcomeLabel(r.actual_outcome as never)}
                         </span>
                       )}
                     </td>

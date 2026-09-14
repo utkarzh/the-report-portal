@@ -14,6 +14,7 @@ import { logUsageEvent } from '@/lib/claude/usage'
 import {
   REPORT_CARD_CONTRACT,
   REPORT_CARD_OUTPUT_SCHEMA,
+  applicabilityInstruction,
   applyDiscrepancyRules,
   pickTranscript,
   renderReportCardMarkdown,
@@ -114,7 +115,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
     { type: 'text', text: `${ANALYST_PERSONA}\n\n=== TRC KNOWLEDGE DOCUMENTS (your doctrine) ===\n\n${knowledge.block}` },
     { type: 'text', text: REPORT_CARD_CONTRACT, cache_control: CACHE_1H },
   ]
-  const submission = `${buildNegotiationContext(n)}\n\n${buildTranscriptBlock(n)}\n\nProduce the Report Card for this negotiation now.`
+  const submission = `${buildNegotiationContext(n)}\n\n${applicabilityInstruction(n.declared_outcome)}\n\n${buildTranscriptBlock(n)}\n\nProduce the Report Card for this negotiation now.`
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -151,6 +152,9 @@ export async function POST(_request: NextRequest, { params }: Params) {
         const s = anthropic.messages.stream({
           model: ANALYSIS_MODEL,
           max_tokens: MAX_OUTPUT_TOKENS,
+          // Scoring should be as repeatable as the model allows: the same
+          // transcript re-run should land on the same verdicts.
+          temperature: 0,
           system,
           messages,
           output_config: { format: { type: 'json_schema', schema: REPORT_CARD_OUTPUT_SCHEMA } },

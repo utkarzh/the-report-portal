@@ -7,7 +7,7 @@ import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
-import { SALES_COACH_STAGE_LABELS, formatScore, outcomeLabel } from '@/lib/sales-coach'
+import { SALES_COACH_STAGE_LABELS, formatScore, outcomeLabel, reviewStatus } from '@/lib/sales-coach'
 import PrivacyNotice from '@/components/sales-coach/PrivacyNotice'
 import DeleteNegotiationButton from '@/components/sales-coach/DeleteNegotiationButton'
 import EntityCard from '@/components/ui/EntityCard'
@@ -35,7 +35,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
   const supabase = createSupabaseServerClient()
   let query = supabase
     .from('sales_coach_negotiations')
-    .select('id, user_id, submitted_by_name, company, country, media_publication, declared_outcome, ai_assessed_position, execution_score, execution_denominator, management_review, stage, cost_usd, created_at', { count: 'exact' })
+    .select('id, user_id, submitted_by_name, company, country, media_publication, declared_outcome, ai_assessed_position, execution_score, execution_denominator, management_review, actual_outcome_at, stage, cost_usd, created_at', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to)
   if (!isAdmin) query = query.eq('user_id', profile.id)
@@ -133,8 +133,11 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
                 badge={<StageBadge stage={r.stage as SalesCoachStage} />}
                 metaRight={
                   <span className="flex flex-shrink-0 items-center gap-1.5">
-                    {r.management_review && (
-                      <span title="Flagged for management review" className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2 py-0.5 text-[11px] font-medium text-[#a07530]"><Flag size={10} /> Review</span>
+                    {isAdmin && reviewStatus(r) === 'open' && (
+                      <span title="Needs management review" className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2 py-0.5 text-[11px] font-medium text-[#a07530]"><Flag size={10} /> Review</span>
+                    )}
+                    {isAdmin && reviewStatus(r) === 'reviewed' && (
+                      <span title="Reviewed by management" className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"><CheckCircle2 size={10} /> Reviewed</span>
                     )}
                     {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number' && (
                       <span title={r.ai_assessed_position || 'Execution score'} className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white">

@@ -49,7 +49,11 @@ export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachRe
       children: [new TextRun({ text: `Execution Score: ${score}`, bold: true, size: SZ.coverSub, color: NAVY, font: FONT })],
     }),
     meta(`Assessed position: ${card.assessed_position}   ·   Declared outcome: ${outcomeLabel(card.declared_outcome)}`, INK),
-    ...(card.management_review ? [meta('Management review recommended', 'A07530')] : []),
+    ...(card.management_review
+      ? [meta(card.review
+          ? `Management review: reviewed by ${card.review.reviewed_by_name} — confirmed outcome ${outcomeLabel(card.review.confirmed_outcome)}`
+          : 'Management review recommended — not yet reviewed', 'A07530')]
+      : []),
     new Paragraph({
       spacing: { before: 200, after: 240 },
       border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'D9D9D9' } },
