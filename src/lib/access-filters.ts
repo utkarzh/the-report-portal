@@ -9,6 +9,8 @@ export type AccessKey =
   | 'business_cases'
   | 'editorial_briefs'
   | 'meeting_preparation'
+  | 'interview_letters'
+  | 'sales_coach'
   | 'finance_field'
 
 export const ACCESS_LABELS: Record<AccessKey, string> = {
@@ -17,6 +19,8 @@ export const ACCESS_LABELS: Record<AccessKey, string> = {
   business_cases: 'Business Cases',
   editorial_briefs: 'Editorial Briefs',
   meeting_preparation: 'Meeting Preparation',
+  interview_letters: 'Interview Letters',
+  sales_coach: 'Sales Coach',
   finance_field: 'Cash Box (Field)',
 }
 
@@ -29,6 +33,8 @@ export const EDITORIAL_ACCESS_KEYS: AccessKey[] = [
   'business_cases',
   'editorial_briefs',
   'meeting_preparation',
+  'interview_letters',
+  'sales_coach',
 ]
 export const FINANCE_ACCESS_KEYS: AccessKey[] = ['finance_field']
 

@@ -12,17 +12,17 @@ export async function GET(_request: NextRequest, { params }: { params: { session
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  const { data: row } = await supabaseAdmin
-    .from('research_sessions')
-    .select('id, user_id, status, initial_output, questions_output, tokens_total, web_searches, cost_usd')
-    .eq('id', params.sessionId)
-    .single()
+  // Independent reads — run together instead of back-to-back so this
+  // polling endpoint (hit every 3s while a session generates) round-trips
+  // to the database only once per call, not twice.
+  const [{ data: profile }, { data: row }] = await Promise.all([
+    supabaseAdmin.from('profiles').select('role').eq('id', user.id).single(),
+    supabaseAdmin
+      .from('research_sessions')
+      .select('id, user_id, status, initial_output, questions_output, tokens_total, web_searches, cost_usd')
+      .eq('id', params.sessionId)
+      .single(),
+  ])
 
   if (!row) return NextResponse.json({ error: 'Interview not found' }, { status: 404 })
   if (row.user_id !== user.id && profile?.role !== 'admin') {

@@ -21,6 +21,8 @@ const EDITORIAL_ACCESS_COLUMN_MAP: Partial<Record<AccessKey, keyof Profile>> = {
   business_cases: 'can_access_business_cases',
   editorial_briefs: 'can_access_editorial_briefs',
   meeting_preparation: 'can_access_meeting_preparation',
+  interview_letters: 'can_access_interview_letter_generator',
+  sales_coach: 'can_access_sales_negotiation_coach',
 }
 
 interface SearchParams {
@@ -52,6 +54,8 @@ const EDITORIAL_MODULES: { key: keyof Profile; label: string }[] = [
   { key: 'can_access_business_cases', label: 'Business Cases' },
   { key: 'can_access_editorial_briefs', label: 'Editorial Briefs' },
   { key: 'can_access_meeting_preparation', label: 'Meeting Prep' },
+  { key: 'can_access_interview_letter_generator', label: 'Interview Letters' },
+  { key: 'can_access_sales_negotiation_coach', label: 'Sales Coach' },
 ]
 
 export default async function UsersPage({ searchParams }: { searchParams: SearchParams }) {
@@ -93,6 +97,21 @@ export default async function UsersPage({ searchParams }: { searchParams: Search
     return q
   }
 
+  // The filtered/paginated table and the org-wide stats row are independent
+  // of each other — run them together instead of one-after-the-other so this
+  // page needs only one round trip to the database, not two.
+  const [{ data: tableData, count }, { data: statsRows }] = await Promise.all([
+    usageFilter === 'near' ? baseQuery() : baseQuery().range(from, to),
+    // One lightweight query powers every overview number: the near-limit tab
+    // badge and the department stat cards — unaffected by the current filters,
+    // so they always read as the whole-org picture.
+    supabaseAdmin
+      .from('profiles')
+      .select(
+        'role, tokens_used, token_limit, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, can_access_sales_negotiation_coach, finance_role',
+      ),
+  ])
+
   let users: Profile[]
   let totalCount: number
   let totalPages: number
@@ -102,25 +121,15 @@ export default async function UsersPage({ searchParams }: { searchParams: Search
     // PostgREST can't filter on directly, so fetch the matching set and filter
     // in memory. The team is small, so this stays cheap; pagination is skipped
     // for this focused view.
-    const { data } = await baseQuery()
-    users = (data || []).filter((u: Profile) => usageState(u) !== 'none')
+    users = (tableData || []).filter((u: Profile) => usageState(u) !== 'none')
     totalCount = users.length
     totalPages = 1
   } else {
-    const { data, count } = await baseQuery().range(from, to)
-    users = data || []
+    users = tableData || []
     totalCount = count || 0
     totalPages = Math.ceil(totalCount / PAGE_SIZE)
   }
 
-  // One lightweight query powers every overview number: the near-limit tab
-  // badge and the department stat cards — unaffected by the current filters,
-  // so they always read as the whole-org picture.
-  const { data: statsRows } = await supabaseAdmin
-    .from('profiles')
-    .select(
-      'role, tokens_used, token_limit, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, finance_role',
-    )
   const allProfiles = statsRows || []
   const totalUsers = allProfiles.length
   const adminCount = allProfiles.filter((u) => u.role === 'admin').length
@@ -131,7 +140,9 @@ export default async function UsersPage({ searchParams }: { searchParams: Search
       u.can_access_transcriptions ||
       u.can_access_business_cases ||
       u.can_access_editorial_briefs ||
-      u.can_access_meeting_preparation,
+      u.can_access_meeting_preparation ||
+      u.can_access_interview_letter_generator ||
+      u.can_access_sales_negotiation_coach,
   ).length
   const financeCount = allProfiles.filter((u) => u.role === 'admin' || u.finance_role !== null).length
   const nearCount = allProfiles.filter(
@@ -148,11 +159,11 @@ export default async function UsersPage({ searchParams }: { searchParams: Search
         <InviteUserButton />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Total Users" value={totalUsers} icon={Users} />
-        <StatCard label="Admins" value={adminCount} icon={ShieldCheck} sub="Full access, both depts." />
-        <StatCard label="Editorial Access" value={editorialCount} icon={Newspaper} sub="Any editorial module" />
-        <StatCard label="Finance Access" value={financeCount} icon={Wallet} sub="Cash Box" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Total Users" value={totalUsers} icon={Users} accent="neutral" />
+        <StatCard label="Admins" value={adminCount} icon={ShieldCheck} sub="Full access, both depts." accent="slate" />
+        <StatCard label="Editorial Access" value={editorialCount} icon={Newspaper} sub="Any editorial module" accent="sky" />
+        <StatCard label="Finance Access" value={financeCount} icon={Wallet} sub="Cash Box" accent="emerald" />
       </div>
 
       <UsersFilter search={search} role={roleFilter} usage={usageFilter} access={accessParam} nearCount={nearCount} />
@@ -328,22 +339,45 @@ function AccessPills({ user }: { user: Profile }) {
   )
 }
 
+type StatAccent = 'neutral' | 'slate' | 'sky' | 'emerald'
+
+// One restrained accent per card — a thin top rule plus a tinted icon chip —
+// so the row scans at a glance instead of reading as four identical tiles.
+// Colors stay inside the palette already used elsewhere on this page
+// (emerald = finance, matching AccessPills below) rather than introducing a
+// new one.
+const STAT_ACCENT_STYLES: Record<StatAccent, { rule: string; chipBg: string; chipText: string }> = {
+  neutral: { rule: 'bg-gray-900', chipBg: 'bg-gray-900', chipText: 'text-white' },
+  slate: { rule: 'bg-gray-300', chipBg: 'bg-gray-100', chipText: 'text-gray-600' },
+  sky: { rule: 'bg-sky-400', chipBg: 'bg-sky-50', chipText: 'text-sky-600' },
+  emerald: { rule: 'bg-emerald-400', chipBg: 'bg-emerald-50', chipText: 'text-emerald-600' },
+}
+
 interface StatCardProps {
   label: string
   value: number
   icon: React.ElementType
   sub?: string
+  accent?: StatAccent
 }
 
-function StatCard({ label, value, icon: Icon, sub }: StatCardProps) {
+function StatCard({ label, value, icon: Icon, sub, accent = 'neutral' }: StatCardProps) {
+  const a = STAT_ACCENT_STYLES[accent]
   return (
-    <div className="bg-white border border-[#e5e3df] p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Icon size={14} strokeWidth={1.5} className="text-gray-400 flex-shrink-0" />
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 leading-tight">{label}</p>
+    <div className="relative overflow-hidden bg-white border border-[#e5e3df] p-5 transition-colors hover:border-gray-300">
+      <span className={`absolute inset-x-0 top-0 h-0.5 ${a.rule}`} />
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 leading-tight pt-1.5">
+          {label}
+        </p>
+        <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-sm ${a.chipBg}`}>
+          <Icon size={15} strokeWidth={1.75} className={a.chipText} />
+        </div>
       </div>
-      <p className="text-xl font-bold text-gray-900 tabular-nums leading-none">{value.toLocaleString()}</p>
-      {sub && <p className="text-[10px] text-gray-400 mt-1.5">{sub}</p>}
+      <p className="text-2xl font-bold text-gray-900 tabular-nums leading-none tracking-tight">
+        {value.toLocaleString()}
+      </p>
+      {sub && <p className="text-[10px] text-gray-400 mt-2">{sub}</p>}
     </div>
   )
 }

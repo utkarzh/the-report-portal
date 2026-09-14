@@ -43,11 +43,25 @@ function LoginForm() {
     // active session id and mirrors it into an httpOnly cookie, signing out any
     // other device on its next request ("newest login wins"). If it fails we
     // don't proceed, otherwise the middleware would sign this device out too.
-    const registerRes = await fetch('/api/auth/session-register', {
+    // A transient 503 (Supabase Auth slow to answer — see getApiUser()) is
+    // worth exactly one retry rather than failing the whole sign-in.
+    let registerRes = await fetch('/api/auth/session-register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ method }),
     })
+    if (!registerRes.ok) {
+      const data = await registerRes.json().catch(() => ({}))
+      const transient = [502, 503, 504, 429].includes(registerRes.status) || data.retryable === true
+      if (transient) {
+        await new Promise((r) => setTimeout(r, 1500))
+        registerRes = await fetch('/api/auth/session-register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method }),
+        })
+      }
+    }
     if (!registerRes.ok) {
       await supabase.auth.signOut()
       setError('Could not complete sign-in on this device. Please try again.')
@@ -99,16 +113,25 @@ function LoginForm() {
     setError(null)
     setLoading(true)
 
-    const supabase = getSupabaseBrowserClient()
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (authError || !data.user) {
-      setError('Invalid email or password.')
+      if (authError || !data.user) {
+        setError('Invalid email or password.')
+        setLoading(false)
+        return
+      }
+
+      await finishSignIn(data.user.id, 'password')
+    } catch {
+      // signInWithPassword has no timeout — a network/CORS/config failure
+      // throws instead of resolving with `error`. Without this catch the
+      // button spins forever with no feedback (see the getApiUser() incident
+      // note in CLAUDE.md for the same failure mode on the API side).
+      setError('Could not reach the sign-in service. Please check your connection and try again.')
       setLoading(false)
-      return
     }
-
-    await finishSignIn(data.user.id, 'password')
   }
 
   // Step 2b — normal user OTP sign-in (code relayed manually by editorial team).
@@ -117,24 +140,29 @@ function LoginForm() {
     setError(null)
     setLoading(true)
 
-    const supabase = getSupabaseBrowserClient()
-    const token = code.trim()
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const token = code.trim()
 
-    // The code is minted via admin.generateLink({type:'magiclink'}); it verifies
-    // with type 'email'. Fall back to 'magiclink' to be resilient across
-    // Supabase versions before treating it as a genuinely bad code.
-    let result = await supabase.auth.verifyOtp({ email, token, type: 'email' })
-    if (result.error || !result.data.user) {
-      result = await supabase.auth.verifyOtp({ email, token, type: 'magiclink' })
-    }
+      // The code is minted via admin.generateLink({type:'magiclink'}); it verifies
+      // with type 'email'. Fall back to 'magiclink' to be resilient across
+      // Supabase versions before treating it as a genuinely bad code.
+      let result = await supabase.auth.verifyOtp({ email, token, type: 'email' })
+      if (result.error || !result.data.user) {
+        result = await supabase.auth.verifyOtp({ email, token, type: 'magiclink' })
+      }
 
-    if (result.error || !result.data.user) {
-      setError('Invalid or expired code. Please try again.')
+      if (result.error || !result.data.user) {
+        setError('Invalid or expired code. Please try again.')
+        setLoading(false)
+        return
+      }
+
+      await finishSignIn(result.data.user.id, 'otp')
+    } catch {
+      setError('Could not reach the sign-in service. Please check your connection and try again.')
       setLoading(false)
-      return
     }
-
-    await finishSignIn(result.data.user.id, 'otp')
   }
 
   // Resend / regenerate the OTP for the same email.

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { getApiUser } from '@/lib/auth/api-user'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { recordLoginAudit, type LoginMethod } from '@/lib/audit'
 
@@ -21,12 +21,13 @@ const COOKIE_MAX_AGE_S = 60 * 60 * 24 * 365
 // other device still holding the previous id is signed out by the middleware on
 // its next request. This enforces one-device-one-login for all roles.
 export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient()
-
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-  }
+  // Called right after signInWithPassword/verifyOtp resolves on the client, so
+  // this is often the very first call to Supabase Auth from the server after a
+  // brand-new sign-in — exactly the timing the getApiUser() incident (see its
+  // own doc comment) was hit under. A bare getUser() here would hang the whole
+  // login on a slow Auth answer with the button just spinning forever.
+  const { user, response: authResponse } = await getApiUser()
+  if (!user) return authResponse
 
   const sessionId = randomUUID()
 

@@ -2,7 +2,20 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, UserPlus, Copy, Check } from 'lucide-react'
+import {
+  X,
+  UserPlus,
+  Copy,
+  Check,
+  MessagesSquare,
+  AudioLines,
+  Briefcase,
+  FileText,
+  CalendarClock,
+  Mail,
+  Handshake,
+  Wallet,
+} from 'lucide-react'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
@@ -12,6 +25,18 @@ interface Props {
   open: boolean
   onClose: () => void
 }
+
+// Same icon per module as the Sidebar nav and the Edit User form, so a
+// module reads as the same thing everywhere it appears.
+const EDITORIAL_MODULE_FIELDS = [
+  { key: 'canAccessInterview' as const, label: 'Interview Tool', icon: MessagesSquare },
+  { key: 'canAccessTranscriptions' as const, label: 'Transcriptions', icon: AudioLines },
+  { key: 'canAccessBusinessCases' as const, label: 'Business Cases', icon: Briefcase },
+  { key: 'canAccessEditorialBriefs' as const, label: 'Editorial Briefs', icon: FileText },
+  { key: 'canAccessMeetingPreparation' as const, label: 'Meeting Preparation', icon: CalendarClock },
+  { key: 'canAccessInterviewLetterGenerator' as const, label: 'Interview Letters', icon: Mail },
+  { key: 'canAccessSalesNegotiationCoach' as const, label: 'Sales Coach', icon: Handshake },
+]
 
 const defaultForm = {
   email: '',
@@ -303,52 +328,30 @@ export default function InviteUserModal({ open, onClose }: Props) {
               )}
 
               {form.role !== 'admin' && (
-                <div>
-                  <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-2">
-                    Module Access
-                  </label>
-                  <div className="flex flex-col gap-2">
-                    <ModuleCheckbox
-                      label="Interview Tool"
-                      checked={form.canAccessInterview}
-                      onChange={(v) => setForm(p => ({ ...p, canAccessInterview: v }))}
-                    />
-                    <ModuleCheckbox
-                      label="Transcriptions"
-                      checked={form.canAccessTranscriptions}
-                      onChange={(v) => setForm(p => ({ ...p, canAccessTranscriptions: v }))}
-                    />
-                    <ModuleCheckbox
-                      label="Business Cases"
-                      checked={form.canAccessBusinessCases}
-                      onChange={(v) => setForm(p => ({ ...p, canAccessBusinessCases: v }))}
-                    />
-                    <ModuleCheckbox
-                      label="Editorial Briefs"
-                      checked={form.canAccessEditorialBriefs}
-                      onChange={(v) => setForm(p => ({ ...p, canAccessEditorialBriefs: v }))}
-                    />
-                    <ModuleCheckbox
-                      label="Meeting Preparation"
-                      checked={form.canAccessMeetingPreparation}
-                      onChange={(v) => setForm(p => ({ ...p, canAccessMeetingPreparation: v }))}
-                    />
-                    <ModuleCheckbox
-                      label="Interview Letters"
-                      checked={form.canAccessInterviewLetterGenerator}
-                      onChange={(v) => setForm(p => ({ ...p, canAccessInterviewLetterGenerator: v }))}
-                    />
-                    <ModuleCheckbox
-                      label="Sales Coach"
-                      checked={form.canAccessSalesNegotiationCoach}
-                      onChange={(v) => setForm(p => ({ ...p, canAccessSalesNegotiationCoach: v }))}
-                    />
-                    <ModuleCheckbox
-                      label="Finance (Cash Box) — Field"
-                      checked={form.financeRole === 'field'}
-                      onChange={(v) => setForm(p => ({ ...p, financeRole: v ? 'field' : '' }))}
-                    />
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Module Access</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Editorial</p>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {EDITORIAL_MODULE_FIELDS.map(({ key, label, icon }) => (
+                      <ModuleCheckbox
+                        key={key}
+                        label={label}
+                        icon={icon}
+                        checked={form[key]}
+                        onChange={(v) => setForm(p => ({ ...p, [key]: v }))}
+                      />
+                    ))}
+                  </div>
+
+                  <p className="text-[10px] text-gray-400 -mb-1">Finance</p>
+                  <ModuleCheckbox
+                    label="Cash Box — Field"
+                    icon={Wallet}
+                    checked={form.financeRole === 'field'}
+                    onChange={(v) => setForm(p => ({ ...p, financeRole: v ? 'field' : '' }))}
+                  />
                 </div>
               )}
 

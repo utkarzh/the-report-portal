@@ -28,11 +28,31 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('id, role, status, tokens_used, token_limit')
-    .eq('id', user.id)
-    .single()
+  const body = await request.json()
+  const { sessionId, additionalPrompt } = body as {
+    sessionId?: string
+    additionalPrompt?: string
+  }
+
+  if (!sessionId) {
+    return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
+  }
+
+  // Profile and session are independent reads (neither depends on the
+  // other's result) — fetching them in parallel instead of one-after-the-
+  // other shaves a full network round trip off every click of Generate.
+  const [{ data: profile }, { data: session }] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('id, role, status, tokens_used, token_limit')
+      .eq('id', user.id)
+      .single(),
+    supabaseAdmin
+      .from('research_sessions')
+      .select('id, user_id, full_name, title_position, company_org, country_focus, publication, media_partner_country, general_prompt_snapshot, category_prompt_snapshot')
+      .eq('id', sessionId)
+      .single(),
+  ])
 
   if (!profile || profile.status === 'inactive') {
     return NextResponse.json({ error: 'Account inactive' }, { status: 403 })
@@ -48,23 +68,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const body = await request.json()
-  const { sessionId, additionalPrompt } = body as {
-    sessionId?: string
-    additionalPrompt?: string
-  }
-
-  if (!sessionId) {
-    return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
-  }
-
   const extra = (additionalPrompt || '').trim()
-
-  const { data: session } = await supabaseAdmin
-    .from('research_sessions')
-    .select('id, user_id, full_name, title_position, company_org, country_focus, publication, media_partner_country, general_prompt_snapshot, category_prompt_snapshot')
-    .eq('id', sessionId)
-    .single()
 
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
