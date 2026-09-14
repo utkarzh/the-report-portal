@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { getOpenAIClient } from '@/lib/openai/client'
 
 export const maxDuration = 60
@@ -21,9 +21,9 @@ const VOICE_INSTRUCTIONS =
 // POST /api/sales-coach/tts — { text, voice? } -> audio/mpeg. Used by the voice
 // coaching UI to speak the coach's reply aloud, one sentence-chunk at a time.
 export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

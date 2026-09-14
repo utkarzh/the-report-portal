@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { isSalesCoachKnowledgeKey } from '@/lib/sales-coach'
 
 interface Params {
@@ -13,9 +14,11 @@ interface Params {
 
 // GET — any authenticated user may read (the coach assembles these at runtime).
 export async function GET(_req: NextRequest, { params }: Params) {
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
+  // RLS-scoped read below still needs the caller's own client.
   const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   if (!isSalesCoachKnowledgeKey(params.docKey)) {
     return NextResponse.json({ error: 'Invalid document' }, { status: 400 })
@@ -32,9 +35,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // PATCH — admin only, snapshots the previous version before overwriting (US-046/048).
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

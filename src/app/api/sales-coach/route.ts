@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { canAccessSalesNegotiationCoach } from '@/lib/access'
 import { deriveCompanyFromFilename, isSalesCoachOutcome } from '@/lib/sales-coach'
 import type { SalesCoachParticipant } from '@/types'
@@ -13,9 +13,9 @@ export const runtime = 'nodejs'
 // Every submission is bound to the logged-in user (US-033); there is no
 // user-selectable "submit as".
 export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')
@@ -80,6 +80,20 @@ export async function POST(request: NextRequest) {
   if (!resolvedCompany) {
     return NextResponse.json({ error: 'Please fill in: Company' }, { status: 400 })
   }
+
+  // Retry safety: the client re-sends this request once if the first attempt
+  // died in transit. If the first attempt actually reached the insert, return
+  // that row instead of creating a twin. An audio submission is unique by its
+  // upload path; a pasted transcript by its text from the same user minutes ago.
+  const dedupe = supabaseAdmin
+    .from('sales_coach_negotiations')
+    .select('id')
+    .eq('user_id', user.id)
+    .gte('created_at', new Date(Date.now() - 10 * 60_000).toISOString())
+  const { data: existing } = hasAudio
+    ? await dedupe.eq('audio_path', audioPath as string).limit(1).maybeSingle()
+    : await dedupe.eq('uploaded_transcript', (uploadedTranscript as string).trim()).limit(1).maybeSingle()
+  if (existing?.id) return NextResponse.json({ id: existing.id, deduplicated: true }, { status: 200 })
 
   const { data: row, error } = await supabaseAdmin
     .from('sales_coach_negotiations')

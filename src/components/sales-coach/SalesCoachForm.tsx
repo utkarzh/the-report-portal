@@ -7,7 +7,7 @@ import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getSupabaseBrowserClient, ensureFreshSession } from '@/lib/supabase/client'
 import { SALES_COACH_OUTCOMES } from '@/lib/sales-coach'
 import type { SalesCoachOutcome, SalesCoachParticipant } from '@/types'
 
@@ -92,10 +92,11 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
       let audioMime: string | undefined
       let originalFilename: string | undefined
 
+      const supabase = getSupabaseBrowserClient()
+
       if (inputMode === 'audio' && audioFile) {
         originalFilename = audioFile.name
         audioMime = 'audio/mpeg'
-        const supabase = getSupabaseBrowserClient()
         const groupId = crypto.randomUUID()
 
         // Compress in-browser to a compact 16kHz mono MP3 — reuses the exact
@@ -104,27 +105,32 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
         const { transcodeToMp3 } = await import('@/lib/ffmpeg-client')
         const { blob } = await transcodeToMp3(audioFile, { onProgress: (r) => setProgress(r) })
 
+        // Transcoding a large file can take minutes — long enough to outlast
+        // the access token, especially in a backgrounded tab. Refresh before
+        // the upload needs it rather than finding out mid-request.
+        await ensureFreshSession(supabase)
+
         audioPath = `${userId}/${groupId}/audio.mp3`
         setPhase('uploading')
         const { error: upErr } = await supabase.storage.from(AUDIO_BUCKET).upload(audioPath, blob, { contentType: 'audio/mpeg', upsert: false })
         if (upErr) throw new Error('Upload failed. Please try again.')
       }
 
+      // Same guard before the create call — cheap, and covers a slow upload
+      // or a long pause on the form even when there was no audio to transcode.
+      await ensureFreshSession(supabase)
+
       setPhase('creating')
-      const res = await fetch('/api/sales-coach', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...ctx,
-          companyReps, trcMembers,
-          audioPath, audioMime, originalFilename,
-          uploadedTranscript: inputMode === 'transcript' ? transcript : undefined,
-          declaredOutcome: outcome,
-          outcomeDetails: details,
-        }),
+      const payload = JSON.stringify({
+        ...ctx,
+        companyReps, trcMembers,
+        audioPath, audioMime, originalFilename,
+        uploadedTranscript: inputMode === 'transcript' ? transcript : undefined,
+        declaredOutcome: outcome,
+        outcomeDetails: details,
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.id) throw new Error(data.error || 'Could not submit. Please try again.')
+      const data = await postWithRetry('/api/sales-coach', payload)
+      if (!data.id) throw new Error(data.error || 'Could not submit. Please try again.')
       // `start=1` tells the workspace this tab just submitted, so it transcribes
       // (if audio) and generates the Report Card without another click.
       router.push(`/sales-coach/${data.id}?start=1`)
@@ -296,13 +302,55 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
 
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-400">Every submission is saved under your account.</span>
-        <Button type="submit" loading={busy} disabled={busy} arrow>{statusLabel}</Button>
+        <Button type="submit" disabled={busy} arrow={!busy}>
+          {busy ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />{statusLabel}</span> : statusLabel}
+        </Button>
       </div>
     </form>
   )
 }
 
 function s(v: unknown): string { return typeof v === 'string' ? v : '' }
+
+// The create request, hardened for the two ways it has actually failed in
+// the field (14 Sep 2026): a request that hangs until the browser gives up
+// (Safari: "Load failed") and a transient 503 from the server when Supabase
+// Auth didn't answer. Each attempt is capped at 30s, and a transport failure
+// or a retryable status is retried ONCE after a short pause — a retry opens a
+// fresh connection, which is what a page reload was doing for the user by
+// hand. The server dedupes by upload path / transcript, so a retry after a
+// request that did land can't create a twin.
+async function postWithRetry(url: string, body: string): Promise<{ id?: string; error?: string }> {
+  const ATTEMPT_TIMEOUT_MS = 30_000
+  let lastError = 'Could not submit. Please try again.'
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500))
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), ATTEMPT_TIMEOUT_MS)
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: ctrl.signal,
+      })
+      const data = (await res.json().catch(() => ({}))) as { id?: string; error?: string; retryable?: boolean }
+      const transient = res.status === 503 || res.status === 502 || res.status === 504 || res.status === 429 || data.retryable === true
+      if (res.ok && data.id) return data
+      if (!transient) return { error: data.error || `Request failed (${res.status})` }
+      lastError = data.error || 'The server is busy. Please try again.'
+    } catch (err) {
+      // AbortError (our timeout) or TypeError (network: "Load failed" /
+      // "Failed to fetch") — both worth exactly one more try.
+      lastError = err instanceof Error && err.name === 'AbortError'
+        ? 'The request timed out. Please check your connection and try again.'
+        : 'Connection interrupted. Please try again.'
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  return { error: lastError }
+}
 
 function CurrencySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (

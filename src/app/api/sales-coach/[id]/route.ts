@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
 import { SALES_COACH_AUDIO_BUCKET } from '@/lib/sales-coach'
 
 export const runtime = 'nodejs'
 
 async function authorise(id: string) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  const auth = await getApiUser()
+  if (!auth.user) return { error: auth.response }
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

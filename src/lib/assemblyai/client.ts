@@ -35,11 +35,31 @@ export interface AssemblyTranscript {
   text: string | null
   utterances: AssemblyUtterance[] | null
   error: string | null
+  // What language_detection actually decided. Logged (not stored) so a
+  // wrong-language transcript is diagnosable from the server logs instead of
+  // only from a user report — see submitTranscript() for the bug this guards.
+  languageCode: string | null
+  languageConfidence: number | null
 }
 
 // Submit a new transcript job. `audioUrl` must be publicly fetchable by
 // AssemblyAI for the life of the request (a short-lived signed URL is fine —
 // AssemblyAI downloads the audio up front). Returns the transcript id to poll.
+//
+// Bug this fixes (reported 14 Sep 2026 — a Russian/English negotiation came
+// back readably wrong, not just imperfect): with no language_code and no
+// language_detection, AssemblyAI's documented default is to auto-detect ONE
+// dominant language for the WHOLE file and run every second of audio through
+// that single language's model. TRC negotiations routinely code-switch
+// (interview in the local language, planteo/pricing in English, or vice
+// versa) — every stretch in the non-chosen language gets forced through the
+// wrong model, which produces exactly the symptom reported: real words in one
+// language rendered as garbled near-misses in the other, not silence or an
+// error, so it read as "different" rather than obviously broken.
+// `language_detection_options.code_switching` makes it re-detect language
+// per segment instead of once for the file — confirmed live against
+// AssemblyAI's API (2026-09-14) to be accepted together with speaker_labels
+// in the same request, so diarization is unaffected.
 export async function submitTranscript(audioUrl: string): Promise<string> {
   const res = await fetch(`${ASSEMBLYAI_BASE}/transcript`, {
     method: 'POST',
@@ -50,6 +70,8 @@ export async function submitTranscript(audioUrl: string): Promise<string> {
     body: JSON.stringify({
       audio_url: audioUrl,
       speaker_labels: true, // diarization — the point of using AssemblyAI
+      language_detection: true,
+      language_detection_options: { code_switching: true },
     }),
   })
 
@@ -80,6 +102,20 @@ export async function getTranscript(jobId: string): Promise<AssemblyTranscript> 
     text?: string | null
     utterances?: { speaker: string; text: string; start?: number; end?: number }[] | null
     error?: string | null
+    language_code?: string | null
+    language_confidence?: number | null
+  }
+
+  if (data.status === 'completed') {
+    // Cheap visibility into the exact failure mode this module has already
+    // hit once: a low language_confidence means language_detection guessed
+    // wrong for some of the file, which reads to a listener as "the
+    // transcript doesn't match what I heard" rather than as an obvious error.
+    const conf = data.language_confidence
+    console.log(`[assemblyai] ${data.id} completed — language=${data.language_code ?? 'unknown'} confidence=${conf ?? 'n/a'}`)
+    if (typeof conf === 'number' && conf < 0.6) {
+      console.error(`[assemblyai] ${data.id} low language_confidence (${conf}) — transcript may mis-render code-switched or hard-to-classify audio`)
+    }
   }
 
   return {
@@ -90,6 +126,8 @@ export async function getTranscript(jobId: string): Promise<AssemblyTranscript> 
       ? data.utterances.map((u) => ({ speaker: u.speaker, text: u.text, start: u.start ?? 0, end: u.end ?? 0 }))
       : null,
     error: data.error ?? null,
+    languageCode: data.language_code ?? null,
+    languageConfidence: data.language_confidence ?? null,
   }
 }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import type { User } from '@supabase/supabase-js'
+import { getApiUser } from '@/lib/auth/api-user'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isSalesCoachKnowledgeKey } from '@/lib/sales-coach'
 
@@ -7,17 +8,20 @@ interface Params {
   params: { docKey: string }
 }
 
-async function requireAdmin() {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single()
-  return profile?.role === 'admin' ? user : null
+// Resolves the caller and requires the admin role. A transient sign-in-service
+// failure comes back as a retryable 503 (see getApiUser), never as Forbidden.
+async function requireAdmin(): Promise<{ user: User; response?: undefined } | { user: null; response: NextResponse }> {
+  const auth = await getApiUser()
+  if (!auth.user) return auth
+  const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', auth.user.id).single()
+  if (profile?.role !== 'admin') return { user: null, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  return { user: auth.user }
 }
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const user = await requireAdmin()
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const auth = await requireAdmin()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   if (!isSalesCoachKnowledgeKey(params.docKey)) {
     return NextResponse.json({ error: 'Invalid document' }, { status: 400 })

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Packer } from 'docx'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { buildReportCardDocx } from '@/lib/sales-coach-docx'
 import type { SalesCoachNegotiation } from '@/types'
 
 // GET /api/sales-coach/[id]/download — the Report Card as a Word (.docx)
 // file. Owner or admin only.
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

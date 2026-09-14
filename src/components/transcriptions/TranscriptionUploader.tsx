@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, FileAudio, X, Loader2, ChevronUp, ChevronDown, FileText } from 'lucide-react'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getSupabaseBrowserClient, ensureFreshSession } from '@/lib/supabase/client'
 import Input from '@/components/ui/Input'
 import { TRANSCRIPTION_AUDIO_BUCKET, TRANSCRIPTION_PROVIDER } from '@/lib/transcriptions'
 import { OUTLINE_ACCEPT, OUTLINE_EXT_RE, extractOutlineText } from '@/lib/outline-extract'
@@ -155,6 +155,12 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
         })
         durationSeconds = dur
 
+        // Transcoding can take minutes on a long recording — long enough to
+        // outlast the access token, especially in a backgrounded tab. Refresh
+        // before the upload needs it rather than finding out mid-request (see
+        // ensureFreshSession for the failure mode this prevents).
+        await ensureFreshSession(supabase)
+
         audioPath = `${userId}/${groupId}/audio.mp3`
         setPhase('uploading')
         setUploadInfo({ done: 0, total: 1 })
@@ -192,6 +198,10 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
         audioPath = originalPath
         mime = files.length === 1 ? (files[0].type || 'audio/mpeg') : 'audio/mpeg'
 
+        // Same guard as the AssemblyAI branch above — this path can involve
+        // even longer transcode+split work before the first upload.
+        await ensureFreshSession(supabase)
+
         setPhase('uploading')
         setUploadInfo({ done: 0, total: seg.chunks.length + 1 })
         const { error: origErr } = await supabase
@@ -212,6 +222,10 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
           setUploadInfo({ done: i + 2, total: seg.chunks.length + 1 })
         }
       }
+
+      // Same guard before the create call — cheap, and covers a slow/chunked
+      // upload phase even when it started with a fresh token.
+      await ensureFreshSession(supabase)
 
       // Record the row. The workspace auto-starts transcription.
       setPhase('creating')

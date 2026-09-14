@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 
 // POST /api/sales-coach/privacy-ack — records that the user has seen the
 // one-time privacy/data-use notice (US-047). Server-side so it's consistent
 // across the user's devices; no consent checkbox on subsequent uploads.
 export async function POST() {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   await supabaseAdmin
     .from('profiles')
