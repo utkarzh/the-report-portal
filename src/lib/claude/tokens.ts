@@ -88,6 +88,12 @@ export const INTERVIEW_LETTER_TEMPLATE_GENERATE_RESERVE = 20_000
 // turn is short spoken output, but the grounding context (transcript + docs) is
 // large and re-sent each turn, so the reserve covers one turn's prompt + reply.
 export const SALES_COACH_COACH_RESERVE = 40_000
+// The Report Card analysis (US-039) is ONE call that reads the four knowledge
+// docs (~30k tokens), the negotiation context and the whole transcript (often
+// 10-30k tokens for an hour-long meeting) and writes a ~4-8k token structured
+// card. Reserve covers the prompt + output of one pass plus the single
+// corrective re-prompt the route may run.
+export const SALES_COACH_ANALYZE_RESERVE = 100_000
 
 export interface UsageBreakdown {
   inputTokens: number                // uncached input (billed at full input price)

@@ -51,3 +51,45 @@ export async function reconcilePendingTranscriptions(opts: { userId?: string; id
     }),
   )
 }
+
+// Same safety net for the Sales Coach module, whose audio submissions go
+// through the identical AssemblyAI job model (submit → poll). A negotiation
+// left at 'transcribing' with a job id is checked against AssemblyAI and, if
+// the job finished meanwhile, its speaker-labelled transcript is persisted as
+// `system_transcript` and the stage advanced to 'transcribed'. Rows at
+// 'transcribing' with NO job id are left alone — the workspace submits the job
+// on its next mount (or the user retries).
+export async function reconcilePendingNegotiations(opts: { userId?: string; id?: string } = {}) {
+  let query = supabaseAdmin
+    .from('sales_coach_negotiations')
+    .select('id, transcribe_job_id')
+    .eq('stage', 'transcribing')
+    .not('transcribe_job_id', 'is', null)
+
+  if (opts.id) query = query.eq('id', opts.id)
+  if (opts.userId) query = query.eq('user_id', opts.userId)
+
+  const { data: rows } = await query
+  if (!rows?.length) return
+
+  await Promise.all(
+    rows.map(async (r) => {
+      try {
+        const job = await getTranscript(r.transcribe_job_id as string)
+        if (job.status === 'completed') {
+          await supabaseAdmin
+            .from('sales_coach_negotiations')
+            .update({ stage: 'transcribed', system_transcript: formatSpeakerTranscript(job), error: null })
+            .eq('id', r.id)
+        } else if (job.status === 'error') {
+          await supabaseAdmin
+            .from('sales_coach_negotiations')
+            .update({ stage: 'failed', error: job.error || 'Transcription failed' })
+            .eq('id', r.id)
+        }
+      } catch {
+        // Transient — leave untouched; the next page load reconciles it.
+      }
+    }),
+  )
+}

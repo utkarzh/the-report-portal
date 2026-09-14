@@ -336,6 +336,7 @@ export type UsageWorkflow =
   | 'interview_letter_personalize'
   | 'interview_letter_template_generate'
   | 'sales_coach_coach'
+  | 'sales_coach_report_card'
 
 export interface UsageEvent {
   id: string
@@ -751,33 +752,58 @@ export interface SalesCoachKnowledgeDoc {
   updated_at: string
 }
 
-// One evaluated criterion in the structured Report Card.
+// One evaluated criterion in the structured Report Card (9 fixed criteria,
+// see SALES_COACH_CRITERIA in lib/sales-coach.ts).
+export type SalesCoachVerdict = 'pass' | 'warn' | 'fail' | 'na' | 'uv' // uv = audio verification required
+
+export interface SalesCoachEvidence {
+  // "Quote", "Offer quoted", "Leading question quoted", "Subsequent conduct", ...
+  label: string
+  text: string
+}
+
 export interface SalesCoachCriterion {
   key: string            // stable slug, e.g. 'sales_offer_buildup'
-  label: string          // display, e.g. 'Sales Offer Build-up'
-  verdict: 'pass' | 'warn' | 'fail' | 'na' | 'uv' // uv = audio verification required
-  quote?: string
+  label: string          // display, e.g. 'Sales Offer Build-up' (filled in code)
+  verdict: SalesCoachVerdict
+  // Short text shown next to the verdict mark, e.g. "Half page, USD 30,000" for
+  // the OUTCOME criterion or "outcome is Positive/Won" for an N/A.
+  note?: string
+  evidence?: SalesCoachEvidence[]
   reason?: string
-  scored: boolean        // counts toward the Execution Score (na/uv → false)
+  scored: boolean        // counts toward the Execution Score (na/uv → false); filled in code
 }
 
 export interface SalesCoachObjection {
-  objection: string
-  handled: string
-  trc_improved_response?: string
-  principle?: string
+  objection: string              // the objection / hesitation, quoted
+  handled: string                // how the representative actually handled it
+  original_wording?: string      // what the rep said, verbatim
+  trc_improved_response?: string // what TRC doctrine would have said
+  principle?: string             // the relevant TRC principle
 }
 
-// The structured Report Card the model returns (validated in code, US-039).
+// A free-form "DEEPER ANALYSIS AND FEEDBACK" section beyond the objections,
+// e.g. "CONCISE CONFIRMATION APPLICATION" or "RETORNO CONTROL".
+export interface SalesCoachAnalysisSection {
+  heading: string
+  body: string
+}
+
+// The structured Report Card the model returns (validated + score recomputed
+// in code, US-039). The markdown rendering in `report_card_markdown` is
+// derived from this object by renderReportCardMarkdown(), never model-written.
 export interface SalesCoachReportCard {
   company: string
   declared_outcome: SalesCoachOutcome | null
   assessed_position: SalesCoachAssessedPosition
-  execution_score: number
-  execution_denominator: number
-  summary: string
+  headline: string               // one line after the position + score
+  execution_score: number        // half points allowed (pass 1 / warn 0.5 / fail 0)
+  execution_denominator: number  // applicable (scored) criteria
+  summary: string                // opening paragraph
   criteria: SalesCoachCriterion[]
+  report_summary: string         // the SCORELINE "Report Summary"
   objections: SalesCoachObjection[]
+  deeper_analysis: SalesCoachAnalysisSection[]
   discrepancy?: string | null
   management_review: boolean
   coaching_question: string

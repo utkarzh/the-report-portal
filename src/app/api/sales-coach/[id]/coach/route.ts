@@ -10,8 +10,9 @@ import {
   SONNET_PRICING,
 } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { SALES_COACH_KNOWLEDGE_DOCS, SALES_COACH_OUTCOMES } from '@/lib/sales-coach'
-import type { SalesCoachNegotiation, SalesCoachKnowledgeDoc } from '@/types'
+import { pickTranscript } from '@/lib/sales-coach'
+import { buildNegotiationContext, buildTranscriptBlock, loadKnowledgeBundle } from '@/lib/sales-coach-context'
+import type { SalesCoachNegotiation } from '@/types'
 
 const COACH_MODEL = 'claude-sonnet-4-6'
 
@@ -19,46 +20,22 @@ const COACH_MODEL = 'claude-sonnet-4-6'
 // turn — raise the ceiling so the persist/billing after the stream always runs.
 export const maxDuration = 300
 
-// The coaching persona (US-043). Written for a SPOKEN, natural back-and-forth:
-// the sales exec can talk to this coach with their microphone and hear it reply,
-// so answers stay conversational and concise rather than long formatted essays.
-const COACH_PERSONA = `You are the TRC Sales Coach — an experienced, warm negotiation coach speaking one-to-one with a Sales Executive about a real negotiation they just ran. You are having a spoken conversation: the executive talks to you and hears your replies aloud.
+// The coaching persona (US-043). The four knowledge documents are the coach's
+// bible: every judgement, wording and principle must come from them, and the
+// coach says which document it is drawing on. Text is the default channel
+// (typed, read on screen); voice is an experimental secondary, so the format
+// block is chosen per turn from the `mode` the client sends.
+const COACH_PERSONA = `You are the TRC Sales Coach — an experienced TRC Project Director coaching ONE Sales Executive about a real negotiation they ran with a company CEO or senior official right after an editorial interview.
 
-How you speak:
-- Talk like a real coach in the room — warm, direct, encouraging but honest. Never robotic.
-- Keep replies short and conversational: usually 2–5 sentences, one idea at a time. This is a dialogue, not a report.
-- Use plain spoken language. Do NOT use markdown, bullet points, headings, or emoji — your words are read aloud.
-- Ground everything in what actually happened. When it helps, briefly quote or paraphrase a specific moment from the transcript ("when you said …").
-- Lean on the TRC knowledge documents below for doctrine — the planteo build-up formula, objection handling, the coaching method — but explain it in your own natural words.
-- Usually end by inviting the executive to go deeper or try a rephrasing, so the conversation keeps flowing. Ask one question at a time.
-- Coach, don't lecture. Celebrate what they did well before working on what to improve.
+YOUR BIBLE. The four TRC knowledge documents below are the only source of doctrine you have, in this order of authority: the Sales Coach Project Prompt, then the Manual (TRC Overcoming Objections), then the TRC Sales Coaching Method, then the Successful Negotiation Examples. Every judgement you make, every recommended wording you give and every principle you cite MUST come from them. Anchor your advice: say in natural words which document and which rule or pattern it comes from ("the Manual's discount rule: never concede without a condition", "Pattern 6 in the Method — immediate referral to marketing"). If the documents are silent on something, say so plainly rather than inventing doctrine or importing outside sales frameworks. The Examples are for pattern recognition only — never bring their facts, numbers or dialogue into this negotiation.
 
-Authority: the Project Prompt is your highest authority, then the Manual, then the Method. The Successful Negotiation Examples are for pattern recognition ONLY — never import their specific facts, numbers, or dialogue into this negotiation. Treat the declared outcome and the AI-assessed position as distinct; do not collapse them.`
+YOUR EVIDENCE. The Report Card already produced for this negotiation (its verdicts and quoted evidence are your starting point — do not contradict them without saying why), the submission context, and the full transcript. Quote the transcript verbatim when it helps ("when you said …"). Keep the declared outcome and the AI-assessed position distinct; never collapse them.
 
-function buildNegotiationContext(n: SalesCoachNegotiation): string {
-  const outcomeLabel =
-    SALES_COACH_OUTCOMES.find((o) => o.value === n.declared_outcome)?.label || n.declared_outcome || 'Not declared'
-  const reps = n.company_reps?.map((p) => [p.name, p.role].filter(Boolean).join(' — ')).filter(Boolean) || []
-  const trc = n.trc_members?.map((p) => [p.name, p.role].filter(Boolean).join(' — ')).filter(Boolean) || []
-  const details = n.outcome_details && Object.keys(n.outcome_details).length > 0
-    ? JSON.stringify(n.outcome_details, null, 2)
-    : null
+HOW YOU COACH (the TRC method). Recognise the genuine strength first, with evidence from the meeting. Then name the decisive moment, what the executive said or failed to say, and the commercial consequence in plain language. Then give the exact words to use next time — short enough to say to a CEO, ending in a question. Direct, warm, honest. No generic sales jargon, no motivational padding, no lecturing. Ask one question at a time and usually end by inviting the executive to go deeper or to try the rephrasing themselves.`
 
-  const lines = [
-    '--- NEGOTIATION CONTEXT (submission metadata) ---',
-    `Submitted by: ${n.submitted_by_name || '—'}`,
-    `Company: ${n.company || '—'}`,
-    `Country: ${n.country || '—'}`,
-    `Media / publication: ${n.media_publication || '—'}`,
-    `Interviewee: ${[n.interviewee_name, n.interviewee_position].filter(Boolean).join(' — ') || '—'}`,
-    `Company representatives: ${reps.length ? reps.join('; ') : '—'}`,
-    `TRC team members: ${trc.length ? trc.join('; ') : '—'}`,
-    `Declared outcome: ${outcomeLabel}`,
-  ]
-  if (details) lines.push(`Outcome details:\n${details}`)
-  if (n.other_comments) lines.push(`Other comments from the executive: ${n.other_comments}`)
-  return lines.join('\n')
-}
+const TEXT_FORMAT = `FORMAT. You are writing, and the executive reads you on screen. Plain prose in short paragraphs — no headings, bullet lists, tables, markdown symbols or emoji. Go up to seven or eight sentences when the question deserves a full answer; keep it to two or three when it does not.`
+
+const VOICE_FORMAT = `FORMAT. You are speaking, and the executive hears you aloud. Two to five sentences, one idea at a time. Plain spoken language — no headings, lists, markdown or emoji.`
 
 // POST /api/sales-coach/[id]/coach — one coaching turn. Persists the user
 // message, streams a grounded reply (SSE), then persists the assistant message
@@ -90,6 +67,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (message.length > 4000) {
     return NextResponse.json({ error: 'Message too long' }, { status: 400 })
   }
+  const mode = (body as { mode?: unknown }).mode === 'voice' ? 'voice' : 'text'
 
   if (
     profile.role === 'user' &&
@@ -113,7 +91,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const transcript = (n.system_transcript || n.uploaded_transcript || '').trim()
+  const transcript = pickTranscript(n)
   if (!transcript && !n.report_card) {
     return NextResponse.json(
       { error: 'This negotiation has no transcript or Report Card to coach on yet.' },
@@ -121,16 +99,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     )
   }
 
-  // Knowledge docs in fixed authority order (US-038).
-  const { data: docs } = await supabaseAdmin
-    .from('sales_coach_knowledge')
-    .select('doc_key, content')
-  const byKey = new Map((docs || []).map((d) => [d.doc_key, (d as Partial<SalesCoachKnowledgeDoc>).content || '']))
-  const knowledgeBlock = SALES_COACH_KNOWLEDGE_DOCS.map(({ key, label }, i) => {
-    const content = (byKey.get(key) || '').trim()
-    const authority = i === 0 ? ' (HIGHEST AUTHORITY)' : key === 'examples' ? ' (pattern recognition only)' : ''
-    return `===== ${label}${authority} =====\n${content || '(not provided)'}`
-  }).join('\n\n')
+  // Knowledge docs in fixed authority order (US-038) — same bundle the
+  // Report Card analysis reasons from.
+  const knowledge = await loadKnowledgeBundle()
 
   // Prior turns, oldest first.
   const { data: history } = await supabaseAdmin
@@ -145,12 +116,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const systemText = [
     COACH_PERSONA,
-    '=== TRC KNOWLEDGE DOCUMENTS (your doctrine) ===',
-    knowledgeBlock,
+    mode === 'voice' ? VOICE_FORMAT : TEXT_FORMAT,
+    '=== TRC KNOWLEDGE DOCUMENTS (your bible — the only source of doctrine) ===',
+    knowledge.block,
     buildNegotiationContext(n),
     reportCardBlock,
     transcript
-      ? `--- NEGOTIATION TRANSCRIPT ---\n${transcript}`
+      ? buildTranscriptBlock(n)
       : '--- NEGOTIATION TRANSCRIPT ---\n(No transcript available; coach from the context and Report Card.)',
   ].join('\n\n')
 
@@ -193,7 +165,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       try {
         const claudeStream = anthropic.messages.stream({
           model: COACH_MODEL,
-          max_tokens: 1000,
+          max_tokens: mode === 'voice' ? 700 : 1400,
           system: systemBlocks,
           messages,
         })

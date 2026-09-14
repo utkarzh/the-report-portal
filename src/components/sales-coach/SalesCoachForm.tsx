@@ -115,7 +115,9 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.id) throw new Error(data.error || 'Could not submit. Please try again.')
-      router.push(`/sales-coach/${data.id}`)
+      // `start=1` tells the workspace this tab just submitted, so it transcribes
+      // (if audio) and generates the Report Card without another click.
+      router.push(`/sales-coach/${data.id}?start=1`)
     } catch (err) {
       setPhase('error')
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')

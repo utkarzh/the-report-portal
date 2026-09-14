@@ -79,12 +79,16 @@ export default function MeetingPrepLoader({
   label,
   elapsedSecs,
   variant = 'research',
+  hints: hintsOverride,
 }: {
   label: string
   elapsedSecs: number
   variant?: Variant
+  // Callers outside meeting-prep (e.g. the Sales Coach Report Card) pass their
+  // own rotating hint lines instead of adding a variant here.
+  hints?: string[]
 }) {
-  const hints = HINTS[variant]
+  const hints = hintsOverride && hintsOverride.length > 0 ? hintsOverride : HINTS[variant]
   const hint = hints[Math.min(Math.floor(elapsedSecs / 6), hints.length - 1)]
 
   return (

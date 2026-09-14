@@ -5,22 +5,8 @@ import { Flag } from 'lucide-react'
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
-
-const STAGE_LABELS: Record<string, string> = {
-  draft: 'Draft',
-  transcribing: 'Transcribing',
-  transcribed: 'Ready to analyse',
-  analyzing: 'Analysing',
-  complete: 'Complete',
-  failed: 'Failed',
-}
-
-const OUTCOME_LABELS: Record<string, string> = {
-  signed: 'Signed on the spot',
-  retorno: 'Retorno',
-  lost: 'Lost',
-  uncertain: 'Uncertain',
-}
+import { SALES_COACH_STAGE_LABELS, formatScore, outcomeLabel } from '@/lib/sales-coach'
+import type { SalesCoachStage } from '@/types'
 
 interface Props {
   searchParams: { review?: string }
@@ -112,16 +98,16 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-700">{r.submitted_by_name || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{OUTCOME_LABELS[r.declared_outcome as string] || '—'}</td>
+                    <td className="px-4 py-3 text-gray-700">{outcomeLabel(r.declared_outcome)}</td>
                     <td className="px-4 py-3 text-gray-700">{r.ai_assessed_position || '—'}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900">
                       {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number'
-                        ? `${r.execution_score}/${r.execution_denominator}`
+                        ? formatScore(Number(r.execution_score), r.execution_denominator)
                         : '—'}
                     </td>
                     <td className="px-4 py-3">
                       <span className="rounded-full border border-[#e5e3df] bg-[#f7f6f3] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
-                        {STAGE_LABELS[r.stage] || r.stage}
+                        {SALES_COACH_STAGE_LABELS[r.stage as SalesCoachStage] || r.stage}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">

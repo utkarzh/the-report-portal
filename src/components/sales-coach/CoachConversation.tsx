@@ -23,23 +23,35 @@ interface SpeechRecognitionLike {
 }
 
 const GREETING =
-  "Tap the mic and just talk to me about this negotiation — ask why a moment scored the way it did, or say “walk me through my report card.” I'll answer out loud."
+  "Ask me anything about this negotiation. I've read your Report Card, the full transcript and the four TRC knowledge documents — every answer comes from them."
+
+// One-tap openers shown before the first message.
+const STARTERS = [
+  'Walk me through my Report Card.',
+  'Where exactly did I lose control of the negotiation?',
+  'What should I have said at the decisive moment? Give me the TRC wording.',
+  'Which TRC principle applies to the objection I handled worst?',
+]
 
 export default function CoachConversation({
   negotiationId,
   initialMessages,
   canCoach,
+  context,
 }: {
   negotiationId: string
   initialMessages: SalesCoachMessage[]
   canCoach: boolean
+  // What the coach has been given — shown as a strip so the executive can
+  // see the conversation is grounded, not generic.
+  context?: { hasReportCard: boolean; transcriptWords: number }
 }) {
   const [messages, setMessages] = useState<Msg[]>(
     initialMessages.map((m) => ({ role: m.role, content: m.content })),
   )
   const [streaming, setStreaming] = useState('')
   const [phase, setPhase] = useState<Phase>('idle')
-  const [mode, setMode] = useState<'voice' | 'text'>('voice')
+  const [mode, setMode] = useState<'voice' | 'text'>('text')
   const [input, setInput] = useState('')
   const [interim, setInterim] = useState('')
   const [muted, setMuted] = useState(false)
@@ -54,6 +66,7 @@ export default function CoachConversation({
   const busyRef = useRef(false)
   const mutedRef = useRef(muted)
   const handsFreeRef = useRef(handsFree)
+  const modeRef = useRef(mode)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playChainRef = useRef<Promise<void>>(Promise.resolve())
@@ -68,6 +81,7 @@ export default function CoachConversation({
 
   useEffect(() => { mutedRef.current = muted }, [muted])
   useEffect(() => { handsFreeRef.current = handsFree }, [handsFree])
+  useEffect(() => { modeRef.current = mode }, [mode])
 
   const scroll = useStickToBottom<HTMLDivElement>(messages.length + streaming.length + interim.length)
 
@@ -133,7 +147,7 @@ export default function CoachConversation({
   }, [])
 
   const enqueueSpeech = useCallback((chunk: string) => {
-    if (mutedRef.current || !chunk.trim()) return
+    if (modeRef.current !== 'voice' || mutedRef.current || !chunk.trim()) return
     speakingCountRef.current += 1
     setPhase('speaking')
     // Fetch the audio in parallel; play strictly in order via the chain.
@@ -246,7 +260,7 @@ export default function CoachConversation({
       const res = await fetch(`/api/sales-coach/${negotiationId}/coach`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: clean }),
+        body: JSON.stringify({ message: clean, mode: modeRef.current }),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -317,51 +331,86 @@ export default function CoachConversation({
     phase === 'listening' ? 'Listening…'
     : phase === 'thinking' ? 'Thinking…'
     : phase === 'speaking' ? 'Speaking…'
-    : sttSupported ? 'Tap to talk' : 'Type your message'
+    : 'Tap to talk'
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-[#e5e3df] bg-white">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
       <style>{orbStyles}</style>
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-[#eceae5] px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eceae5] px-5 py-3.5">
         <div className="flex items-center gap-2.5">
           <div className="rounded-lg bg-black p-1.5 text-white"><Sparkles size={14} /></div>
           <div>
             <p className="text-sm font-semibold text-gray-900">Coaching conversation</p>
-            <p className="text-[11px] text-gray-400">Grounded in your transcript, report card &amp; TRC method</p>
+            <p className="text-[11px] text-gray-400">Every answer is grounded in the TRC knowledge documents, your Report Card and the transcript</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <ToggleChip active={handsFree} onClick={() => setHandsFree((v) => !v)} title="Keep the mic open between turns" disabled={mode === 'text' || !sttSupported}>
-            <Radio size={13} /> Hands-free
+          {mode === 'voice' && (
+            <>
+              <ToggleChip active={handsFree} onClick={() => setHandsFree((v) => !v)} title="Keep the mic open between turns">
+                <Radio size={13} /> Hands-free
+              </ToggleChip>
+              <IconToggle active={!muted} onClick={() => { const next = !muted; setMuted(next); if (next) stopSpeaking() }} title={muted ? 'Unmute the coach' : 'Mute the coach'}>
+                {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+              </IconToggle>
+            </>
+          )}
+          <ToggleChip
+            active={mode === 'voice'}
+            onClick={() => { setMode((m) => (m === 'voice' ? 'text' : 'voice')); stopEverything() }}
+            title={sttSupported ? 'Talk to the coach and hear it reply (experimental)' : 'Voice needs a browser with speech recognition'}
+            disabled={!sttSupported}
+          >
+            <Mic size={13} /> Voice <span className="rounded bg-white/20 px-1 text-[9px] uppercase tracking-wider opacity-80">experimental</span>
           </ToggleChip>
-          <IconToggle active={!muted} onClick={() => { const next = !muted; setMuted(next); if (next) stopSpeaking() }} title={muted ? 'Unmute the coach' : 'Mute the coach'}>
-            {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-          </IconToggle>
-          <IconToggle active={mode === 'text'} onClick={() => { setMode((m) => (m === 'voice' ? 'text' : 'voice')); stopEverything() }} title="Switch to typing" disabled={!sttSupported && mode === 'text'}>
-            <MessageSquare size={15} />
-          </IconToggle>
         </div>
       </div>
+
+      {/* What the coach has read */}
+      {context && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-[#eceae5] bg-[#faf9f7] px-5 py-2.5">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Coach has read</span>
+          <ContextChip ok={context.hasReportCard}>Report Card</ContextChip>
+          <ContextChip ok={context.transcriptWords > 0}>Transcript{context.transcriptWords > 0 ? ` · ${context.transcriptWords.toLocaleString()} words` : ''}</ContextChip>
+          <ContextChip ok>TRC Project Prompt · Manual · Method · Examples</ContextChip>
+        </div>
+      )}
 
       {/* Transcript */}
       <div
         ref={scroll.ref}
         onScroll={scroll.onScroll}
         onWheel={scroll.onWheel}
-        className="min-h-[280px] max-h-[52vh] overflow-y-auto px-5 py-5"
+        className="min-h-[420px] max-h-[62vh] overflow-y-auto px-5 py-5"
       >
         {messages.length === 0 && !streaming && (
-          <div className="mx-auto max-w-md py-8 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f2f1ec] text-gray-500"><AudioLines size={22} /></div>
-            <p className="text-sm leading-6 text-gray-500">{GREETING}</p>
+          <div className="mx-auto max-w-xl py-6 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f2f1ec] text-gray-500"><MessageSquare size={20} /></div>
+            <p className="text-sm leading-6 text-gray-600">{GREETING}</p>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              {STARTERS.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => send(q)}
+                  disabled={!canCoach || phase === 'thinking'}
+                  className="rounded-xl border border-[#e5e3df] bg-white px-4 py-3 text-left text-xs leading-5 text-gray-700 transition-colors hover:border-[#c8973f]/50 hover:bg-[#fcfbf8] disabled:opacity-50"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
         <div className="space-y-4">
           {messages.map((m, i) => <Bubble key={i} role={m.role} content={m.content} />)}
           {streaming && <Bubble role="assistant" content={streaming} streaming />}
+          {phase === 'thinking' && !streaming && (
+            <div className="flex justify-start"><div className="rounded-2xl border border-[#e9e7e2] bg-[#f7f6f3] px-4 py-2.5 text-sm text-gray-400">Thinking…</div></div>
+          )}
         </div>
       </div>
 
@@ -382,16 +431,12 @@ export default function CoachConversation({
                 : phase === 'speaking' ? <AudioLines size={26} className="relative z-10" />
                 : <Mic size={26} className="relative z-10" />}
             </button>
-
             <div className="min-h-[20px] text-center">
               {phase === 'listening' && interim
                 ? <p className="max-w-md text-sm text-gray-700">{interim}</p>
                 : <p className="text-xs font-medium uppercase tracking-widest text-gray-400">{statusLabel}</p>}
             </div>
-
-            {!canCoach && (
-              <p className="text-center text-xs text-gray-400">Coaching opens once this negotiation has a transcript or Report Card.</p>
-            )}
+            <p className="text-center text-[11px] text-gray-400">Voice is experimental. Switch back to typing any time.</p>
           </div>
         ) : (
           <form onSubmit={submitText} className="flex items-end gap-2">
@@ -399,10 +444,10 @@ export default function CoachConversation({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.trim()) send(input) } }}
-              placeholder={canCoach ? 'Ask the coach anything about this negotiation…' : 'Coaching opens once a transcript or Report Card exists.'}
-              disabled={!canCoach || busyRef.current}
-              rows={1}
-              className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-[#e5e3df] bg-white px-3.5 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400 disabled:opacity-50"
+              placeholder={canCoach ? 'Ask the coach anything about this negotiation… (Enter to send, Shift+Enter for a new line)' : 'Coaching opens once the Report Card exists.'}
+              disabled={!canCoach || phase === 'thinking'}
+              rows={2}
+              className="max-h-40 min-h-[56px] flex-1 resize-none rounded-xl border border-[#e5e3df] bg-white px-3.5 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400 disabled:opacity-50"
             />
             <button
               type="submit"
@@ -415,6 +460,14 @@ export default function CoachConversation({
         )}
       </div>
     </div>
+  )
+}
+
+function ContextChip({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${ok ? 'bg-white text-gray-700 ring-1 ring-[#e5e3df]' : 'bg-stone-100 text-stone-400'}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-stone-300'}`} />{children}
+    </span>
   )
 }
 
