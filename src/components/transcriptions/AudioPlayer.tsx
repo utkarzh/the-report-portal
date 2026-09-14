@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Loader2 } from 'lucide-react'
 
 const SPEEDS = [1, 1.25, 1.5, 1.75, 2] as const
@@ -29,8 +29,28 @@ function fmt(secs: number): string {
 //  3. A pending seek needs visible feedback, otherwise waiting on the network
 //     reads as a frozen page. `waiting`/`seeking` drive a spinner, and the
 //     downloaded range is drawn behind the progress fill.
-export default function AudioPlayer({ src }: { src: string }) {
+// Imperative handle so a parent can drive playback from OUTSIDE this
+// component — a clickable transcript timestamp, a Report Card evidence quote —
+// without lifting all of the player's internal seek/buffering state up.
+export interface AudioPlayerHandle {
+  seekTo: (seconds: number) => void
+  play: () => void
+  pause: () => void
+}
+
+interface AudioPlayerProps {
+  src: string
+  // Fired at most a few times a second (not on every `timeupdate`) with the
+  // current playback position, so a parent can highlight "what's playing now"
+  // (e.g. the active transcript line) without re-rendering on every frame.
+  onTimeUpdate?: (seconds: number) => void
+}
+
+const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(function AudioPlayer({ src, onTimeUpdate }, ref) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const onTimeUpdateRef = useRef(onTimeUpdate)
+  onTimeUpdateRef.current = onTimeUpdate
+  const lastReportedRef = useRef(0)
 
   // The audio element's `src` is pinned at mount. The page is `force-dynamic` and
   // mints a fresh signed URL on every render, so passing `src` straight through
@@ -75,6 +95,13 @@ export default function AudioPlayer({ src }: { src: string }) {
       // Ignore while scrubbing / mid-seek — see (2) above.
       if (overrideRef.current !== null) return
       setCurrent(el.currentTime)
+      // Throttled to ~4/s — plenty for highlighting a transcript line, far
+      // fewer re-renders than the browser's native timeupdate rate.
+      const now = performance.now()
+      if (now - lastReportedRef.current >= 250) {
+        lastReportedRef.current = now
+        onTimeUpdateRef.current?.(el.currentTime)
+      }
     }
     const onMeta = () => {
       setDuration(Number.isFinite(el.duration) ? el.duration : 0)
@@ -179,6 +206,12 @@ export default function AudioPlayer({ src }: { src: string }) {
     },
     [duration, setOv],
   )
+
+  useImperativeHandle(ref, () => ({
+    seekTo: (seconds: number) => commitSeek(seconds),
+    play: () => { void audioRef.current?.play().catch(() => {}) },
+    pause: () => audioRef.current?.pause(),
+  }), [commitSeek])
 
   // Release anywhere ends the drag, not just over the slider.
   useEffect(() => {
@@ -353,4 +386,6 @@ export default function AudioPlayer({ src }: { src: string }) {
       )}
     </div>
   )
-}
+})
+
+export default AudioPlayer

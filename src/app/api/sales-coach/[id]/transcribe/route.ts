@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { SALES_COACH_AUDIO_BUCKET } from '@/lib/sales-coach'
-import { submitTranscript, getTranscript, formatSpeakerTranscript } from '@/lib/assemblyai/client'
+import { submitTranscript, getTranscript, formatSpeakerTranscript, utteranceSegments } from '@/lib/assemblyai/client'
 
 export const runtime = 'nodejs'
 
@@ -102,9 +102,15 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
     if (job.status === 'completed') {
       const text = formatSpeakerTranscript(job)
+      const segments = utteranceSegments(job)
       await supabaseAdmin
         .from('sales_coach_negotiations')
-        .update({ stage: 'transcribed', system_transcript: text, error: null })
+        .update({
+          stage: 'transcribed',
+          system_transcript: text,
+          system_transcript_segments: segments.length > 0 ? segments : null,
+          error: null,
+        })
         .eq('id', row!.id)
       return NextResponse.json({ status: 'completed', text })
     }

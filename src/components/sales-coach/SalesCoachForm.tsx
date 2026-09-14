@@ -64,6 +64,16 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
     if (inputMode === 'audio' && !audioFile) { setError('Upload the audio recording, or switch to “Paste transcript”.'); return }
     if (inputMode === 'transcript' && !transcript.trim()) { setError('Paste the transcript, or switch to “Upload audio”.'); return }
 
+    // Required contextual fields — Company is the one exception, since it can
+    // still be filled from the recording's filename (checked server-side).
+    const missing: string[] = []
+    if (!ctx.country.trim()) missing.push('Country')
+    if (!ctx.mediaPublication.trim()) missing.push('Media / Publication')
+    if (!ctx.company.trim() && !(inputMode === 'audio' && audioFile)) missing.push('Company')
+    if (!ctx.intervieweeName.trim()) missing.push('Interviewee name')
+    if (!ctx.intervieweePosition.trim()) missing.push('Interviewee position')
+    if (missing.length > 0) { setError(`Please fill in: ${missing.join(', ')}`); return }
+
     // Outcome-conditional required fields (US-036).
     if (outcome === 'signed' && (!details.space || !details.price || !details.currency)) {
       setError('For “Signed on the spot”, enter the space/product, price and currency.'); return
@@ -141,11 +151,11 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
           This information helps the coach identify the participants, understand the commercial context and interpret the audio accurately.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <Input label="Country" value={ctx.country} onChange={(e) => setC('country', e.target.value)} placeholder="e.g. Italy" />
-          <Input label="Media / Publication" value={ctx.mediaPublication} onChange={(e) => setC('mediaPublication', e.target.value)} placeholder="e.g. Die Welt" />
-          <Input label="Company" value={ctx.company} onChange={(e) => setC('company', e.target.value)} placeholder="e.g. Acme Corp" />
-          <Input label="Interviewee name" value={ctx.intervieweeName} onChange={(e) => setC('intervieweeName', e.target.value)} placeholder="e.g. Jane Doe" />
-          <Input label="Interviewee position" value={ctx.intervieweePosition} onChange={(e) => setC('intervieweePosition', e.target.value)} placeholder="e.g. CEO" />
+          <Input label="Country *" value={ctx.country} onChange={(e) => setC('country', e.target.value)} placeholder="e.g. Italy" />
+          <Input label="Media / Publication *" value={ctx.mediaPublication} onChange={(e) => setC('mediaPublication', e.target.value)} placeholder="e.g. Die Welt" />
+          <Input label="Company *" value={ctx.company} onChange={(e) => setC('company', e.target.value)} placeholder="e.g. Acme Corp (or leave blank to use the recording's filename)" />
+          <Input label="Interviewee name *" value={ctx.intervieweeName} onChange={(e) => setC('intervieweeName', e.target.value)} placeholder="e.g. Jane Doe" />
+          <Input label="Interviewee position *" value={ctx.intervieweePosition} onChange={(e) => setC('intervieweePosition', e.target.value)} placeholder="e.g. CEO" />
         </div>
 
         <ParticipantList

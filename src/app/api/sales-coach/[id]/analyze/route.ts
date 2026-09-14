@@ -16,6 +16,7 @@ import {
   REPORT_CARD_OUTPUT_SCHEMA,
   applicabilityInstruction,
   applyDiscrepancyRules,
+  attachEvidenceTimestamps,
   pickTranscript,
   renderReportCardMarkdown,
   validateReportCard,
@@ -242,7 +243,11 @@ export async function POST(_request: NextRequest, { params }: Params) {
           return
         }
 
-        const card = applyDiscrepancyRules(result.normalized)
+        // Link each evidence quote to the moment it was said, when the
+        // transcript has structured segments (AssemblyAI audio, not a pasted
+        // transcript) and the quote can be matched confidently.
+        const withDiscrepancy = applyDiscrepancyRules(result.normalized)
+        const card = attachEvidenceTimestamps(withDiscrepancy, n.system_transcript_segments)
         const markdown = renderReportCardMarkdown(card)
         const uvCriteria = card.criteria.filter((c) => c.verdict === 'uv').map((c) => c.key)
 

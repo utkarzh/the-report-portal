@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getTranscript, formatSpeakerTranscript } from './client'
+import { getTranscript, formatSpeakerTranscript, utteranceSegments } from './client'
 
 // Server-side safety net for the AssemblyAI async job model.
 //
@@ -77,9 +77,15 @@ export async function reconcilePendingNegotiations(opts: { userId?: string; id?:
       try {
         const job = await getTranscript(r.transcribe_job_id as string)
         if (job.status === 'completed') {
+          const segments = utteranceSegments(job)
           await supabaseAdmin
             .from('sales_coach_negotiations')
-            .update({ stage: 'transcribed', system_transcript: formatSpeakerTranscript(job), error: null })
+            .update({
+              stage: 'transcribed',
+              system_transcript: formatSpeakerTranscript(job),
+              system_transcript_segments: segments.length > 0 ? segments : null,
+              error: null,
+            })
             .eq('id', r.id)
         } else if (job.status === 'error') {
           await supabaseAdmin

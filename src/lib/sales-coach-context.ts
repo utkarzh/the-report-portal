@@ -78,6 +78,9 @@ export function buildNegotiationContext(n: SalesCoachNegotiation): string {
   ]
   for (const row of details) lines.push(`  ${row.label}: ${row.value}`)
   if (n.other_comments) lines.push(`Other comments from the executive: ${n.other_comments}`)
+  // Original filename, for context only — never overrides the typed Company
+  // field above, which the code already prioritised when the row was created.
+  if (n.original_filename) lines.push(`Original recording filename: ${n.original_filename}`)
   return lines.join('\n')
 }
 

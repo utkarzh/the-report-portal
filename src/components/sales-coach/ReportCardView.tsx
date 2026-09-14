@@ -1,7 +1,7 @@
 'use client'
 
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Flag, Quote, MessageCircleQuestion } from 'lucide-react'
-import { formatScore, outcomeLabel, SALES_COACH_CRITERIA, positionHeadline, applicableCriteriaCount } from '@/lib/sales-coach'
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Flag, Quote, MessageCircleQuestion, Play } from 'lucide-react'
+import { formatScore, outcomeLabel, SALES_COACH_CRITERIA, positionHeadline, applicableCriteriaCount, formatTimestamp } from '@/lib/sales-coach'
 import type { SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict } from '@/types'
 
 // The Report Card as ONE document (US-039/040/041): identity header →
@@ -40,7 +40,7 @@ export interface ReportCardMeta {
   modelUsed?: string | null
 }
 
-export default function ReportCardView({ card, meta, isAdmin = false }: { card: SalesCoachReportCard; meta: ReportCardMeta; isAdmin?: boolean }) {
+export default function ReportCardView({ card, meta, isAdmin = false, onTimestampClick }: { card: SalesCoachReportCard; meta: ReportCardMeta; isAdmin?: boolean; onTimestampClick?: (ms: number) => void }) {
   const scored = card.criteria.filter((c) => c.scored)
   const count = (v: SalesCoachVerdict) => scored.filter((c) => c.verdict === v).length
 
@@ -115,7 +115,7 @@ export default function ReportCardView({ card, meta, isAdmin = false }: { card: 
         <Eyebrow>Criteria</Eyebrow>
         <ol className="divide-y divide-[#eceae5] border-y border-[#eceae5]">
           {card.criteria.map((c, i) => (
-            <CriterionRow key={c.key} index={i + 1} criterion={c} assessedPosition={card.assessed_position} />
+            <CriterionRow key={c.key} index={i + 1} criterion={c} assessedPosition={card.assessed_position} onTimestampClick={onTimestampClick} />
           ))}
         </ol>
 
@@ -147,7 +147,7 @@ export default function ReportCardView({ card, meta, isAdmin = false }: { card: 
                   <Quote size={15} className="mt-1 flex-shrink-0 text-[#a07530]" />
                   <p className="text-sm font-medium leading-6 text-gray-900">{o.objection}</p>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-gray-800"><span className="font-semibold text-gray-900">How the representative handled it. </span>{o.handled}</p>
+                <p className="mt-2 text-sm leading-6 text-gray-800"><span className="font-semibold text-gray-900">How you handled it. </span>{o.handled}</p>
                 {(o.original_wording || o.trc_improved_response) && (
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     {o.original_wording && (
@@ -199,7 +199,7 @@ function Eyebrow({ children, className = '' }: { children: React.ReactNode; clas
   return <p className={`mb-3 text-[10px] font-semibold uppercase tracking-[0.25em] text-gray-400 ${className}`}>{children}</p>
 }
 
-function CriterionRow({ index, criterion: c, assessedPosition }: { index: number; criterion: SalesCoachCriterion; assessedPosition: string }) {
+function CriterionRow({ index, criterion: c, assessedPosition, onTimestampClick }: { index: number; criterion: SalesCoachCriterion; assessedPosition: string; onTimestampClick?: (ms: number) => void }) {
   const style = VERDICT[c.verdict]
   const label = SALES_COACH_CRITERIA.find((k) => k.key === c.key)?.label || c.label
   const isOutcome = c.key === 'outcome' && c.scored
@@ -227,7 +227,19 @@ function CriterionRow({ index, criterion: c, assessedPosition }: { index: number
         <div className="mt-3 flex flex-col gap-2 sm:pl-8">
           {c.evidence?.map((e, i) => (
             <div key={i} className="border-l-2 border-[#c8973f]/60 pl-3.5">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{e.label}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{e.label}</p>
+                {e.time_ms !== undefined && onTimestampClick && (
+                  <button
+                    type="button"
+                    onClick={() => onTimestampClick(e.time_ms!)}
+                    title="Play from here"
+                    className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-mono text-[10px] font-medium tabular-nums text-gray-500 ring-1 ring-[#e5e3df] transition-colors hover:bg-black hover:text-white hover:ring-black"
+                  >
+                    <Play size={8} className="fill-current" />{formatTimestamp(e.time_ms)}
+                  </button>
+                )}
+              </div>
               <p className="mt-0.5 text-sm italic leading-6 text-gray-700">{e.text}</p>
             </div>
           ))}

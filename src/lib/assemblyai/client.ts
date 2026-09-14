@@ -25,6 +25,8 @@ function apiKey(): string {
 export interface AssemblyUtterance {
   speaker: string // 'A', 'B', 'C', ...
   text: string
+  start: number // ms from the start of the recording
+  end: number   // ms
 }
 
 export interface AssemblyTranscript {
@@ -76,7 +78,7 @@ export async function getTranscript(jobId: string): Promise<AssemblyTranscript> 
     id: string
     status: AssemblyTranscript['status']
     text?: string | null
-    utterances?: { speaker: string; text: string }[] | null
+    utterances?: { speaker: string; text: string; start?: number; end?: number }[] | null
     error?: string | null
   }
 
@@ -85,10 +87,27 @@ export async function getTranscript(jobId: string): Promise<AssemblyTranscript> 
     status: data.status,
     text: data.text ?? null,
     utterances: Array.isArray(data.utterances)
-      ? data.utterances.map((u) => ({ speaker: u.speaker, text: u.text }))
+      ? data.utterances.map((u) => ({ speaker: u.speaker, text: u.text, start: u.start ?? 0, end: u.end ?? 0 }))
       : null,
     error: data.error ?? null,
   }
+}
+
+// A single diarized utterance with its position in the recording (ms). This is
+// the structured twin of formatSpeakerTranscript() below — callers that need
+// to seek audio to a specific line (Sales Coach's transcript player, its
+// Report Card evidence citations) use this; callers that just need readable
+// text (everything else) use formatSpeakerTranscript().
+export interface TranscriptSegment {
+  speaker: string
+  start_ms: number
+  end_ms: number
+  text: string
+}
+
+export function utteranceSegments(t: AssemblyTranscript): TranscriptSegment[] {
+  if (!t.utterances) return []
+  return t.utterances.map((u) => ({ speaker: u.speaker, start_ms: u.start, end_ms: u.end, text: u.text.trim() }))
 }
 
 // Turn a completed transcript into speaker-labelled text. When utterances are

@@ -760,6 +760,22 @@ export interface SalesCoachEvidence {
   // "Quote", "Offer quoted", "Leading question quoted", "Subsequent conduct", ...
   label: string
   text: string
+  // Set in code (never by the model) by matching this quote against
+  // system_transcript_segments — where the AI is sure enough to expect the
+  // reader to click it. Absent when there's no audio, no segments, or no
+  // confident match.
+  time_ms?: number
+}
+
+// One diarized line of the AssemblyAI transcript, with its position in the
+// recording (ms) — lets the transcript panel and Report Card evidence link
+// straight to that moment in the audio. Mirrors assemblyai/client.ts's
+// TranscriptSegment; duplicated here so this file has no server-only import.
+export interface SalesCoachTranscriptSegment {
+  speaker: string
+  start_ms: number
+  end_ms: number
+  text: string
 }
 
 export interface SalesCoachCriterion {
@@ -840,6 +856,7 @@ export interface SalesCoachNegotiation {
   transcribe_job_id: string | null
   uploaded_transcript: string | null
   system_transcript: string | null
+  system_transcript_segments: SalesCoachTranscriptSegment[] | null
   declared_outcome: SalesCoachOutcome | null
   outcome_details: Record<string, unknown>
   report_card: SalesCoachReportCard | null

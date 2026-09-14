@@ -3,15 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Building2, Globe2, Newspaper, UserRound, Users, Mic, FileText, Copy, Check, Maximize2, Minimize2,
-  Sparkles, RefreshCw, AlertCircle, CalendarDays, Flag, Download, Loader2, ClipboardList, MessageSquare,
+  Building2, Globe2, Newspaper, UserRound, Users, Mic, Copy, Check,
+  Sparkles, RefreshCw, AlertCircle, CalendarDays, Flag, Download, Loader2, ClipboardList, MessageSquare, FileText,
 } from 'lucide-react'
-import AudioPlayer from '@/components/transcriptions/AudioPlayer'
+import AudioPlayer, { type AudioPlayerHandle } from '@/components/transcriptions/AudioPlayer'
 import MeetingPrepLoader from '@/components/meeting-prep/MeetingPrepLoader'
 import CoachConversation from '@/components/sales-coach/CoachConversation'
 import ReportCardView from '@/components/sales-coach/ReportCardView'
 import ManagementReviewPanel from '@/components/sales-coach/ManagementReviewPanel'
-import { useStickToBottom } from '@/lib/use-stick-to-bottom'
+import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
 import { formatOutcomeDetails, formatScore, outcomeLabel, pickTranscript, reviewStatus } from '@/lib/sales-coach'
 import type { SalesCoachNegotiation, SalesCoachMessage } from '@/types'
@@ -19,7 +19,7 @@ import type { SalesCoachNegotiation, SalesCoachMessage } from '@/types'
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 type Busy = null | 'transcribing' | 'analyzing'
-type Tab = 'card' | 'coach' | 'submission'
+type Tab = 'card' | 'transcript' | 'coach' | 'submission'
 type StepState = 'done' | 'active' | 'error' | 'upcoming'
 
 const ANALYSIS_HINTS = [
@@ -62,6 +62,20 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
   )
   const [elapsedSecs, setElapsedSecs] = useState(0)
   const [tab, setTab] = useState<Tab>('card')
+  const audioRef = useRef<AudioPlayerHandle>(null)
+  // Current audio position (ms) — drives the highlighted transcript line.
+  const [activeMs, setActiveMs] = useState(0)
+  // A clicked timestamp — in the transcript or in a Report Card evidence quote
+  // — jumps to that moment and starts playing immediately, and switches to
+  // the Transcript tab so the line being played is visible.
+  const seekAndPlay = useCallback((ms: number) => {
+    audioRef.current?.seekTo(ms / 1000)
+    audioRef.current?.play()
+  }, [])
+  const jumpToTranscript = useCallback((ms: number) => {
+    setTab('transcript')
+    seekAndPlay(ms)
+  }, [seekAndPlay])
   const startedRef = useRef(false)
   const autoStartRef = useRef(autoStart)
 
@@ -291,6 +305,11 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
           </div>
         </div>
         <Stepper steps={steps} />
+        {audioUrl && (
+          <div className="border-t border-[#eceae5] px-6 py-4">
+            <AudioPlayer ref={audioRef} src={audioUrl} onTimeUpdate={(secs) => setActiveMs(secs * 1000)} />
+          </div>
+        )}
         {isAdmin && (n.tokens_total > 0 || Number(n.cost_usd) > 0) && (
           <div className="flex items-center gap-4 border-t border-[#eceae5] px-6 py-2.5 text-[11px] text-gray-400">
             <span>AI cost <span className="font-medium text-gray-700">{formatCost(Number(n.cost_usd))}</span></span>
@@ -348,15 +367,25 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
               <Sparkles size={15} /> Generate Report Card
             </button>
           </div>
-          <SubmissionPanel n={n} audioUrl={audioUrl} transcript={transcript} />
+          <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+            <TranscriptPlayer
+              segments={n.system_transcript_segments}
+              fallbackText={transcript.text}
+              source={transcript.source}
+              activeMs={audioUrl ? activeMs : undefined}
+              onTimestampClick={audioUrl ? seekAndPlay : undefined}
+            />
+          </div>
+          <SubmissionPanel n={n} />
         </>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-1 rounded-xl border border-[#e5e3df] bg-white p-1 text-xs font-medium shadow-sm">
               <TabButton active={tab === 'card'} onClick={() => setTab('card')} icon={<Sparkles size={13} />} label="Report Card" />
+              <TabButton active={tab === 'transcript'} onClick={() => setTab('transcript')} icon={<FileText size={13} />} label="Transcript" />
               <TabButton active={tab === 'coach'} onClick={() => setTab('coach')} icon={<MessageSquare size={13} />} label="Coaching" />
-              <TabButton active={tab === 'submission'} onClick={() => setTab('submission')} icon={<ClipboardList size={13} />} label="Submission & transcript" />
+              <TabButton active={tab === 'submission'} onClick={() => setTab('submission')} icon={<ClipboardList size={13} />} label="Submission" />
             </div>
             {tab === 'card' && (
               <div className="flex items-center gap-2">
@@ -374,8 +403,19 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
           {tab === 'card' && n.report_card && (
             <>
               {isAdmin && n.management_review && <ManagementReviewPanel negotiation={n} onUpdated={setN} />}
-              <ReportCardView card={n.report_card} meta={meta} isAdmin={isAdmin} />
+              <ReportCardView card={n.report_card} meta={meta} isAdmin={isAdmin} onTimestampClick={audioUrl ? jumpToTranscript : undefined} />
             </>
+          )}
+          {tab === 'transcript' && (
+            <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+              <TranscriptPlayer
+                segments={n.system_transcript_segments}
+                fallbackText={transcript.text}
+                source={transcript.source}
+                activeMs={audioUrl ? activeMs : undefined}
+                onTimestampClick={audioUrl ? seekAndPlay : undefined}
+              />
+            </div>
           )}
           {tab === 'coach' && (
             <CoachConversation
@@ -385,7 +425,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
               context={{ hasReportCard: true, transcriptWords: transcript.text.split(/\s+/).filter(Boolean).length }}
             />
           )}
-          {tab === 'submission' && <SubmissionPanel n={n} audioUrl={audioUrl} transcript={transcript} open />}
+          {tab === 'submission' && <SubmissionPanel n={n} open />}
         </>
       )}
     </div>
@@ -450,7 +490,7 @@ function CopyTextButton({ text }: { text: string | null }) {
   )
 }
 
-function SubmissionPanel({ n, audioUrl, transcript, open = false }: { n: SalesCoachNegotiation; audioUrl: string | null; transcript: { text: string; source: 'system' | 'uploaded' } | null; open?: boolean }) {
+function SubmissionPanel({ n, open = false }: { n: SalesCoachNegotiation; open?: boolean }) {
   const [expanded, setExpanded] = useState(open)
   const details = formatOutcomeDetails(n.declared_outcome, n.outcome_details)
   const reps = (n.company_reps || []).filter((p) => p.name || p.role)
@@ -501,10 +541,6 @@ function SubmissionPanel({ n, audioUrl, transcript, open = false }: { n: SalesCo
               <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-gray-700">{n.other_comments}</p>
             </div>
           )}
-          <div className="mt-6 border-t border-[#eceae5] pt-6">
-            {audioUrl ? <div className="mb-5"><AudioPlayer src={audioUrl} /></div> : n.audio_path ? <p className="mb-5 text-sm text-gray-400">Audio preview unavailable.</p> : null}
-            <TranscriptPanel text={transcript?.text ?? null} source={transcript?.source ?? null} />
-          </div>
         </div>
       )}
     </div>
@@ -536,43 +572,6 @@ function ParticipantChips({ label, people }: { label: string; people: { name: st
           ))}
         </div>
       )}
-    </div>
-  )
-}
-
-function TranscriptPanel({ text, source }: { text: string | null; source: 'system' | 'uploaded' | null }) {
-  const [expanded, setExpanded] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const scroll = useStickToBottom<HTMLDivElement>(text?.length ?? 0)
-  const words = text ? text.split(/\s+/).filter(Boolean).length : 0
-
-  return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
-          <FileText size={13} /> Transcript
-          {source && (
-            <span className="rounded-full bg-[#f2f1ec] px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-gray-500">
-              {source === 'system' ? 'Transcribed with speaker labels' : 'Uploaded by the executive'}{words > 0 ? ` · ${words.toLocaleString()} words` : ''}
-            </span>
-          )}
-        </p>
-        {text && (
-          <div className="flex items-center gap-1">
-            <button onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch {} }} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900">
-              {copied ? <Check size={13} /> : <Copy size={13} />}<span>{copied ? 'Copied' : 'Copy'}</span>
-            </button>
-            <button onClick={() => setExpanded((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900">
-              {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}<span>{expanded ? 'Collapse' : 'Expand'}</span>
-            </button>
-          </div>
-        )}
-      </div>
-      <div className="mt-3 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
-        <div ref={scroll.ref} onScroll={scroll.onScroll} onWheel={scroll.onWheel} className={`scroll-fade min-h-[120px] overflow-y-auto whitespace-pre-wrap px-5 py-4 text-sm leading-7 text-gray-700 ${expanded ? 'max-h-none' : 'max-h-[440px]'}`}>
-          {text || <p className="text-sm text-gray-400">No transcript yet.</p>}
-        </div>
-      </div>
     </div>
   )
 }

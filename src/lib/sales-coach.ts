@@ -10,6 +10,7 @@ import type {
   SalesCoachEvidence,
   SalesCoachObjection,
   SalesCoachAnalysisSection,
+  SalesCoachTranscriptSegment,
 } from '@/types'
 
 // Isomorphic helpers for the Sales Negotiation Coach module — safe to import
@@ -237,6 +238,87 @@ export function pickTranscript(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Clickable transcript timestamps
+// ────────────────────────────────────────────────────────────────────────────
+
+// mm:ss (or h:mm:ss past the hour) for a millisecond offset.
+export function formatTimestamp(ms: number): string {
+  const totalSecs = Math.max(0, Math.round(ms / 1000))
+  const h = Math.floor(totalSecs / 3600)
+  const m = Math.floor((totalSecs % 3600) / 60)
+  const s = totalSecs % 60
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
+  return (h > 0 ? `${h}:${mm}` : mm) + ':' + String(s).padStart(2, '0')
+}
+
+// Strip quote marks/punctuation and collapse whitespace so a model-written
+// quote can be compared against the raw AssemblyAI text underneath it — the
+// two are rarely byte-identical (smart quotes, an ellipsis the model added,
+// a trailing gloss in brackets).
+function normalizeForMatch(text: string): string {
+  return text
+    .replace(/\[[^\]]*\]/g, ' ') // drop bracketed glosses, e.g. "[translated]"
+    .replace(/[""'']/g, '"')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Finds the earliest transcript segment that contains a distinctive slice of
+// `quote`. Uses the first ~8 words (falling back to fewer) as the search key —
+// long enough to be distinctive, short enough to survive the model dropping a
+// clause or adding "...". Returns undefined rather than guessing when nothing
+// matches, so an evidence line simply has no clickable time instead of a wrong one.
+export function matchEvidenceTimestamp(
+  quote: string,
+  segments: SalesCoachTranscriptSegment[] | null | undefined,
+): number | undefined {
+  if (!segments || segments.length === 0) return undefined
+  const words = normalizeForMatch(quote).split(' ').filter(Boolean)
+  if (words.length === 0) return undefined
+
+  for (const keyLen of [8, 6, 4]) {
+    if (words.length < keyLen) continue
+    const key = words.slice(0, keyLen).join(' ')
+    for (const seg of segments) {
+      if (normalizeForMatch(seg.text).includes(key)) return seg.start_ms
+    }
+  }
+  return undefined
+}
+
+// Attaches a `time_ms` to every evidence line the transcript can confirm.
+// Never mutates; a card with no segments (pasted transcript, or transcribed
+// before this feature) comes back unchanged.
+export function attachEvidenceTimestamps(
+  card: SalesCoachReportCard,
+  segments: SalesCoachTranscriptSegment[] | null | undefined,
+): SalesCoachReportCard {
+  if (!segments || segments.length === 0) return card
+  return {
+    ...card,
+    criteria: card.criteria.map((c) => ({
+      ...c,
+      evidence: c.evidence?.map((e) => {
+        const time_ms = matchEvidenceTimestamp(e.text, segments)
+        return time_ms === undefined ? e : { ...e, time_ms }
+      }),
+    })),
+  }
+}
+
+// "Ordabasy Group Planteo.m4a" -> "Ordabasy Group Planteo". Used ONLY when the
+// Sales Executive left the Company field blank (US-034/US-035 filename rule) —
+// the typed field always wins.
+export function deriveCompanyFromFilename(filename: string | null | undefined): string | null {
+  if (!filename) return null
+  const base = filename.replace(/\.[a-z0-9]{2,5}$/i, '')
+  const cleaned = base.replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return cleaned.length > 0 ? cleaned : null
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Report Card validation (US-039)
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -426,7 +508,7 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
     } else {
       lines.push(`**${verdictMark(c.verdict)}${c.note ? ` — ${c.note}` : ''}**`)
     }
-    for (const e of c.evidence || []) lines.push(`**${e.label}:** ${e.text}`)
+    for (const e of c.evidence || []) lines.push(`**${e.label}${e.time_ms !== undefined ? ` [${formatTimestamp(e.time_ms)}]` : ''}:** ${e.text}`)
     if (c.reason) lines.push(`**Reason:** ${c.reason}`)
     lines.push('')
   })
@@ -451,7 +533,7 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
     card.objections.forEach((o, i) => {
       if (card.objections.length > 1) lines.push(`**${i + 1}.**`)
       lines.push(`**Objection/Hesitation:** ${o.objection}`)
-      lines.push(`**How the representative handled it:** ${o.handled}`)
+      lines.push(`**How you handled it:** ${o.handled}`)
       if (o.original_wording || o.trc_improved_response) {
         lines.push('**TRC-improved response:**')
         if (o.original_wording) lines.push(`Original: ${o.original_wording}`)
@@ -495,7 +577,7 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
     },
     summary: {
       type: 'string',
-      description: 'The opening paragraph: what the representative did across the negotiation and the main improvement for next time. 3-5 sentences.',
+      description: 'The opening paragraph, addressed to the Sales Executive as "you"/"your": what you did across the negotiation and the main improvement for next time. 3-5 sentences.',
     },
     criteria: {
       type: 'array',
@@ -539,8 +621,8 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
         type: 'object',
         properties: {
           objection: { type: 'string', description: 'The objection or hesitation, quoted verbatim.' },
-          handled: { type: 'string', description: 'How the representative actually handled it.' },
-          original_wording: { type: 'string', description: 'What the representative said, verbatim. Empty if not applicable.' },
+          handled: { type: 'string', description: 'How you actually handled it, addressed to the Sales Executive as "you".' },
+          original_wording: { type: 'string', description: 'What you said, verbatim. Empty if not applicable.' },
           trc_improved_response: { type: 'string', description: 'What TRC doctrine would have said instead, in natural spoken words ending in a question. Empty if the handling was already correct.' },
           principle: { type: 'string', description: 'The relevant TRC principle from the Manual or Method.' },
         },
@@ -571,7 +653,7 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
     },
     coaching_question: {
       type: 'string',
-      description: 'Exactly ONE focused coaching question for the representative, tied to the decisive moment.',
+      description: 'Exactly ONE focused coaching question, addressed to the Sales Executive as "you", tied to the decisive moment.',
     },
   },
   required: [
@@ -595,7 +677,7 @@ export const REPORT_CARD_CONTRACT = `=== REPORT CARD OUTPUT CONTRACT (fixed — 
 You are producing the TRC Sales Coach REPORT CARD for ONE negotiation, as a single JSON object matching the provided schema. No prose outside the JSON.
 
 CRITERIA — exactly these nine, in this order, each exactly once:
-1. sales_offer_buildup — did the rep build a personalised planteo from the interview (the CEO's own messages), connect those messages to a dedicated space, and move into the offer?
+1. sales_offer_buildup — did you build a personalised planteo from the interview (the CEO's own messages), connect those messages to a dedicated space, and move into the offer?
 2. offer_articulation — was a complete offer stated: space/format, principal benefits, level of investment, then a leading/closing question? Two options at most, largest first.
 3. outcome — the commercial result AS EVIDENCED IN THE TRANSCRIPT. Its verdict mirrors assessed_position: pass for Positive/Won; warn for "Apparent Positive/Won — confirmation required" or "Controlled retorno"; fail for "Open retorno", "Open, low-confidence retorno" or "Negative/Lost"; uv for "Uncertain — insufficient evidence". Put the specific space and price in note.
 4. ceo_buyin — did the CEO personally and explicitly confirm they want the company to participate, before implementation, delegation or retorno?
@@ -605,6 +687,8 @@ CRITERIA — exactly these nine, in this order, each exactly once:
 8. next_steps_stakeholders — were next steps, ownership and any further stakeholder (who approves, who signs, who handles production) clearly established under the CEO's direction? Implementation delegation after the decision is fine; commercial delegation before it is not.
 9. scheduled_meeting — was the further decision meeting fixed with a date and time?
 
+VOICE (mandatory): address the Sales Executive DIRECTLY as "you"/"your" throughout — headline, summary, every criterion's reason, report_summary, objections and the coaching question. Never write "the Sales Executive", "the rep" or "the representative" in third person; never call the role anything but "Sales Executive" if you must name it at all. Write as if speaking straight to the person who ran the negotiation.
+
 APPLICABILITY IS A FIXED RULE, keyed to the DECLARED outcome (the submission tells you which criteria are N/A for this negotiation — follow it exactly):
 - Signed on the spot → 6 and 9 are N/A (7 applicable points).
 - Retorno → 7 is N/A (8 applicable points).
@@ -612,7 +696,7 @@ APPLICABILITY IS A FIXED RULE, keyed to the DECLARED outcome (the submission tel
 - Uncertain → nothing is N/A (9 applicable points).
 Never mark any other criterion "na". If something did not happen, that is a judgement (usually fail or warn), not N/A.
 
-VERDICTS: pass = fully met per TRC doctrine. warn = partly met / an execution gap that did not cost the deal. fail = not met. na = only the fixed-rule criteria above. uv = a specific passage needed for this criterion is missing or unintelligible in the transcript and the audio would need to be checked — rare, and never a substitute for a judgement. Apply the judgement thresholds from the Project Prompt where it defines them; otherwise use the Manual and Method. Never award pass on assumption — the rep must make the buyer SAY it.
+VERDICTS: pass = fully met per TRC doctrine. warn = partly met / an execution gap that did not cost the deal. fail = not met. na = only the fixed-rule criteria above. uv = a specific passage needed for this criterion is missing or unintelligible in the transcript and the audio would need to be checked — rare, and never a substitute for a judgement. Apply the judgement thresholds from the Project Prompt where it defines them; otherwise use the Manual and Method. Never award pass on assumption — you must make the buyer SAY it.
 
 SCORE ARITHMETIC (recomputed in code — do not compute it yourself): pass = 1 point, warn = 0.5, fail = 0; na and uv are excluded from the applicable total.
 
@@ -620,9 +704,9 @@ EVIDENCE RULES: every pass/warn/fail must cite verbatim transcript evidence in e
 
 DECLARED vs ASSESSED (US-040): the declared outcome and outcome_details are the executive's account. assessed_position is your judgement from the transcript. Physical or off-audio events the executive declared (e.g. an agreement signed) are factual metadata — accept them unless the transcript materially contradicts them. When they differ, explain in discrepancy and set management_review true if the difference is material. Never collapse the two.
 
-STYLE (TRC coaching method): recognise the genuine strengths first, with evidence; then be direct about the decisive moment and its commercial consequence; show the exact words the rep could have used, short enough to say to a CEO and ending in a question; natural professional language, no generic sales jargon, no motivational padding. The Examples document is for pattern recognition only — never import its facts, numbers or dialogue. Write in English.
+STYLE (TRC coaching method): recognise the genuine strengths first, with evidence; then be direct about the decisive moment and its commercial consequence; show the exact words you could have used, short enough to say to a CEO and ending in a question; natural professional language, no generic sales jargon, no motivational padding. The Examples document is for pattern recognition only — never import its facts, numbers or dialogue. Write in English.
 
-OBJECTIONS: list every real objection or hesitation the buyer raised, how the rep handled it, the rep's original wording, the TRC-doctrine alternative, and the principle it comes from. If the rep handled it correctly, say so and leave the alternative empty.
+OBJECTIONS: list every real objection or hesitation the buyer raised, how you handled it, your original wording, the TRC-doctrine alternative, and the principle it comes from. If you handled it correctly, say so and leave the alternative empty.
 
 deeper_analysis: 0-3 sections only when they add something (e.g. CONCISE CONFIRMATION APPLICATION, RETORNO CONTROL, TEAM CHOREOGRAPHY). coaching_question: exactly one, tied to the decisive moment.`
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { canAccessSalesNegotiationCoach } from '@/lib/access'
-import { isSalesCoachOutcome } from '@/lib/sales-coach'
+import { deriveCompanyFromFilename, isSalesCoachOutcome } from '@/lib/sales-coach'
 import type { SalesCoachParticipant } from '@/types'
 
 export const runtime = 'nodejs'
@@ -43,6 +43,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'A valid declared outcome is required' }, { status: 400 })
   }
 
+  // Required contextual fields (US-034). Company is the one exception: it can
+  // still be filled from the recording's filename below, so it's checked
+  // after that fallback runs, not here.
+  const missing: string[] = []
+  if (!str(country)) missing.push('Country')
+  if (!str(mediaPublication)) missing.push('Media/publication')
+  if (!str(intervieweeName)) missing.push('Interviewee name')
+  if (!str(intervieweePosition)) missing.push('Interviewee position')
+  if (missing.length > 0) {
+    return NextResponse.json({ error: `Please fill in: ${missing.join(', ')}` }, { status: 400 })
+  }
+
   // Must supply SOMETHING to analyse — audio or a transcript (US-035).
   const hasAudio = typeof audioPath === 'string' && audioPath.trim().length > 0
   const hasTranscript = typeof uploadedTranscript === 'string' && uploadedTranscript.trim().length > 0
@@ -62,6 +74,13 @@ export async function POST(request: NextRequest) {
           .filter((p) => p.name || p.role)
       : []
 
+  // Company is required, but the typed field always wins — only derive it
+  // from the uploaded filename when the Sales Executive left it blank.
+  const resolvedCompany = str(company) || (hasAudio ? deriveCompanyFromFilename(str(originalFilename)) : null)
+  if (!resolvedCompany) {
+    return NextResponse.json({ error: 'Please fill in: Company' }, { status: 400 })
+  }
+
   const { data: row, error } = await supabaseAdmin
     .from('sales_coach_negotiations')
     .insert({
@@ -69,7 +88,7 @@ export async function POST(request: NextRequest) {
       submitted_by_name: profile.full_name || '',
       country: str(country),
       media_publication: str(mediaPublication),
-      company: str(company),
+      company: resolvedCompany,
       interviewee_name: str(intervieweeName),
       interviewee_position: str(intervieweePosition),
       company_reps: cleanParticipants(companyReps),
