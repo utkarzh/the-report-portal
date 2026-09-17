@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useTransition } from 'react'
 
 interface Props {
   page: number
@@ -22,18 +23,27 @@ function buildUrl(p: number, search: string, role: string, access: string) {
 
 export default function UsersPagination({ page, totalPages, totalCount, search, role, access }: Props) {
   const router = useRouter()
+  const [isPending, startTransition] = useTransition()
   const start = (page - 1) * 10 + 1
   const end = Math.min(page * 10, totalCount)
 
+  function go(p: number) {
+    // startTransition keeps the current table on screen instead of falling
+    // back to the route's loading.tsx skeleton while the next page loads.
+    startTransition(() => {
+      router.push(buildUrl(p, search, role, access), { scroll: false })
+    })
+  }
+
   return (
-    <div className="flex items-center justify-between mt-4">
+    <div className={`flex items-center justify-between mt-4 transition-opacity duration-150 ${isPending ? 'opacity-50' : ''}`}>
       <p className="text-xs text-gray-400">
         Showing {start}–{end} of {totalCount} users
       </p>
       <div className="flex items-center gap-1">
         <button
-          onClick={() => router.push(buildUrl(page - 1, search, role, access))}
-          disabled={page <= 1}
+          onClick={() => go(page - 1)}
+          disabled={page <= 1 || isPending}
           className="px-3 py-1.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           ← Prev
@@ -42,8 +52,9 @@ export default function UsersPagination({ page, totalPages, totalCount, search, 
         {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
           <button
             key={p}
-            onClick={() => router.push(buildUrl(p, search, role, access))}
-            className={`px-3 py-1.5 text-xs border transition-colors ${
+            onClick={() => go(p)}
+            disabled={isPending}
+            className={`px-3 py-1.5 text-xs border transition-colors disabled:cursor-not-allowed ${
               p === page
                 ? 'bg-black text-white border-black'
                 : 'bg-white border-[#e5e3df] text-gray-600 hover:border-gray-400'
@@ -54,8 +65,8 @@ export default function UsersPagination({ page, totalPages, totalCount, search, 
         ))}
 
         <button
-          onClick={() => router.push(buildUrl(page + 1, search, role, access))}
-          disabled={page >= totalPages}
+          onClick={() => go(page + 1)}
+          disabled={page >= totalPages || isPending}
           className="px-3 py-1.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Next →

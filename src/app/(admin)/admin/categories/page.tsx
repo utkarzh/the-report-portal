@@ -3,9 +3,8 @@ export const dynamic = 'force-dynamic'
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Link from 'next/link'
-import DeleteCategoryButton from '@/components/admin/DeleteCategoryButton'
+import CategoriesList from '@/components/admin/CategoriesList'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
-import type { Category } from '@/types'
 
 export default async function CategoriesPage() {
   requireAdminHeader()
@@ -44,46 +43,7 @@ export default async function CategoriesPage() {
           </Link>
         </div>
 
-        {(!categories || categories.length === 0) ? (
-          <div className="bg-white border border-[#e5e3df] p-10 text-center">
-            <p className="text-sm text-gray-400">No categories yet. Create one to get started.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {(categories || []).map((cat: Category) => (
-              <div
-                key={cat.id}
-                className="flex items-center justify-between p-4 sm:p-5 bg-white border border-[#e5e3df]"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-gray-900">{cat.name}</p>
-                    {!cat.is_active && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5">
-                        Inactive
-                      </span>
-                    )}
-                  </div>
-                  {cat.description && (
-                    <p className="text-xs text-gray-500 mt-0.5 truncate max-w-lg">{cat.description}</p>
-                  )}
-                  <p className="text-[10px] text-gray-400 mt-1">
-                    {cat.prompt_text.length.toLocaleString()} chars in prompt
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                  <Link
-                    href={`/admin/categories/${cat.id}`}
-                    className="text-xs text-gray-500 hover:text-black transition-colors px-3 py-1.5 border border-[#e5e3df] hover:border-gray-400"
-                  >
-                    Edit
-                  </Link>
-                  <DeleteCategoryButton categoryId={cat.id} categoryName={cat.name} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <CategoriesList categories={categories || []} />
 
       </div>
     </div>

@@ -12,12 +12,14 @@ import PrivacyNotice from '@/components/sales-coach/PrivacyNotice'
 import DeleteNegotiationButton from '@/components/sales-coach/DeleteNegotiationButton'
 import EntityCard from '@/components/ui/EntityCard'
 import ListPagination from '@/components/ui/ListPagination'
+import SearchInput from '@/components/ui/SearchInput'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
+import { orIlikeFilter } from '@/lib/search'
 import type { SalesCoachStage } from '@/types'
 
 const PAGE_SIZE = 12
 
-export default async function SalesCoachPage({ searchParams }: { searchParams: { page?: string } }) {
+export default async function SalesCoachPage({ searchParams }: { searchParams: { page?: string; search?: string } }) {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
   const isAdmin = profile.role === 'admin'
@@ -26,6 +28,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
   // polling, so it doesn't sit at "Transcribing" in the list.
   await reconcilePendingNegotiations(isAdmin ? {} : { userId: profile.id })
 
+  const search = typeof searchParams.search === 'string' ? searchParams.search.trim() : ''
   const page = Math.max(1, parseInt(searchParams.page || '1', 10))
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
@@ -39,6 +42,9 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
     .order('created_at', { ascending: false })
     .range(from, to)
   if (!isAdmin) query = query.eq('user_id', profile.id)
+  if (search) {
+    query = query.or(orIlikeFilter(['company', 'country', 'media_publication', 'submitted_by_name'], search))
+  }
 
   const { data: rows, count } = await query
   const totalCount = count || 0
@@ -112,10 +118,21 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
         </div>
       )}
 
+      <div className="mb-6">
+        <SearchInput basePath="/sales-coach" initialValue={search} placeholder="Search by company, country, publication..." />
+      </div>
+
       {items.length === 0 ? (
         <div className="flex items-start gap-3 rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500 shadow-sm">
           <div className="rounded-lg bg-[#f7f6f3] p-2 text-gray-600"><Handshake size={16} /></div>
-          <span>{isAdmin ? 'No negotiations have been submitted yet.' : 'No negotiations yet. Submit one to get your first Report Card.'}</span>
+          {search ? (
+            <span>
+              No negotiations match &ldquo;<span className="font-medium text-gray-700">{search}</span>&rdquo;.{' '}
+              <Link href="/sales-coach" className="text-gray-700 underline hover:text-black">Clear search</Link>
+            </span>
+          ) : (
+            <span>{isAdmin ? 'No negotiations have been submitted yet.' : 'No negotiations yet. Submit one to get your first Report Card.'}</span>
+          )}
         </div>
       ) : (
         <>
@@ -156,7 +173,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
           </div>
 
           {totalPages > 1 && (
-            <ListPagination page={page} totalPages={totalPages} totalCount={totalCount} pageSize={PAGE_SIZE} basePath="/sales-coach" label="negotiations" />
+            <ListPagination page={page} totalPages={totalPages} totalCount={totalCount} pageSize={PAGE_SIZE} basePath="/sales-coach" label="negotiations" search={search} />
           )}
         </>
       )}

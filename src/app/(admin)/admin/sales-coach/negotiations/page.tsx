@@ -1,12 +1,11 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { Flag, CheckCircle2 } from 'lucide-react'
+import { Flag } from 'lucide-react'
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
-import { SALES_COACH_STAGE_LABELS, formatScore, outcomeLabel, reviewStatus } from '@/lib/sales-coach'
-import type { SalesCoachStage } from '@/types'
+import NegotiationsTable from '@/components/admin/NegotiationsTable'
 
 interface Props {
   searchParams: { review?: string }
@@ -63,67 +62,7 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
           </div>
         </div>
 
-        {(!rows || rows.length === 0) ? (
-          <div className="rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500">
-            {reviewOnly ? 'Nothing is waiting for management review.' : 'No negotiations have been submitted yet.'}
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-[#e5e3df] bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#e5e3df] bg-[#faf9f7] text-left text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-                  <th className="px-4 py-3">Company</th>
-                  <th className="px-4 py-3">Submitted by</th>
-                  <th className="px-4 py-3">Declared</th>
-                  <th className="px-4 py-3">AI-assessed</th>
-                  <th className="px-4 py-3 text-right">Score</th>
-                  <th className="px-4 py-3">Stage</th>
-                  <th className="px-4 py-3">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-[#f0eee9] last:border-b-0 hover:bg-[#faf9f7]">
-                    <td className="px-4 py-3">
-                      <Link href={`/sales-coach/${r.id}`} className="font-medium text-gray-900 hover:underline">
-                        {r.company || 'Untitled negotiation'}
-                      </Link>
-                      <div className="text-xs text-gray-400 truncate">
-                        {[r.country, r.media_publication].filter(Boolean).join(' · ') || '—'}
-                      </div>
-                      {reviewStatus(r) === 'open' && (
-                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2 py-0.5 text-[10px] font-medium text-[#a07530]">
-                          <Flag size={10} /> Needs review
-                        </span>
-                      )}
-                      {reviewStatus(r) === 'reviewed' && (
-                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                          <CheckCircle2 size={10} /> Reviewed · {outcomeLabel(r.actual_outcome as never)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">{r.submitted_by_name || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{outcomeLabel(r.declared_outcome)}</td>
-                    <td className="px-4 py-3 text-gray-700">{r.ai_assessed_position || '—'}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900">
-                      {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number'
-                        ? formatScore(Number(r.execution_score), r.execution_denominator)
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full border border-[#e5e3df] bg-[#f7f6f3] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
-                        {SALES_COACH_STAGE_LABELS[r.stage as SalesCoachStage] || r.stage}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                      {new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <NegotiationsTable rows={rows || []} reviewOnly={reviewOnly} />
       </div>
     </div>
   )

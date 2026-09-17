@@ -8,7 +8,9 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import DeleteMeetingPrepButton from '@/components/meeting-prep/DeleteMeetingPrepButton'
 import ListPagination from '@/components/ui/ListPagination'
 import EntityCard from '@/components/ui/EntityCard'
+import SearchInput from '@/components/ui/SearchInput'
 import StatusPill from '@/components/ui/StatusPill'
+import { orIlikeFilter } from '@/lib/search'
 
 const PAGE_SIZE = 12
 
@@ -25,10 +27,11 @@ const STAGE_LABELS: Record<string, string> = {
   failed: 'Failed',
 }
 
-export default async function MeetingPreparationPage({ searchParams }: { searchParams: { page?: string } }) {
+export default async function MeetingPreparationPage({ searchParams }: { searchParams: { page?: string; search?: string } }) {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
 
+  const search = typeof searchParams.search === 'string' ? searchParams.search.trim() : ''
   const page = Math.max(1, parseInt(searchParams.page || '1', 10))
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
@@ -42,6 +45,9 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
 
   if (profile.role === 'user') {
     query = query.eq('user_id', profile.id)
+  }
+  if (search) {
+    query = query.or(orIlikeFilter(['interviewee_name', 'company_org', 'publication'], search))
   }
 
   const { data: rows, count } = await query
@@ -112,12 +118,23 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
         </div>
       )}
 
+      <div className="mb-6">
+        <SearchInput basePath="/meeting-preparation" initialValue={search} placeholder="Search by interviewee, company, publication..." />
+      </div>
+
       {items.length === 0 ? (
         <div className="rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500 shadow-sm flex items-start gap-3">
           <div className="rounded-lg bg-[#f7f6f3] p-2 text-gray-600">
             <CalendarClock size={16} />
           </div>
-          <span>No meeting preparations yet. Create one to get started.</span>
+          {search ? (
+            <span>
+              No meeting preparations match &ldquo;<span className="font-medium text-gray-700">{search}</span>&rdquo;.{' '}
+              <Link href="/meeting-preparation" className="text-gray-700 underline hover:text-black">Clear search</Link>
+            </span>
+          ) : (
+            <span>No meeting preparations yet. Create one to get started.</span>
+          )}
         </div>
       ) : (
         <>
@@ -153,6 +170,7 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
               pageSize={PAGE_SIZE}
               basePath="/meeting-preparation"
               label="meeting preparations"
+              search={search}
             />
           )}
         </>

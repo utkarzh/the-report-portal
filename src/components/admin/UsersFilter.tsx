@@ -1,7 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useTransition } from 'react'
+import { Loader2 } from 'lucide-react'
 import {
   ACCESS_LABELS,
   EDITORIAL_ACCESS_KEYS,
@@ -38,6 +39,7 @@ function buildUrl(search: string, role: string, usage: string, access: string) {
 export default function UsersFilter({ search, role, usage, access, nearCount }: Props) {
   const router = useRouter()
   const [value, setValue] = useState(search)
+  const [isPending, startTransition] = useTransition()
   const isFirstRender = useRef(true)
   const [accessOpen, setAccessOpen] = useState(false)
   const accessRef = useRef<HTMLDivElement>(null)
@@ -56,7 +58,11 @@ export default function UsersFilter({ search, role, usage, access, nearCount }: 
 
   function push(nextSearch: string, nextRole: string, nextUsage: string, nextAccess: string) {
     lastPushedSearch.current = nextSearch
-    router.push(buildUrl(nextSearch, nextRole, nextUsage, nextAccess))
+    // startTransition keeps the current table on screen instead of falling
+    // back to the route's loading.tsx skeleton while the filtered page loads.
+    startTransition(() => {
+      router.push(buildUrl(nextSearch, nextRole, nextUsage, nextAccess), { scroll: false })
+    })
   }
 
   useEffect(() => {
@@ -133,14 +139,19 @@ export default function UsersFilter({ search, role, usage, access, nearCount }: 
           placeholder="Search name or email..."
           className="w-full text-sm bg-white border border-[#e5e3df] rounded-full pl-10 pr-9 py-2.5 placeholder:text-gray-400 focus:outline-none focus:border-black transition-colors"
         />
-        {value && (
-          <button
-            onClick={clearSearch}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-600 transition-colors"
-          >
-            ✕
-          </button>
-        )}
+        <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+          {isPending ? (
+            <Loader2 size={14} className="animate-spin text-gray-300" />
+          ) : value ? (
+            <button
+              onClick={clearSearch}
+              className="text-gray-300 hover:text-gray-600 transition-colors"
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* Role tabs — a mutually-exclusive nav group */}

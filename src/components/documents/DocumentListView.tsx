@@ -6,21 +6,32 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import DeleteDocumentButton from '@/components/documents/DeleteDocumentButton'
 import ListPagination from '@/components/ui/ListPagination'
 import EntityCard from '@/components/ui/EntityCard'
+import SearchInput from '@/components/ui/SearchInput'
 import StatusPill from '@/components/ui/StatusPill'
 import { getDocConfig } from '@/lib/documents'
+import { orIlikeFilter } from '@/lib/search'
 import type { DocType } from '@/types'
 
 const PAGE_SIZE = 12
 
 // Shared list view for a document module (Business Cases / Editorial Briefs).
 // Mirrors the interview list. `docType` selects which module.
-export default async function DocumentListView({ docType, page: pageParam }: { docType: DocType; page?: string }) {
+export default async function DocumentListView({
+  docType,
+  page: pageParam,
+  search: searchParam,
+}: {
+  docType: DocType
+  page?: string
+  search?: string
+}) {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
 
   const config = getDocConfig(docType)
   const Icon = docType === 'business_case' ? Briefcase : FileText
 
+  const search = typeof searchParam === 'string' ? searchParam.trim() : ''
   const page = Math.max(1, parseInt(pageParam || '1', 10))
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
@@ -35,6 +46,9 @@ export default async function DocumentListView({ docType, page: pageParam }: { d
 
   if (profile.role === 'user') {
     query = query.eq('user_id', profile.id)
+  }
+  if (search) {
+    query = query.or(orIlikeFilter(['title', 'project_country', 'media_partner'], search))
   }
 
   const { data: rows, count } = await query
@@ -105,12 +119,27 @@ export default async function DocumentListView({ docType, page: pageParam }: { d
         </div>
       )}
 
+      <div className="mb-6">
+        <SearchInput
+          basePath={`/${config.slug}`}
+          initialValue={search}
+          placeholder={`Search ${config.labelPlural.toLowerCase()}...`}
+        />
+      </div>
+
       {items.length === 0 ? (
         <div className="rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500 shadow-sm flex items-start gap-3">
           <div className="rounded-lg bg-[#f7f6f3] p-2 text-gray-600">
             <Icon size={16} />
           </div>
-          <span>No {config.labelPlural.toLowerCase()} yet. Create one to get started.</span>
+          {search ? (
+            <span>
+              No {config.labelPlural.toLowerCase()} match &ldquo;<span className="font-medium text-gray-700">{search}</span>&rdquo;.{' '}
+              <Link href={`/${config.slug}`} className="text-gray-700 underline hover:text-black">Clear search</Link>
+            </span>
+          ) : (
+            <span>No {config.labelPlural.toLowerCase()} yet. Create one to get started.</span>
+          )}
         </div>
       ) : (
         <>
@@ -140,6 +169,7 @@ export default async function DocumentListView({ docType, page: pageParam }: { d
               pageSize={PAGE_SIZE}
               basePath={`/${config.slug}`}
               label={config.labelPlural.toLowerCase()}
+              search={search}
             />
           )}
         </>

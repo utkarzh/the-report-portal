@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useTransition } from 'react'
 
 interface Props {
   page: number
@@ -9,6 +10,7 @@ interface Props {
   pageSize: number
   basePath: string
   label: string
+  search?: string
 }
 
 // Windowed page list: always show first + last, plus the current page and its
@@ -29,21 +31,34 @@ function pageItems(page: number, total: number): (number | 'gap')[] {
   return out
 }
 
-export default function ListPagination({ page, totalPages, totalCount, pageSize, basePath, label }: Props) {
+export default function ListPagination({ page, totalPages, totalCount, pageSize, basePath, label, search }: Props) {
   const router = useRouter()
+  const [isPending, startTransition] = useTransition()
   const start = (page - 1) * pageSize + 1
   const end = Math.min(page * pageSize, totalCount)
-  const go = (p: number) => router.push(`${basePath}?page=${p}`)
+
+  function go(p: number) {
+    const params = new URLSearchParams()
+    if (search) params.set('search', search)
+    params.set('page', String(p))
+    // startTransition keeps the current page of results on screen instead of
+    // falling back to the route's loading.tsx skeleton while the next page loads.
+    startTransition(() => {
+      router.push(`${basePath}?${params.toString()}`, { scroll: false })
+    })
+  }
 
   return (
-    <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      className={`mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-opacity duration-150 ${isPending ? 'opacity-50' : ''}`}
+    >
       <p className="text-xs text-gray-400">
         Showing {start}–{end} of {totalCount} {label}
       </p>
       <div className="flex items-center gap-1">
         <button
           onClick={() => go(page - 1)}
-          disabled={page <= 1}
+          disabled={page <= 1 || isPending}
           className="rounded-md border border-[#e5e3df] bg-white px-3 py-1.5 text-xs text-gray-600 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
         >
           ← Prev
@@ -56,7 +71,8 @@ export default function ListPagination({ page, totalPages, totalCount, pageSize,
             <button
               key={p}
               onClick={() => go(p)}
-              className={`min-w-[32px] rounded-md border px-3 py-1.5 text-xs transition-colors ${
+              disabled={isPending}
+              className={`min-w-[32px] rounded-md border px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed ${
                 p === page
                   ? 'border-black bg-black text-white'
                   : 'border-[#e5e3df] bg-white text-gray-600 hover:border-gray-400'
@@ -69,7 +85,7 @@ export default function ListPagination({ page, totalPages, totalCount, pageSize,
 
         <button
           onClick={() => go(page + 1)}
-          disabled={page >= totalPages}
+          disabled={page >= totalPages || isPending}
           className="rounded-md border border-[#e5e3df] bg-white px-3 py-1.5 text-xs text-gray-600 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Next →
