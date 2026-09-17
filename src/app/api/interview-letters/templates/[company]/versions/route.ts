@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { isInterviewLetterCompany } from '@/lib/interview-letters'
 
 interface Params {
@@ -8,11 +8,13 @@ interface Params {
 }
 
 async function requireAdmin() {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single()
-  return profile?.role === 'admin' ? user : null
+  const auth = await getApiUser()
+  if (!auth.user) return auth
+  const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', auth.user.id).single()
+  if (profile?.role !== 'admin') {
+    return { user: null, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  }
+  return auth
 }
 
 // GET — lists version history. `PromptVersionHistory` expects a `prompt_text`
@@ -20,8 +22,8 @@ async function requireAdmin() {
 // this API boundary so the shared component can render/diff it as plain text
 // without needing to know this module stores a structured template.
 export async function GET(_req: NextRequest, { params }: Params) {
-  const user = await requireAdmin()
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const admin = await requireAdmin()
+  if (!admin.user) return admin.response
 
   if (!isInterviewLetterCompany(params.company)) {
     return NextResponse.json({ error: 'Invalid company' }, { status: 400 })

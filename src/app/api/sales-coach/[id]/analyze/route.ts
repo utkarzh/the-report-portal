@@ -15,7 +15,6 @@ import {
   REPORT_CARD_CONTRACT,
   REPORT_CARD_OUTPUT_SCHEMA,
   applicabilityInstruction,
-  applyDiscrepancyRules,
   attachEvidenceTimestamps,
   pickTranscript,
   renderReportCardMarkdown,
@@ -179,7 +178,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
         }
       }
 
-      const ctx = { company: n.company || '', declaredOutcome: n.declared_outcome }
+      const ctx = { company: n.company || '', declaredOutcome: n.declared_outcome, outcomeDetails: n.outcome_details }
 
       try {
         send({ status: 'analyzing' })
@@ -246,23 +245,25 @@ export async function POST(_request: NextRequest, { params }: Params) {
         // Link each evidence quote to the moment it was said, when the
         // transcript has structured segments (AssemblyAI audio, not a pasted
         // transcript) and the quote can be matched confidently.
-        const withDiscrepancy = applyDiscrepancyRules(result.normalized)
-        const card = attachEvidenceTimestamps(withDiscrepancy, n.system_transcript_segments)
+        const card = attachEvidenceTimestamps(result.normalized, n.system_transcript_segments)
         const markdown = renderReportCardMarkdown(card)
         const uvCriteria = card.criteria.filter((c) => c.verdict === 'uv').map((c) => c.key)
 
-        // Persist FIRST — must run even if the client dropped.
+        // Persist FIRST — must run even if the client dropped. discrepancy/
+        // management_review/ai_assessed_position are cleared explicitly: those
+        // columns predate this module trusting the declared outcome outright,
+        // and a regenerate of an older negotiation should not leave a stale flag.
         const { data: updated } = await supabaseAdmin
           .from('sales_coach_negotiations')
           .update({
             report_card: card,
             report_card_markdown: markdown,
-            ai_assessed_position: card.assessed_position,
+            ai_assessed_position: null,
             execution_score: card.execution_score,
             execution_denominator: card.execution_denominator,
             uv_criteria: uvCriteria,
-            discrepancy: card.discrepancy ?? null,
-            management_review: card.management_review,
+            discrepancy: null,
+            management_review: false,
             project_prompt_snapshot: knowledge.projectPrompt || null,
             knowledge_versions: knowledge.versions,
             model_used: ANALYSIS_MODEL,

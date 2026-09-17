@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { getApiUser } from '@/lib/auth/api-user'
 
 interface Params {
   params: { id: string }
@@ -9,8 +10,8 @@ interface Params {
 // parent project) applies since this uses the cookie-scoped client.
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
 
   const { data, error } = await supabase
     .from('interview_letter_personalizations')

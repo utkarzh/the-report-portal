@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Packer } from 'docx'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { getTemplate } from '@/lib/download-templates/registry'
 import { buildTemplatedDocx } from '@/lib/download-templates/docx'
 import { renderTemplatedPdf } from '@/lib/download-templates/pdf'
@@ -16,9 +16,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { sessionId: string } },
 ) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const type = request.nextUrl.searchParams.get('type') === 'questions'
     ? 'questions'

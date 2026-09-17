@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, GENERATION_TOKEN_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
+import { getApiUser } from '@/lib/auth/api-user'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
@@ -24,9 +24,9 @@ const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const body = await request.json()
   const { sessionId, additionalPrompt } = body as {

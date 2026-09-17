@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { isInterviewLetterCompany } from '@/lib/interview-letters'
 
 interface Params {
@@ -10,8 +11,8 @@ interface Params {
 // GET — any authenticated user may read (needed to generate research).
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
 
   if (!isInterviewLetterCompany(params.company)) {
     return NextResponse.json({ error: 'Invalid company' }, { status: 400 })
@@ -28,9 +29,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // PATCH — admin only, snapshots the previous version before overwriting.
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

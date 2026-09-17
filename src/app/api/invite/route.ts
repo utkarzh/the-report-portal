@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { getBaseUrl } from '@/lib/url'
 
 // GET /api/invite?token=xxx — public, used by invite page
@@ -30,9 +30,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/invite — admin only, creates invite
 export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

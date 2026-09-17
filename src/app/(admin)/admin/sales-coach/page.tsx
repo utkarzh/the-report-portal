@@ -2,24 +2,11 @@ export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 import { requireAdminHeader } from '@/lib/auth/session'
-import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import { SALES_COACH_KNOWLEDGE_DOCS } from '@/lib/sales-coach'
 
-export default async function SalesCoachAdminPage() {
+export default function SalesCoachAdminPage() {
   requireAdminHeader()
-
-  // Surface the review queue size so an admin sees at a glance whether any
-  // negotiation needs attention (US-045).
-  const { count: reviewCount } = await supabaseAdmin
-    .from('sales_coach_negotiations')
-    .select('id', { count: 'exact', head: true })
-    .eq('management_review', true)
-    .is('actual_outcome_at', null)
-
-  const { count: totalCount } = await supabaseAdmin
-    .from('sales_coach_negotiations')
-    .select('id', { count: 'exact', head: true })
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
@@ -34,8 +21,7 @@ export default async function SalesCoachAdminPage() {
         <div className="mb-8">
           <h1 className="text-lg font-semibold text-gray-900">Sales Coach — Admin</h1>
           <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">
-            Manage the four TRC knowledge documents the coach reasons from, and browse every negotiation submitted
-            across the team.
+            Manage the four TRC knowledge documents the coach reasons from.
           </p>
         </div>
 
@@ -66,33 +52,6 @@ export default async function SalesCoachAdminPage() {
                   <span aria-hidden className="flex-shrink-0">→</span>
                 </Link>
               ))}
-            </div>
-          </section>
-
-          <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
-            <h2 className="text-sm font-semibold text-gray-900">Negotiations Database</h2>
-            <p className="text-xs text-gray-500 mt-1 max-w-xl">
-              Every submission from every Sales Executive, with the AI-assessed position, execution score, and
-              management-review flag. Sales Executives only ever see their own.
-            </p>
-            <div className="flex flex-col gap-2 mt-4">
-              <Link
-                href="/admin/sales-coach/negotiations"
-                className="flex items-center justify-between px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
-              >
-                <span>All negotiations <span className="text-gray-400">({totalCount ?? 0})</span></span>
-                <span aria-hidden>→</span>
-              </Link>
-              <Link
-                href="/admin/sales-coach/negotiations?review=1"
-                className="flex items-center justify-between px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
-              >
-                <span>
-                  Waiting for management review{' '}
-                  <span className={reviewCount ? 'text-[#a07530] font-medium' : 'text-gray-400'}>({reviewCount ?? 0})</span>
-                </span>
-                <span aria-hidden>→</span>
-              </Link>
             </div>
           </section>
         </div>

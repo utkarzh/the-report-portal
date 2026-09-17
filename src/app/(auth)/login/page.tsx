@@ -217,6 +217,12 @@ function LoginForm() {
           </div>
         )}
 
+        {errorParam === 'service_unavailable' && (
+          <div className="mb-5 p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800">
+            The sign-in service didn&apos;t respond in time. Please try again in a moment.
+          </div>
+        )}
+
         {notice && (
           <div className="mb-5 p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800">
             {notice}

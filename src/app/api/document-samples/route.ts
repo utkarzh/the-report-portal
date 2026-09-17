@@ -1,22 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { DOCUMENT_SAMPLES_BUCKET, MAX_SAMPLES, isDocType } from '@/lib/documents'
 import { extractSampleText } from '@/lib/sample-extract'
+import { getApiUser } from '@/lib/auth/api-user'
 
 async function requireAdmin() {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single()
-  return profile?.role === 'admin' ? user : null
+  const auth = await getApiUser()
+  if (!auth.user) return auth
+  const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', auth.user.id).single()
+  if (profile?.role !== 'admin') {
+    return { user: null, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  }
+  return auth
 }
 
 // GET /api/document-samples?docType=... — admin list (no extracted_text, to keep
 // the payload small; the full text is only needed server-side at generate time).
 export async function GET(request: NextRequest) {
-  const user = await requireAdmin()
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const admin = await requireAdmin()
+  if (!admin.user) return admin.response
 
   const docType = request.nextUrl.searchParams.get('docType')
   if (!isDocType(docType)) return NextResponse.json({ error: 'Invalid docType' }, { status: 400 })
@@ -35,8 +37,9 @@ export async function GET(request: NextRequest) {
 // file to the private bucket. Extracts its text server-side (so PDF works) and
 // stores that alongside the storage path. Enforces the per-type cap.
 export async function POST(request: NextRequest) {
-  const user = await requireAdmin()
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const admin = await requireAdmin()
+  if (!admin.user) return admin.response
+  const user = admin.user
 
   const { docType, storagePath, filename, mime, sizeBytes } = await request.json()
 

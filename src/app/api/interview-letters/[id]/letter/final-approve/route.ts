@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { ONE_PAGE_WORD_LIMIT, paragraphsToLetterText, wordCount } from '@/lib/interview-letters'
 import type { InterviewLetterParagraph } from '@/types'
 
@@ -12,9 +12,9 @@ interface Params {
 // the word-count/one-page heuristic, and required fields, then snapshots the
 // master letter. This is the project's stable, immutable master from here on.
 export async function POST(_request: NextRequest, { params }: Params) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single()
 

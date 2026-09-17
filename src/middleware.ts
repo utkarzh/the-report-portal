@@ -1,7 +1,12 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessInterviewLetterGenerator, canAccessSalesNegotiationCoach, canAccessFinance, isFinanceAdmin, landingPathFor } from '@/lib/access'
+import { PROFILE_CACHE_COOKIE, PROFILE_CACHE_TTL_MS, signProfileCache, verifyProfileCache, type CachedProfile } from '@/lib/auth/profile-cache'
 import type { UserRole, FinanceRole } from '@/types'
+
+// Unset by default: caching is opt-in (see profile-cache.ts) so a deployment
+// without this env var behaves exactly as before — always a live DB check.
+const MIDDLEWARE_CACHE_SECRET = process.env.MIDDLEWARE_CACHE_SECRET
 
 // Normal users are automatically signed out 10 days after they last signed in.
 // Admins have no session-age limit. `last_sign_in_at` is set by Supabase at
@@ -22,6 +27,13 @@ function isSessionExpiredForUser(role: string, lastSignInAt: string | null | und
 // until their next sign-in.
 const DEVICE_SESSION_COOKIE = 'device_session'
 
+// auth-js puts no timeout on its call to Supabase Auth (see src/lib/auth/api-user.ts
+// for the incident this same gap caused on API routes). Middleware runs on every
+// page navigation, so an unbounded getSession() here can stall the whole app rather
+// than just one request. Race it and treat a stall as "can't verify right now"
+// rather than hanging indefinitely.
+const AUTH_TIMEOUT_MS = 8_000
+
 function isStaleDevice(
   activeSessionId: string | null | undefined,
   cookieSessionId: string | undefined,
@@ -40,6 +52,7 @@ function clearAuthCookies(response: NextResponse, request: NextRequest) {
     }
   })
   response.cookies.delete(DEVICE_SESSION_COOKIE)
+  response.cookies.delete(PROFILE_CACHE_COOKIE)
 }
 
 export async function middleware(request: NextRequest) {
@@ -77,7 +90,26 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  const { data: { session } } = await supabase.auth.getSession()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), AUTH_TIMEOUT_MS)
+  })
+  const sessionResult = await Promise.race([supabase.auth.getSession(), timeout])
+  clearTimeout(timer)
+
+  if (sessionResult === 'timeout') {
+    console.error('[middleware] Supabase Auth unavailable: no answer within', AUTH_TIMEOUT_MS, 'ms')
+    if (isPublicRoute) {
+      // Can't tell if they're already signed in — just render the public page.
+      return NextResponse.next()
+    }
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.search = '?error=service_unavailable'
+    return NextResponse.redirect(url)
+  }
+
+  const { data: { session } } = sessionResult
   const user = session?.user ?? null
 
   if (!user && !isPublicRoute) {
@@ -133,11 +165,35 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && !isPublicRoute) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, status, full_name, tokens_used, token_limit, active_session_id, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, can_access_sales_negotiation_coach, finance_role')
-      .eq('id', user.id)
-      .single()
+    let profile: CachedProfile | null = MIDDLEWARE_CACHE_SECRET
+      ? await verifyProfileCache(request.cookies.get(PROFILE_CACHE_COOKIE)?.value, MIDDLEWARE_CACHE_SECRET, user.id)
+      : null
+
+    if (!profile) {
+      const { data: freshProfile } = await supabase
+        .from('profiles')
+        .select('role, status, full_name, tokens_used, token_limit, active_session_id, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, can_access_sales_negotiation_coach, finance_role')
+        .eq('id', user.id)
+        .single()
+
+      if (freshProfile) {
+        profile = { ...freshProfile, user_id: user.id, iat: Date.now() }
+        if (MIDDLEWARE_CACHE_SECRET) {
+          const signed = await signProfileCache(profile, MIDDLEWARE_CACHE_SECRET)
+          pendingCookies.push({
+            name: PROFILE_CACHE_COOKIE,
+            value: signed,
+            options: {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: 'lax',
+              path: '/',
+              maxAge: Math.ceil(PROFILE_CACHE_TTL_MS / 1000),
+            },
+          })
+        }
+      }
+    }
 
     if (!profile) {
       // Orphaned auth account — no profile row. Clear cookies and send to login.

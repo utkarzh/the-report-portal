@@ -1,10 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, UserPlus } from 'lucide-react'
+import { X, UserPlus, Sparkles, Loader2 } from 'lucide-react'
 import Input from '@/components/ui/Input'
 import Textarea from '@/components/ui/Textarea'
-import Button from '@/components/ui/Button'
 import InterviewLetterLoader from '@/components/interview-letters/InterviewLetterLoader'
 import type { InterviewLetterPersonalization } from '@/types'
 
@@ -77,18 +76,18 @@ export default function PersonalizeModal({ open, onClose, onCreated, projectId }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <div className="relative bg-white w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]" role="dialog" aria-modal="true">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#e5e3df] flex-shrink-0">
+      <div className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-[#e5e3df] px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-black flex items-center justify-center flex-shrink-0">
-              <UserPlus size={15} className="text-white" />
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-black">
+              <UserPlus size={16} className="text-white" />
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Personalize for a Recipient</h2>
-              <p className="text-xs text-gray-500 mt-0.5">All fields are optional</p>
+              <p className="mt-0.5 text-xs text-gray-500">All fields are optional</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors flex-shrink-0" aria-label="Close">
+          <button onClick={onClose} className="flex-shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
             <X size={18} />
           </button>
         </div>
@@ -98,8 +97,8 @@ export default function PersonalizeModal({ open, onClose, onCreated, projectId }
             <InterviewLetterLoader label="Personalizing for this recipient…" elapsedSecs={elapsedSecs} variant="personalize" />
           </div>
         ) : (
-        <form onSubmit={handleSubmit} className="px-6 py-6 flex flex-col gap-4 overflow-y-auto">
-          {error && <div className="p-3 bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 overflow-y-auto px-6 py-6">
+          {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
           <Input
             label="Recipient Name"
@@ -132,10 +131,15 @@ export default function PersonalizeModal({ open, onClose, onCreated, projectId }
           />
 
           <div className="flex items-center gap-3 pt-1">
-            <Button type="submit" loading={loading} arrow>
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+            >
+              {loading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
               Generate Personalized Outputs
-            </Button>
-            <button type="button" onClick={onClose} className="text-xs text-gray-500 hover:text-gray-700 transition-colors">
+            </button>
+            <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800">
               Cancel
             </button>
           </div>

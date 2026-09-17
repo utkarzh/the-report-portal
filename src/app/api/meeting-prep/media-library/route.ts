@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 
 // GET — any authenticated user may read (needed at Step 1's media-profile lookup).
 export async function GET() {
   const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
 
   const { data } = await supabase
     .from('meeting_prep_media_library')
@@ -19,9 +20,9 @@ export async function GET() {
 
 // POST — admin only, creates a publication profile.
 export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

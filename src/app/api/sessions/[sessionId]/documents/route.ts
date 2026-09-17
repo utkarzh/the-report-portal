@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { RESEARCH_DOCS_BUCKET, MAX_RESEARCH_DOCS } from '@/lib/research-docs'
 import { extractSampleText } from '@/lib/sample-extract'
 
@@ -10,9 +10,9 @@ import { extractSampleText } from '@/lib/sample-extract'
 // extracted text is later injected into research + question generation as
 // supporting context. Owner or admin.
 export async function POST(request: NextRequest, { params }: { params: { sessionId: string } }) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

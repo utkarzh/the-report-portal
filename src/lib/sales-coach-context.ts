@@ -57,9 +57,13 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
 }
 
 // Everything the executive typed on the submission form, as a metadata block.
-// Off-audio facts (a signed agreement, the declared price) live here — the
-// contract tells the model to treat them as factual unless the transcript
-// materially contradicts them.
+// How the model should weigh the declared outcome and these details against
+// the transcript (e.g. a garbled or misheard number, an off-audio signature)
+// is governed by the Project Prompt's own CONFIRMED OUTCOME METADATA /
+// OUTCOME STATUS VERSUS SUPPORTING METADATA / TRANSCRIPTION AND SPEAKER
+// UNCERTAINTY rules — this function only formats the facts, it doesn't
+// instruct the model (see REPORT_CARD_CONTRACT for why the code stays out of
+// that judgement).
 export function buildNegotiationContext(n: SalesCoachNegotiation): string {
   const reps = (n.company_reps || []).map((p) => [p.name, p.role].filter(Boolean).join(' — ')).filter(Boolean)
   const trc = (n.trc_members || []).map((p) => [p.name, p.role].filter(Boolean).join(' — ')).filter(Boolean)

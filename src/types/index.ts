@@ -736,17 +736,6 @@ export type SalesCoachOutcome = 'signed' | 'retorno' | 'lost' | 'uncertain'
 export type SalesCoachStage =
   | 'draft' | 'transcribing' | 'transcribed' | 'analyzing' | 'complete' | 'failed'
 
-// The brief's qualifier-based AI-assessed commercial position values (US-040).
-export type SalesCoachAssessedPosition =
-  | 'Positive/Won'
-  | 'Apparent Positive/Won — confirmation required'
-  | 'Controlled retorno'
-  | 'Open retorno'
-  | 'Open, low-confidence retorno'
-  | 'Negative/Lost'
-  | 'Uncertain — insufficient evidence'
-  | 'Management review recommended'
-
 export interface SalesCoachParticipant {
   name: string
   // "position" for company reps, "role" for TRC members — both stored here.
@@ -814,37 +803,32 @@ export interface SalesCoachAnalysisSection {
   body: string
 }
 
-// An admin's resolution of a management-review flag (US-045). Stored INSIDE
-// the card JSON (no schema change) and mirrored to the row's reserved
-// actual_outcome / actual_outcome_source / actual_outcome_at columns.
-export interface SalesCoachReview {
-  reviewed_by: string | null
-  reviewed_by_name: string
-  reviewed_at: string
-  confirmed_outcome: SalesCoachOutcome
-  note: string
-}
-
 // The structured Report Card the model returns (validated + score recomputed
 // in code, US-039). The markdown rendering in `report_card_markdown` is
 // derived from this object by renderReportCardMarkdown(), never model-written.
+// The declared outcome is trusted as fact — the card no longer carries an
+// independently AI-judged "assessed position" or a management-review flag
+// (see the "believe the declared outcome" note in sales-coach.ts).
 export interface SalesCoachReportCard {
   company: string
   declared_outcome: SalesCoachOutcome | null
-  assessed_position: SalesCoachAssessedPosition
-  headline: string               // one line after the position + score
+  // Section 3, COMMERCIAL OUTCOME — NOT SCORED (Project Prompt): a factual
+  // label + one-line detail, never awarded execution points and never part
+  // of `criteria`. Both are computed once at validation time (label needs
+  // outcome_details for the retorno space/price line, which isn't otherwise
+  // on the card) — see commercialOutcomeLabel()/commercialOutcomeNote() in
+  // sales-coach.ts.
+  commercial_outcome_label: string
+  commercial_outcome_note: string
+  headline: string               // one line after the score
   execution_score: number        // half points allowed (pass 1 / warn 0.5 / fail 0)
-  execution_denominator: number  // applicable (scored) criteria
+  execution_denominator: number  // applicable (scored) criteria — 8 possible, never includes Commercial Outcome
   summary: string                // opening paragraph
   criteria: SalesCoachCriterion[]
   report_summary: string         // the SCORELINE "Report Summary"
   objections: SalesCoachObjection[]
   deeper_analysis: SalesCoachAnalysisSection[]
-  discrepancy?: string | null
-  management_review: boolean
   coaching_question: string
-  // Set only by an admin via POST /api/sales-coach/[id]/review — never by the model.
-  review?: SalesCoachReview | null
 }
 
 export interface SalesCoachNegotiation {
@@ -870,18 +854,12 @@ export interface SalesCoachNegotiation {
   outcome_details: Record<string, unknown>
   report_card: SalesCoachReportCard | null
   report_card_markdown: string | null
-  ai_assessed_position: string | null
   execution_score: number | null
   execution_denominator: number | null
   uv_criteria: string[]
-  discrepancy: string | null
-  management_review: boolean
   project_prompt_snapshot: string | null
   knowledge_versions: Record<string, string> | null
   model_used: string | null
-  actual_outcome: string | null
-  actual_outcome_source: string | null
-  actual_outcome_at: string | null
   stage: SalesCoachStage
   error: string | null
   tokens_input: number

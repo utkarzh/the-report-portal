@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { TRANSCRIPTION_AUDIO_BUCKET } from '@/lib/transcriptions'
 
 // DELETE /api/transcriptions/[id] — permanently removes a transcription: its DB
@@ -8,9 +8,9 @@ import { TRANSCRIPTION_AUDIO_BUCKET } from '@/lib/transcriptions'
 // is left orphaned. A user may delete only their own transcript; an admin may
 // delete any.
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

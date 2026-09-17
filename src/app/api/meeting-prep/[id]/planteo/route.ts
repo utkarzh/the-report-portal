@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_PLANTEO_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
@@ -20,9 +20,9 @@ interface Params {
 // feedback (US-029 — the planteo is one continuous spoken script, so a
 // "targeted regeneration" is expressed as feedback on the whole draft).
 export async function POST(request: NextRequest, { params }: Params) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

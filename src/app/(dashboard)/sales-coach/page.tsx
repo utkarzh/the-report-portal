@@ -2,12 +2,12 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Handshake, ShieldCheck, Loader2, CheckCircle2, AlertCircle, Flag, Sparkles, BookOpenText, Database } from 'lucide-react'
+import { Plus, Handshake, ShieldCheck, Loader2, CheckCircle2, AlertCircle, Sparkles, BookOpenText } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
-import { SALES_COACH_STAGE_LABELS, formatScore, outcomeLabel, reviewStatus } from '@/lib/sales-coach'
+import { SALES_COACH_STAGE_LABELS, formatScore, outcomeLabel } from '@/lib/sales-coach'
 import PrivacyNotice from '@/components/sales-coach/PrivacyNotice'
 import DeleteNegotiationButton from '@/components/sales-coach/DeleteNegotiationButton'
 import EntityCard from '@/components/ui/EntityCard'
@@ -38,7 +38,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
   const supabase = createSupabaseServerClient()
   let query = supabase
     .from('sales_coach_negotiations')
-    .select('id, user_id, submitted_by_name, company, country, media_publication, declared_outcome, ai_assessed_position, execution_score, execution_denominator, management_review, actual_outcome_at, stage, cost_usd, created_at', { count: 'exact' })
+    .select('id, user_id, submitted_by_name, company, country, media_publication, declared_outcome, execution_score, execution_denominator, stage, cost_usd, created_at', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to)
   if (!isAdmin) query = query.eq('user_id', profile.id)
@@ -107,12 +107,11 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
               <div className="flex-shrink-0 rounded-lg bg-[#c8973f]/10 p-2 text-[#a07530]"><ShieldCheck size={18} /></div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">Admin tools</p>
-                <p className="mt-0.5 text-sm text-gray-600">Manage the four TRC knowledge documents and review the negotiations database.</p>
+                <p className="mt-0.5 text-sm text-gray-600">Manage the four TRC knowledge documents the coach reasons from.</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <AdminLink href="/admin/sales-coach" icon={<BookOpenText size={14} className="text-[#a07530]" />} label="Knowledge documents" />
-              <AdminLink href="/admin/sales-coach/negotiations" icon={<Database size={14} className="text-[#a07530]" />} label="Negotiations database" />
             </div>
           </div>
         </div>
@@ -150,14 +149,8 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
                 badge={<StageBadge stage={r.stage as SalesCoachStage} />}
                 metaRight={
                   <span className="flex flex-shrink-0 items-center gap-1.5">
-                    {isAdmin && reviewStatus(r) === 'open' && (
-                      <span title="Needs management review" className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2 py-0.5 text-[11px] font-medium text-[#a07530]"><Flag size={10} /> Review</span>
-                    )}
-                    {isAdmin && reviewStatus(r) === 'reviewed' && (
-                      <span title="Reviewed by management" className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"><CheckCircle2 size={10} /> Reviewed</span>
-                    )}
                     {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number' && (
-                      <span title={r.ai_assessed_position || 'Execution score'} className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white">
+                      <span title={outcomeLabel(r.declared_outcome)} className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white">
                         {formatScore(Number(r.execution_score), r.execution_denominator)}
                       </span>
                     )}

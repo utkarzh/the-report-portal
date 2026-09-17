@@ -1,9 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Lock, RotateCcw } from 'lucide-react'
+import { Lock, RotateCcw, Check, Loader2 } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
-import Button from '@/components/ui/Button'
 import { wordCount } from '@/lib/interview-letters'
 import type { InterviewLetterParagraph } from '@/types'
 
@@ -40,32 +39,36 @@ export default function ParagraphCard({ paragraph, disabled, onApprove, onRegene
   }
 
   return (
-    <div className={`bg-white border ${isFixed ? 'border-[#e5e3df] bg-[#faf9f7]' : isLocked ? 'border-emerald-200' : 'border-[#e5e3df]'} p-4 sm:p-5`}>
-      <div className="flex items-center justify-between gap-3 mb-2.5">
+    <div
+      className={`rounded-2xl border p-4 shadow-sm transition-colors sm:p-5 ${
+        isFixed ? 'border-[#e5e3df] bg-[#faf9f7]' : isLocked ? 'border-emerald-200 bg-emerald-50/40' : 'border-[#e5e3df] bg-white'
+      }`}
+    >
+      <div className="mb-2.5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{paragraph.label}</span>
           {isFixed && (
-            <span className="text-[9px] font-semibold uppercase tracking-wider bg-gray-200 text-gray-600 px-1.5 py-0.5">
+            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-600">
               Fixed
             </span>
           )}
           {!isFixed && isLocked && (
-            <span className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-1.5 py-0.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
               <Lock size={9} /> Locked
             </span>
           )}
         </div>
         {!isFixed && (
-          <span className={`text-xs ${overBudget ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+          <span className={`text-xs ${overBudget ? 'font-medium text-red-500' : 'text-gray-400'}`}>
             {words} / {paragraph.wordBudget || 80} words
           </span>
         )}
       </div>
 
-      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{paragraph.content}</p>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{paragraph.content}</p>
 
       {!isFixed && !isLocked && (
-        <div className="mt-4 pt-4 border-t border-[#e5e3df] flex flex-col gap-3">
+        <div className="mt-4 flex flex-col gap-3 border-t border-[#e5e3df] pt-4">
           {showFeedback && (
             <Textarea
               label="Feedback"
@@ -76,15 +79,21 @@ export default function ParagraphCard({ paragraph, disabled, onApprove, onRegene
             />
           )}
           <div className="flex items-center gap-2">
-            <Button type="button" onClick={handleApprove} loading={approving} disabled={disabled || regenerating} size="sm">
+            <button
+              type="button"
+              onClick={handleApprove}
+              disabled={disabled || regenerating}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-black px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {approving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
               Approve
-            </Button>
+            </button>
             {showFeedback ? (
               <button
                 type="button"
                 onClick={handleRegenerate}
                 disabled={disabled || approving || regenerating}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-black transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-black disabled:opacity-50"
               >
                 <RotateCcw size={12} className={regenerating ? 'animate-spin' : ''} />
                 {regenerating ? 'Regenerating…' : 'Regenerate'}
@@ -94,9 +103,9 @@ export default function ParagraphCard({ paragraph, disabled, onApprove, onRegene
                 type="button"
                 onClick={() => setShowFeedback(true)}
                 disabled={disabled || approving}
-                className="text-xs font-medium text-gray-500 hover:text-black transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-black disabled:opacity-50"
               >
-                Regenerate
+                <RotateCcw size={12} /> Regenerate
               </button>
             )}
           </div>

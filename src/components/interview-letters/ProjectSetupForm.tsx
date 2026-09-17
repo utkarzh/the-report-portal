@@ -59,7 +59,7 @@ export default function ProjectSetupForm({ isAtLimit }: Props) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 text-xs text-red-700">{error}</div>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{error}</div>
       )}
 
       <Select
@@ -108,11 +108,11 @@ export default function ProjectSetupForm({ isAtLimit }: Props) {
         </p>
       </div>
 
-      <div className="pt-2 border-t border-[#e5e3df]">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mt-4 mb-3">
+      <div className="border-t border-[#e5e3df] pt-5">
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">
           Cover Email Sender
         </h3>
-        <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+        <p className="mb-4 text-xs leading-relaxed text-gray-400">
           Who the cover email will be signed by — the letter itself has its own fixed signature and doesn&apos;t use
           these details.
         </p>

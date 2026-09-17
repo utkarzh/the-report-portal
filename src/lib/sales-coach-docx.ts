@@ -7,7 +7,7 @@ import {
   renderTokens, MARGIN, LETTER_W, LETTER_H, CONTENT_W_PORTRAIT,
   NAVY, BLUE, INK, GREY_FOOT, SZ, FONT,
 } from '@/lib/docx-template'
-import { formatScore, outcomeLabel, renderReportCardMarkdown } from '@/lib/sales-coach'
+import { formatScore, scoreCoverageSuffix, renderReportCardMarkdown } from '@/lib/sales-coach'
 import type { SalesCoachNegotiation, SalesCoachReportCard } from '@/types'
 
 marked.use({ gfm: true, breaks: true })
@@ -20,7 +20,7 @@ export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachRe
   const dateStr = new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   const interviewee = [n.interviewee_name, n.interviewee_position].filter(Boolean).join(', ')
   const where = [n.media_publication, n.country].filter(Boolean).join(' · ')
-  const score = `${formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} applicable points`
+  const score = `${formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} scored criteria${scoreCoverageSuffix(card.criteria)}`
 
   const meta = (text: string, color = '595959') =>
     new Paragraph({
@@ -48,12 +48,7 @@ export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachRe
       spacing: { before: 160, after: 40 },
       children: [new TextRun({ text: `Execution Score: ${score}`, bold: true, size: SZ.coverSub, color: NAVY, font: FONT })],
     }),
-    meta(`Assessed position: ${card.assessed_position}   ·   Declared outcome: ${outcomeLabel(card.declared_outcome)}`, INK),
-    ...(card.management_review
-      ? [meta(card.review
-          ? `Management review: reviewed by ${card.review.reviewed_by_name} — confirmed outcome ${outcomeLabel(card.review.confirmed_outcome)}`
-          : 'Management review recommended — not yet reviewed', 'A07530')]
-      : []),
+    meta(`Commercial outcome: ${card.commercial_outcome_label}`, INK),
     new Paragraph({
       spacing: { before: 200, after: 240 },
       border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'D9D9D9' } },

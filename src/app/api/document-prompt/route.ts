@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isDocType } from '@/lib/documents'
+import { getApiUser } from '@/lib/auth/api-user'
 
 // Detailed "source of truth" prompt for a document module, keyed by doc_type.
 // Mirrors /api/transcript-prompt: any authenticated user may read (needed to
@@ -9,8 +10,8 @@ import { isDocType } from '@/lib/documents'
 
 export async function GET(request: NextRequest) {
   const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
 
   const docType = request.nextUrl.searchParams.get('docType')
   if (!isDocType(docType)) {
@@ -27,9 +28,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

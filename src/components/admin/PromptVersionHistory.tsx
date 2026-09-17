@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import type { PromptVersion, CategoryPromptVersion, DocType, InterviewType, MeetingPrepPromptKey, InterviewLetterCompany, SalesCoachKnowledgeKey } from '@/types'
+import { formatDayMonthYearTime } from '@/lib/date-format'
 
 type Version = PromptVersion | CategoryPromptVersion
 
@@ -24,10 +25,7 @@ interface Props {
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+  return formatDayMonthYearTime(iso)
 }
 
 export default function PromptVersionHistory({ type, categoryId, docType, variant, promptKey, company, docKey, currentPromptText, refreshKey, onRestore }: Props) {

@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, FileSpreadsheet, Loader2, Trash2, X } from 'lucide-react'
+import { formatDayMonthYear } from '@/lib/date-format'
 
 interface Tracker {
   id: string
@@ -123,7 +124,7 @@ export default function AdvertiserTrackerManager({ initial }: { initial: Tracker
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900">{t.country}</p>
                   <p className="text-xs text-gray-500 mt-0.5 truncate">
-                    {t.row_count} rows · {t.filename || 'spreadsheet'} · updated {new Date(t.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {t.row_count} rows · {t.filename || 'spreadsheet'} · updated {formatDayMonthYear(t.updated_at)}
                   </p>
                 </div>
                 <button

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { getApiUser } from '@/lib/auth/api-user'
 import { matchAdvertiserHistory, type TrackerEntry } from '@/lib/meeting-prep-tracker'
 
 export const runtime = 'nodejs'
@@ -9,8 +10,8 @@ export const runtime = 'nodejs'
 // Commercial Alert (status + details). Used by the meeting-prep form.
 export async function GET(request: NextRequest) {
   const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
 
   const country = (request.nextUrl.searchParams.get('country') || '').trim()
   const company = (request.nextUrl.searchParams.get('company') || '').trim()

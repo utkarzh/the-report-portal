@@ -8,6 +8,7 @@ import ReceiptLightbox, { isPreviewableReceiptUrl } from '@/components/finance/R
 import { SUB_LINES_BY_CATEGORY, defaultSubLine } from '@/lib/finance-categories'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceExpense, FinanceExpenseCategory, FinanceExpenseFlag } from '@/types'
+import { formatDayMonthYearTime } from '@/lib/date-format'
 
 // Same icon set as SpendByCategoryModal (admin/projects/[id]/page.tsx and
 // FieldExpensesSection.tsx) — kept in sync so a category means the same
@@ -323,8 +324,8 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
           )}
 
           <div className="text-[11px] text-gray-400 pt-1 border-t border-[#f0efeb]">
-            Logged {new Date(e.created_at).toLocaleString()}
-            {e.reviewed_at && ` · Reviewed ${new Date(e.reviewed_at).toLocaleString()}`}
+            Logged {formatDayMonthYearTime(e.created_at)}
+            {e.reviewed_at && ` · Reviewed ${formatDayMonthYearTime(e.reviewed_at)}`}
           </div>
         </div>
       </motion.div>

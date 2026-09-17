@@ -4,7 +4,6 @@ import type {
   SalesCoachReportCard,
   SalesCoachCriterion,
   SalesCoachVerdict,
-  SalesCoachAssessedPosition,
   SalesCoachNegotiation,
   SalesCoachStage,
   SalesCoachEvidence,
@@ -63,31 +62,24 @@ export function isSalesCoachOutcome(v: unknown): v is SalesCoachOutcome {
   return v === 'signed' || v === 'retorno' || v === 'lost' || v === 'uncertain'
 }
 
-// The brief's qualifier-based AI-assessed commercial positions (US-040).
-export const SALES_COACH_ASSESSED_POSITIONS: SalesCoachAssessedPosition[] = [
-  'Positive/Won',
-  'Apparent Positive/Won — confirmation required',
-  'Controlled retorno',
-  'Open retorno',
-  'Open, low-confidence retorno',
-  'Negative/Lost',
-  'Uncertain — insufficient evidence',
-  'Management review recommended',
-]
-
-// The nine Report Card criteria, in the fixed order of the client's sample
-// card (US-039). `heading` is the upper-case section title used in the text
-// rendering; `label` is the display name in the UI.
-export const SALES_COACH_CRITERIA: { key: string; label: string; heading: string }[] = [
-  { key: 'sales_offer_buildup', label: 'Sales Offer Build-up', heading: 'SALES OFFER BUILDUP' },
-  { key: 'offer_articulation', label: 'Offer Articulation', heading: 'OFFER ARTICULATION' },
-  { key: 'outcome', label: 'Outcome', heading: 'OUTCOME' },
-  { key: 'ceo_buyin', label: 'CEO Buy-in', heading: 'CEO BUY-IN' },
-  { key: 'ceo_preference', label: 'CEO Preference', heading: 'CEO PREFERENCE' },
-  { key: 'space_price_retorno', label: 'Space & Price for Retorno', heading: 'SPACE & PRICE FOR RETORNO' },
-  { key: 'space_price_agreement', label: 'Space and Price Agreement', heading: 'SPACE AND PRICE AGREEMENT' },
-  { key: 'next_steps_stakeholders', label: 'Next Steps and Stakeholders', heading: 'NEXT STEPS AND STAKEHOLDERS' },
-  { key: 'scheduled_meeting', label: 'Scheduled Meeting', heading: 'SCHEDULED MEETING' },
+// The eight SCORED Report Card criteria, in the fixed order of the Project
+// Prompt's report format (US-039). `number` is that document's own section
+// number — it deliberately skips 3, which is COMMERCIAL OUTCOME: the Project
+// Prompt is explicit that section is "NOT SCORED" and "never included" in the
+// denominator ("Do not automatically use eight as the denominator. Commercial
+// Outcome is never included."), so it is not one of these criteria at all —
+// see commercialOutcomeLabel()/commercialOutcomeNote() below for how it's
+// rendered instead. `heading` is the upper-case section title used in the
+// text rendering; `label` is the display name in the UI.
+export const SALES_COACH_CRITERIA: { key: string; label: string; heading: string; number: number }[] = [
+  { key: 'sales_offer_buildup', label: 'Sales Offer Build-up', heading: 'SALES OFFER BUILDUP', number: 1 },
+  { key: 'offer_articulation', label: 'Offer Articulation', heading: 'OFFER ARTICULATION', number: 2 },
+  { key: 'ceo_buyin', label: 'CEO Buy-in', heading: 'CEO BUY-IN', number: 4 },
+  { key: 'ceo_preference', label: 'CEO Preference', heading: 'CEO PREFERENCE', number: 5 },
+  { key: 'space_price_retorno', label: 'Space & Price for Retorno', heading: 'SPACE & PRICE FOR RETORNO', number: 6 },
+  { key: 'space_price_agreement', label: 'Space and Price Agreement', heading: 'SPACE AND PRICE AGREEMENT', number: 7 },
+  { key: 'next_steps_stakeholders', label: 'Next Steps and Stakeholders', heading: 'NEXT STEPS AND STAKEHOLDERS', number: 8 },
+  { key: 'scheduled_meeting', label: 'Scheduled Meeting', heading: 'SCHEDULED MEETING', number: 9 },
 ]
 
 const CRITERION_KEYS = SALES_COACH_CRITERIA.map((c) => c.key)
@@ -96,7 +88,10 @@ const VERDICTS: SalesCoachVerdict[] = ['pass', 'warn', 'fail', 'na', 'uv']
 // Which criteria are N/A is a FIXED rule keyed to the declared outcome, not a
 // per-run model judgement — otherwise the same negotiation scored "5/7" one
 // run and "5/8" the next. The denominator is therefore static per outcome
-// path: signed 7, retorno 8, lost 6, uncertain 9 (only a rare UV lowers it).
+// path: signed 6, retorno 7, lost 5, uncertain 8 of the eight scored criteria
+// (only a rare UV lowers it further) — matches the Project Prompt's own
+// "Sections 1, 2 and 4–9" denominator rule now that Commercial Outcome (3)
+// is excluded.
 export const NA_BY_DECLARED_OUTCOME: Record<SalesCoachOutcome, string[]> = {
   signed: ['space_price_retorno', 'scheduled_meeting'],
   retorno: ['space_price_agreement'],
@@ -112,17 +107,22 @@ export function applicableCriteriaCount(declared: SalesCoachOutcome | null | und
   return SALES_COACH_CRITERIA.length - fixedNaCriteria(declared).length
 }
 
+function criterionNumber(key: string): number {
+  return SALES_COACH_CRITERIA.find((c) => c.key === key)?.number ?? 0
+}
+
 // Per-run instruction appended to the submission so the model applies the
 // table on the first pass (the validator enforces it regardless).
 export function applicabilityInstruction(declared: SalesCoachOutcome | null | undefined): string {
   const na = fixedNaCriteria(declared)
   const label = outcomeLabel(declared)
   const naList = na.length
-    ? na.map((k) => { const i = CRITERION_KEYS.indexOf(k); return `${i + 1}. ${SALES_COACH_CRITERIA[i].label}` }).join('; ')
+    ? na.map((k) => { const c = SALES_COACH_CRITERIA.find((c) => c.key === k)!; return `${c.number}. ${c.label}` }).join('; ')
     : 'none'
   return `--- APPLICABLE CRITERIA (fixed rule for a negotiation declared "${label}") ---
 N/A, by rule: ${naList}. Give these the verdict "na" with a one-line note.
-Every other criterion MUST receive pass, warn or fail with evidence — "na" is not allowed for them. Use "uv" only if a specific passage needed for that criterion is missing or unintelligible in the transcript.`
+Every other criterion MUST receive pass, warn or fail with evidence — "na" is not allowed for them. Use "uv" only if a specific passage needed for that criterion is missing or unintelligible in the transcript.
+Commercial Outcome (Section 3, the declared result) is not one of your criteria — the system renders it separately. Do not include it in criteria[].`
 }
 
 // Points per verdict. N/A and UV are excluded from the denominator entirely
@@ -160,6 +160,17 @@ export function formatScore(score: number | null | undefined, denominator: numbe
   return `${s}/${denominator}`
 }
 
+// The Project Prompt's coverage convention: "Never display X/Y alone when UV
+// criteria exist" — append the UV/N-A counts so a low denominator caused by
+// unverifiable audio is never mistaken for a low score. Plain "X/Y" when there
+// is no UV.
+export function scoreCoverageSuffix(criteria: SalesCoachCriterion[]): string {
+  const uv = criteria.filter((c) => c.verdict === 'uv').length
+  if (uv === 0) return ''
+  const na = criteria.filter((c) => c.verdict === 'na').length
+  return ` — ${uv} UV, ${na} N/A`
+}
+
 export function verdictMark(v: SalesCoachVerdict): string {
   switch (v) {
     case 'pass': return '✅'
@@ -168,11 +179,6 @@ export function verdictMark(v: SalesCoachVerdict): string {
     case 'na': return 'N/A'
     case 'uv': return 'UV'
   }
-}
-
-// "Positive/Won" → "POSITIVE / WON" for the card's top line.
-export function positionHeadline(p: string): string {
-  return p.replace(/\s*\/\s*/g, ' / ').toUpperCase()
 }
 
 // The outcome-conditional details captured on the form (US-036), turned into
@@ -213,16 +219,47 @@ export function formatOutcomeDetails(
   return rows
 }
 
-// Where a negotiation stands in the management-review workflow (US-045):
-// 'none' (never flagged), 'open' (flagged, nobody has looked), 'reviewed'
-// (an admin recorded the confirmed outcome). `actual_outcome_at` is the
-// "reviewed" marker — the reserved later-outcome column, no migration needed.
-export type SalesCoachReviewStatus = 'none' | 'open' | 'reviewed'
-export function reviewStatus(
-  n: Pick<SalesCoachNegotiation, 'management_review' | 'actual_outcome_at'>,
-): SalesCoachReviewStatus {
-  if (!n.management_review) return 'none'
-  return n.actual_outcome_at ? 'reviewed' : 'open'
+// Section 3, COMMERCIAL OUTCOME — NOT SCORED (Project Prompt). A factual
+// label, built deterministically from the declared outcome, never awarded
+// execution points and never asked of the model. The exact wording mirrors
+// the Project Prompt's own labels: "POSITIVE / WON", "NEGATIVE / LOST",
+// "FOLLOW-UP / RETORNO — [SPACE] at [PRICE]" (or "— OPEN, NO SPACE AGREED
+// UPON" when nothing was established). The Project Prompt's fourth metadata
+// option, "Uncertain", has no defined mapping in its own report format, so it
+// is shown as declared rather than invented.
+export function commercialOutcomeLabel(
+  declared: SalesCoachOutcome | null | undefined,
+  details: Record<string, unknown> | null | undefined,
+): string {
+  if (declared === 'signed') return 'POSITIVE / WON'
+  if (declared === 'lost') return 'NEGATIVE / LOST'
+  if (declared === 'retorno') {
+    const d = details || {}
+    if (d.noneEstablished === true) return 'FOLLOW-UP / RETORNO — OPEN, NO SPACE AGREED UPON'
+    const opt1 = formatOutcomeDetails(declared, details).find((r) => r.label === 'Option 1')?.value
+    return opt1 ? `FOLLOW-UP / RETORNO — ${opt1}` : 'FOLLOW-UP / RETORNO — OPEN, NO SPACE AGREED UPON'
+  }
+  if (declared === 'uncertain') return 'UNCERTAIN'
+  return 'NOT DECLARED'
+}
+
+// The factual detail line under the Commercial Outcome label — what the
+// Sales Executive entered on the form, not a transcript-derived judgement.
+export function commercialOutcomeNote(
+  declared: SalesCoachOutcome | null | undefined,
+  details: Record<string, unknown> | null | undefined,
+): string {
+  if (declared === 'signed') {
+    const text = formatOutcomeDetails(declared, details).map((r) => r.value).filter((v) => v && v !== '—').join(', ')
+    return text || 'Signed on the spot, as declared by the Sales Executive.'
+  }
+  if (declared === 'lost') {
+    const reason = formatOutcomeDetails(declared, details).find((r) => r.label === 'Reason given by the client')?.value
+    return reason && reason !== 'Not recorded' ? `Reason given by the client: ${reason}` : 'Declared lost by the Sales Executive.'
+  }
+  if (declared === 'retorno') return 'Follow-up required, as declared by the Sales Executive.'
+  if (declared === 'uncertain') return 'Declared uncertain by the Sales Executive.'
+  return 'No outcome was declared.'
 }
 
 // The transcript the analysis and coaching run on. A system transcript
@@ -366,7 +403,7 @@ function cleanSections(v: unknown): SalesCoachAnalysisSection[] {
 // problems (empty = valid) so the route can trigger one corrective pass.
 export function validateReportCard(
   rc: unknown,
-  ctx: { company: string; declaredOutcome: SalesCoachOutcome | null },
+  ctx: { company: string; declaredOutcome: SalesCoachOutcome | null; outcomeDetails?: Record<string, unknown> | null },
 ): { ok: boolean; problems: string[]; normalized?: SalesCoachReportCard } {
   const problems: string[] = []
   if (!rc || typeof rc !== 'object' || Array.isArray(rc)) {
@@ -374,15 +411,10 @@ export function validateReportCard(
   }
   const card = rc as Record<string, unknown>
 
-  const assessed = str(card.assessed_position)
-  if (!SALES_COACH_ASSESSED_POSITIONS.includes(assessed as SalesCoachAssessedPosition)) {
-    problems.push(`assessed_position must be one of: ${SALES_COACH_ASSESSED_POSITIONS.join(' | ')}`)
-  }
   if (!str(card.headline)) problems.push('Missing headline')
   if (!str(card.summary)) problems.push('Missing summary')
   if (!str(card.report_summary)) problems.push('Missing report_summary')
   if (!str(card.coaching_question)) problems.push('Missing the single coaching question')
-  if (typeof card.management_review !== 'boolean') problems.push('management_review must be true or false')
 
   const rawCriteria = Array.isArray(card.criteria) ? (card.criteria as Record<string, unknown>[]) : []
   if (rawCriteria.length === 0) problems.push('Missing criteria array')
@@ -437,12 +469,12 @@ export function validateReportCard(
   })
 
   const { score, denominator } = recomputeScore(criteria)
-  const discrepancy = str(card.discrepancy) || null
 
   const normalized: SalesCoachReportCard = {
     company: ctx.company,
     declared_outcome: ctx.declaredOutcome,
-    assessed_position: assessed as SalesCoachAssessedPosition,
+    commercial_outcome_label: commercialOutcomeLabel(ctx.declaredOutcome, ctx.outcomeDetails),
+    commercial_outcome_note: commercialOutcomeNote(ctx.declaredOutcome, ctx.outcomeDetails),
     headline: str(card.headline),
     execution_score: score,
     execution_denominator: denominator,
@@ -451,35 +483,9 @@ export function validateReportCard(
     report_summary: str(card.report_summary),
     objections: cleanObjections(card.objections),
     deeper_analysis: cleanSections(card.deeper_analysis),
-    discrepancy,
-    management_review: Boolean(card.management_review),
     coaching_question: str(card.coaching_question),
   }
   return { ok: true, problems: [], normalized }
-}
-
-// Code-level backstop for the declared-vs-assessed distinction (US-040): a
-// material mismatch always raises the management-review flag, whatever the
-// model decided. Returns the (possibly) updated card.
-export function applyDiscrepancyRules(card: SalesCoachReportCard): SalesCoachReportCard {
-  const declared = card.declared_outcome
-  const assessed = card.assessed_position
-  let mismatch: string | null = null
-
-  if (declared === 'signed' && assessed !== 'Positive/Won') {
-    mismatch = `Declared "Signed on the spot" but the transcript supports "${assessed}".`
-  } else if (declared === 'lost' && (assessed === 'Positive/Won' || assessed === 'Apparent Positive/Won — confirmation required')) {
-    mismatch = `Declared "Lost" but the transcript supports "${assessed}".`
-  } else if (declared === 'retorno' && (assessed === 'Positive/Won' || assessed === 'Negative/Lost')) {
-    mismatch = `Declared "Retorno" but the transcript supports "${assessed}".`
-  }
-
-  if (!mismatch && assessed !== 'Management review recommended') return card
-  return {
-    ...card,
-    discrepancy: card.discrepancy || mismatch,
-    management_review: true,
-  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -489,19 +495,26 @@ export function applyDiscrepancyRules(card: SalesCoachReportCard): SalesCoachRep
 
 export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
   const lines: string[] = []
-  const scoreText = `${formatScore(card.execution_score, card.execution_denominator)} applicable points`
+  const outcomeLbl = card.commercial_outcome_label
+  const scoreText = `${formatScore(card.execution_score, card.execution_denominator)} scored criteria${scoreCoverageSuffix(card.criteria)}`
   lines.push('# REPORT CARD')
-  lines.push(`**${positionHeadline(card.assessed_position)} — ${scoreText} — ${card.headline}**`)
+  lines.push(`**${outcomeLbl} — ${scoreText} — ${card.headline}**`)
   lines.push('')
   lines.push(card.summary)
   lines.push('')
 
+  // Sections 1 and 2, then Section 3 (Commercial Outcome — not scored, the
+  // Project Prompt's own numbering), then the remaining scored criteria.
   card.criteria.forEach((c, i) => {
     const meta = SALES_COACH_CRITERIA.find((k) => k.key === c.key)
-    lines.push(`## ${i + 1}. ${meta?.heading || c.label.toUpperCase()}`)
-    if (c.key === 'outcome' && isScoredVerdict(c.verdict)) {
-      lines.push(`**${positionHeadline(card.assessed_position)}${c.note ? ` — ${c.note}` : ''}**`)
-    } else if (c.verdict === 'na') {
+    if (i === 2) {
+      lines.push('## 3. COMMERCIAL OUTCOME — NOT SCORED')
+      lines.push(`**${outcomeLbl}**`)
+      lines.push(card.commercial_outcome_note)
+      lines.push('')
+    }
+    lines.push(`## ${meta?.number ?? i + 1}. ${meta?.heading || c.label.toUpperCase()}`)
+    if (c.verdict === 'na') {
       lines.push(`**N/A${c.note ? ` — ${c.note}` : ''}**`)
     } else if (c.verdict === 'uv') {
       lines.push(`**UV — audio verification required${c.note ? ` — ${c.note}` : ''}**`)
@@ -514,16 +527,8 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
   })
 
   lines.push('## SCORELINE')
-  lines.push(`**Execution Score:** ${formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} applicable points`)
-  lines.push(`**Commercial Outcome:** ${card.assessed_position}`)
-  if (card.discrepancy) lines.push(`**Declared vs assessed:** ${card.discrepancy}`)
-  if (card.management_review) {
-    lines.push(
-      card.review
-        ? `**Management review:** Reviewed by ${card.review.reviewed_by_name} on ${new Date(card.review.reviewed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} — confirmed outcome: ${outcomeLabel(card.review.confirmed_outcome)}${card.review.note ? `. ${card.review.note}` : ''}`
-        : '**Management review:** Recommended — not yet reviewed',
-    )
-  }
+  lines.push(`**Execution Score:** ${formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} scored criteria${scoreCoverageSuffix(card.criteria)}`)
+  lines.push(`**Commercial Outcome:** ${outcomeLbl}`)
   lines.push(`**Report Summary:** ${card.report_summary}`)
   lines.push('')
 
@@ -566,14 +571,9 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
 export const REPORT_CARD_OUTPUT_SCHEMA = {
   type: 'object',
   properties: {
-    assessed_position: {
-      type: 'string',
-      enum: SALES_COACH_ASSESSED_POSITIONS,
-      description: 'The AI-assessed commercial position, judged from the transcript evidence — NOT the declared outcome.',
-    },
     headline: {
       type: 'string',
-      description: 'One sentence: what was secured (space/price) and the single most important execution note.',
+      description: 'One sentence: the single most important execution note from the negotiation.',
     },
     summary: {
       type: 'string',
@@ -581,7 +581,7 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
     },
     criteria: {
       type: 'array',
-      description: 'Exactly the nine criteria, in order, each exactly once.',
+      description: 'Exactly these eight scored criteria (Commercial Outcome is rendered separately by the system and is never one of them), in order, each exactly once.',
       items: {
         type: 'object',
         properties: {
@@ -589,7 +589,7 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
           verdict: { type: 'string', enum: VERDICTS },
           note: {
             type: 'string',
-            description: 'Short text after the verdict mark. For OUTCOME: the space and price (e.g. "Half page, USD 30,000"). For N/A: why it does not apply (e.g. "outcome is Positive/Won"). Empty string otherwise.',
+            description: 'Short text after the verdict mark. For N/A: why it does not apply (e.g. "outcome is signed"). Empty string otherwise.',
           },
           evidence: {
             type: 'array',
@@ -643,22 +643,14 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
         additionalProperties: false,
       },
     },
-    discrepancy: {
-      type: 'string',
-      description: 'If the declared outcome and the assessed position differ: one sentence explaining the gap. Empty string if they agree.',
-    },
-    management_review: {
-      type: 'boolean',
-      description: 'true when the declared-vs-assessed discrepancy is material, evidence is contradictory, or the negotiation needs a manager to look at it.',
-    },
     coaching_question: {
       type: 'string',
       description: 'Exactly ONE focused coaching question, addressed to the Sales Executive as "you", tied to the decisive moment.',
     },
   },
   required: [
-    'assessed_position', 'headline', 'summary', 'criteria', 'report_summary',
-    'objections', 'deeper_analysis', 'discrepancy', 'management_review', 'coaching_question',
+    'headline', 'summary', 'criteria', 'report_summary',
+    'objections', 'deeper_analysis', 'coaching_question',
   ],
   additionalProperties: false,
 } as const
@@ -676,33 +668,31 @@ export const REPORT_CARD_CONTRACT = `=== REPORT CARD OUTPUT CONTRACT (fixed — 
 
 You are producing the TRC Sales Coach REPORT CARD for ONE negotiation, as a single JSON object matching the provided schema. No prose outside the JSON.
 
-CRITERIA — exactly these nine, in this order, each exactly once:
-1. sales_offer_buildup — did you build a personalised planteo from the interview (the CEO's own messages), connect those messages to a dedicated space, and move into the offer?
-2. offer_articulation — was a complete offer stated: space/format, principal benefits, level of investment, then a leading/closing question? Two options at most, largest first.
-3. outcome — the commercial result AS EVIDENCED IN THE TRANSCRIPT. Its verdict mirrors assessed_position: pass for Positive/Won; warn for "Apparent Positive/Won — confirmation required" or "Controlled retorno"; fail for "Open retorno", "Open, low-confidence retorno" or "Negative/Lost"; uv for "Uncertain — insufficient evidence". Put the specific space and price in note.
-4. ceo_buyin — did the CEO personally and explicitly confirm they want the company to participate, before implementation, delegation or retorno?
-5. ceo_preference — did the CEO state (not have assumed) a clear preference for a specific space/option?
-6. space_price_retorno — for a retorno: was a specific space and price carried into the follow-up with the CEO's knowledge?
-7. space_price_agreement — were the specific space, price and payment condition explicitly worked through and acknowledged by both sides?
-8. next_steps_stakeholders — were next steps, ownership and any further stakeholder (who approves, who signs, who handles production) clearly established under the CEO's direction? Implementation delegation after the decision is fine; commercial delegation before it is not.
-9. scheduled_meeting — was the further decision meeting fixed with a date and time?
+HOW THIS CONTRACT RELATES TO THE PROJECT PROMPT: the Project Prompt (loaded above, highest authority) is where the real judgement lives — its CONFIRMED OUTCOME METADATA, OUTCOME STATUS VERSUS SUPPORTING METADATA, NON-VERBAL OUTCOME IS NOT A COACHING GAP and TRANSCRIPTION AND SPEAKER UNCERTAINTY rules govern exactly how to treat the declared outcome, the submitted details, and any garbled or ambiguous audio (mark UV rather than guessing or penalising). Follow those rules as written; this contract does not add to or override them. What this contract fixes is STRUCTURE only:
+- Commercial Outcome (Section 3 of the Project Prompt's report format) is rendered by the system from the declared outcome and outcome details, exactly as "Commercial Outcome — NOT SCORED... never included [in the denominator]" requires. It is not one of your criteria and you never author it.
+- The remaining eight sections are numbered 1, 2, 4, 5, 6, 7, 8, 9 (3 is reserved for Commercial Outcome) and are exactly what you score in criteria[], each exactly once, no more and no fewer:
+1. sales_offer_buildup
+2. offer_articulation
+4. ceo_buyin
+5. ceo_preference
+6. space_price_retorno
+7. space_price_agreement
+8. next_steps_stakeholders
+9. scheduled_meeting
+Apply the Project Prompt's own verdict thresholds and examples for each of these. If the Project Prompt is silent on a point, use the Manual and Method.
 
 VOICE (mandatory): address the Sales Executive DIRECTLY as "you"/"your" throughout — headline, summary, every criterion's reason, report_summary, objections and the coaching question. Never write "the Sales Executive", "the rep" or "the representative" in third person; never call the role anything but "Sales Executive" if you must name it at all. Write as if speaking straight to the person who ran the negotiation.
 
 APPLICABILITY IS A FIXED RULE, keyed to the DECLARED outcome (the submission tells you which criteria are N/A for this negotiation — follow it exactly):
-- Signed on the spot → 6 and 9 are N/A (7 applicable points).
-- Retorno → 7 is N/A (8 applicable points).
-- Lost → 6, 7 and 9 are N/A (6 applicable points).
-- Uncertain → nothing is N/A (9 applicable points).
+- Signed on the spot → 6 and 9 are N/A (6 applicable points).
+- Retorno → 7 is N/A (7 applicable points).
+- Lost → 6, 7 and 9 are N/A (5 applicable points).
+- Uncertain → nothing is N/A (8 applicable points).
 Never mark any other criterion "na". If something did not happen, that is a judgement (usually fail or warn), not N/A.
-
-VERDICTS: pass = fully met per TRC doctrine. warn = partly met / an execution gap that did not cost the deal. fail = not met. na = only the fixed-rule criteria above. uv = a specific passage needed for this criterion is missing or unintelligible in the transcript and the audio would need to be checked — rare, and never a substitute for a judgement. Apply the judgement thresholds from the Project Prompt where it defines them; otherwise use the Manual and Method. Never award pass on assumption — you must make the buyer SAY it.
 
 SCORE ARITHMETIC (recomputed in code — do not compute it yourself): pass = 1 point, warn = 0.5, fail = 0; na and uv are excluded from the applicable total.
 
 EVIDENCE RULES: every pass/warn/fail must cite verbatim transcript evidence in evidence[] (labels: "Quote", "Offer quoted", "Leading question quoted", "Subsequent conduct", or similar). Quote exactly as transcribed, in the transcript's language, wrapped in double quotes; add a short English gloss in brackets if the quote is not in English. NEVER invent, paraphrase into quotes, or borrow dialogue from the Examples document. If no quote exists, say so in reason.
-
-DECLARED vs ASSESSED (US-040): the declared outcome and outcome_details are the executive's account. assessed_position is your judgement from the transcript. Physical or off-audio events the executive declared (e.g. an agreement signed) are factual metadata — accept them unless the transcript materially contradicts them. When they differ, explain in discrepancy and set management_review true if the difference is material. Never collapse the two.
 
 STYLE (TRC coaching method): recognise the genuine strengths first, with evidence; then be direct about the decisive moment and its commercial consequence; show the exact words you could have used, short enough to say to a CEO and ending in a question; natural professional language, no generic sales jargon, no motivational padding. The Examples document is for pattern recognition only — never import its facts, numbers or dialogue. Write in English.
 

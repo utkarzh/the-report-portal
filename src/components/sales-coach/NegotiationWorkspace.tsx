@@ -4,16 +4,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Building2, Globe2, Newspaper, UserRound, Users, Mic, Copy, Check,
-  Sparkles, RefreshCw, AlertCircle, CalendarDays, Flag, Download, Loader2, ClipboardList, MessageSquare, FileText,
+  Sparkles, RefreshCw, AlertCircle, CalendarDays, Download, Loader2, ClipboardList, MessageSquare, FileText,
 } from 'lucide-react'
 import AudioPlayer, { type AudioPlayerHandle } from '@/components/transcriptions/AudioPlayer'
 import MeetingPrepLoader from '@/components/meeting-prep/MeetingPrepLoader'
 import CoachConversation from '@/components/sales-coach/CoachConversation'
 import ReportCardView from '@/components/sales-coach/ReportCardView'
-import ManagementReviewPanel from '@/components/sales-coach/ManagementReviewPanel'
 import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
-import { formatOutcomeDetails, formatScore, outcomeLabel, pickTranscript, reviewStatus } from '@/lib/sales-coach'
+import { formatOutcomeDetails, formatScore, outcomeLabel, pickTranscript } from '@/lib/sales-coach'
+import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
 import type { SalesCoachNegotiation, SalesCoachMessage } from '@/types'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -254,7 +254,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
     busy === 'analyzing' ? 'active' : hasCard ? 'done' : error && transcript ? 'error' : 'upcoming'
   const coachStep: StepState = hasCard && !busy ? 'done' : 'upcoming'
   const steps = [
-    { label: 'Submitted', sub: new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), state: 'done' as StepState },
+    { label: 'Submitted', sub: formatDayMonth(n.created_at), state: 'done' as StepState },
     { label: 'Transcript', sub: busy === 'transcribing' ? 'Usually 1–3 min' : transcript ? (transcript.source === 'system' ? 'Speaker-labelled' : 'Provided') : n.audio_path ? 'Pending' : '—', state: transcriptStep },
     { label: 'Report Card', sub: busy === 'analyzing' ? 'Usually 2–4 min' : hasCard ? formatScore(Number(n.execution_score), n.execution_denominator) : 'Pending', state: cardStep },
     { label: 'Coaching', sub: hasCard ? (messages.length > 0 ? `${messages.length} messages` : 'Ready') : 'After the card', state: coachStep },
@@ -282,7 +282,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
               {n.interviewee_name && <span className="inline-flex items-center gap-1.5"><UserRound size={12} />{[n.interviewee_name, n.interviewee_position].filter(Boolean).join(', ')}</span>}
               {n.media_publication && <span className="inline-flex items-center gap-1.5"><Newspaper size={12} />{n.media_publication}</span>}
               {n.country && <span className="inline-flex items-center gap-1.5"><Globe2 size={12} />{n.country}</span>}
-              <span className="inline-flex items-center gap-1.5"><CalendarDays size={12} />{new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              <span className="inline-flex items-center gap-1.5"><CalendarDays size={12} />{formatDayMonthYear(n.created_at)}</span>
               {creatorName && <span className="inline-flex items-center gap-1.5"><Users size={12} />{creatorName}</span>}
             </div>
           </div>
@@ -295,12 +295,6 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
               <span className="inline-flex items-center gap-1.5 rounded-full bg-black px-3 py-1 text-xs font-semibold tabular-nums text-white">
                 {formatScore(Number(n.execution_score), n.execution_denominator)}<span className="font-normal text-white/60">score</span>
               </span>
-            )}
-            {isAdmin && reviewStatus(n) === 'open' && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2.5 py-1 text-[11px] font-medium text-[#a07530]"><Flag size={11} /> Needs review</span>
-            )}
-            {isAdmin && reviewStatus(n) === 'reviewed' && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700"><Check size={11} /> Reviewed</span>
             )}
           </div>
         </div>
@@ -401,10 +395,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
           </div>
 
           {tab === 'card' && n.report_card && (
-            <>
-              {isAdmin && n.management_review && <ManagementReviewPanel negotiation={n} onUpdated={setN} />}
-              <ReportCardView card={n.report_card} meta={meta} isAdmin={isAdmin} onTimestampClick={audioUrl ? jumpToTranscript : undefined} />
-            </>
+            <ReportCardView card={n.report_card} meta={meta} onTimestampClick={audioUrl ? jumpToTranscript : undefined} />
           )}
           {tab === 'transcript' && (
             <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">

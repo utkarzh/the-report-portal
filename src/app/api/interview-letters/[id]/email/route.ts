@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, INTERVIEW_LETTER_EMAIL_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
 import { NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/interview-letters'
+import { getApiUser } from '@/lib/auth/api-user'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 export const maxDuration = 60
@@ -14,9 +14,9 @@ interface Params {
 }
 
 export async function POST(_request: NextRequest, { params }: Params) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

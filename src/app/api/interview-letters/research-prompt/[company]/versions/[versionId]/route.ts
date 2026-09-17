@@ -1,22 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 
 interface Params {
   params: { company: string; versionId: string }
 }
 
 async function requireAdmin() {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single()
-  return profile?.role === 'admin' ? user : null
+  const auth = await getApiUser()
+  if (!auth.user) return auth
+  const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', auth.user.id).single()
+  if (profile?.role !== 'admin') {
+    return { user: null, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  }
+  return auth
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const user = await requireAdmin()
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const admin = await requireAdmin()
+  if (!admin.user) return admin.response
+  const user = admin.user
 
   const { error } = await supabaseAdmin
     .from('interview_letter_research_prompts_versions')
@@ -29,8 +32,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
 // POST — restore a prior version. The version row carries its own company.
 export async function POST(_req: NextRequest, { params }: Params) {
-  const user = await requireAdmin()
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const admin = await requireAdmin()
+  if (!admin.user) return admin.response
+  const user = admin.user
 
   const { data: version } = await supabaseAdmin
     .from('interview_letter_research_prompts_versions')

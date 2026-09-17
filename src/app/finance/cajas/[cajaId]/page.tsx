@@ -6,6 +6,7 @@ import { ArrowLeft, Check, X } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceCaja, FinanceExpense, FinanceExpenseFlag, FinanceIncident, FinanceIncidentMessage, FinanceCajaEvent } from '@/types'
+import { formatDayMonthYearTime } from '@/lib/date-format'
 
 type ExpenseRow = FinanceExpense & {
   finance_expense_flags: FinanceExpenseFlag[]
@@ -270,7 +271,7 @@ export default function CajaDetailPage({ params }: { params: { cajaId: string } 
         {events.map(ev => (
           <div key={ev.id} className="text-xs text-gray-500 flex justify-between flex-wrap gap-1">
             <span>{ev.from_stage ? `${ev.from_stage} → ${ev.to_stage}` : `Opened as ${ev.to_stage}`}{ev.comment ? ` — ${ev.comment}` : ''}</span>
-            <span className="tabular-nums">{new Date(ev.created_at).toLocaleString()}</span>
+            <span className="tabular-nums">{formatDayMonthYearTime(ev.created_at)}</span>
           </div>
         ))}
       </div>

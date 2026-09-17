@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { RESEARCH_DOCS_BUCKET } from '@/lib/research-docs'
 
 // GET /api/sessions/[sessionId] — lightweight status + output poll. Used when a
@@ -8,9 +8,9 @@ import { RESEARCH_DOCS_BUCKET } from '@/lib/research-docs'
 // request runs server-side and persists on completion, but a returning client
 // can't re-attach to that stream — so it polls this until status settles).
 export async function GET(_request: NextRequest, { params }: { params: { sessionId: string } }) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   // Independent reads — run together instead of back-to-back so this
   // polling endpoint (hit every 3s while a session generates) round-trips
@@ -44,9 +44,9 @@ export async function GET(_request: NextRequest, { params }: { params: { session
 // DELETE /api/sessions/[sessionId] — permanently removes an interview
 // (research session). Its messages cascade-delete with the row. Admin-only.
 export async function DELETE(_request: NextRequest, { params }: { params: { sessionId: string } }) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

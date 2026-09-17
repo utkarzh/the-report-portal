@@ -1,14 +1,16 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { Sparkles, Copy, Check, Download, UserPlus, RotateCcw, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  Sparkles, Copy, Check, Download, UserPlus, RotateCcw, AlertTriangle,
+  ChevronDown, ChevronUp, Mail, Globe2, Newspaper, Loader2, AlertCircle,
+} from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
-import Button from '@/components/ui/Button'
 import ParagraphCard from '@/components/interview-letters/ParagraphCard'
 import PersonalizeModal from '@/components/interview-letters/PersonalizeModal'
 import InterviewLetterLoader from '@/components/interview-letters/InterviewLetterLoader'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
+import { formatDayMonthYear } from '@/lib/date-format'
 import { wordCount, splitEmailSubject } from '@/lib/interview-letters'
 import type { InterviewLetterProject, InterviewLetterPersonalization } from '@/types'
 
@@ -17,6 +19,8 @@ interface Props {
   isGenerating: boolean
   isAdmin: boolean
 }
+
+type StepState = 'done' | 'active' | 'error' | 'upcoming'
 
 const STALL_THRESHOLD = 40 // ~2 min of 3s polls
 
@@ -55,7 +59,7 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
       }}
-      className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-black transition-colors"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
     >
       {copied ? <Check size={13} /> : <Copy size={13} />}
       {copied ? 'Copied' : label}
@@ -67,20 +71,98 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
 function EmailPreview({ text }: { text: string }) {
   const { subject, body } = splitEmailSubject(text)
   return (
-    <div className="border border-[#e5e3df]">
+    <div className="overflow-hidden rounded-xl border border-[#e5e3df]">
       {subject && (
-        <div className="px-4 py-3 sm:px-5 border-b border-[#e5e3df] bg-[#faf9f7] flex items-baseline gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 flex-shrink-0">Subject</span>
+        <div className="flex items-baseline gap-2 border-b border-[#e5e3df] bg-[#faf9f7] px-4 py-3 sm:px-5">
+          <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Subject</span>
           <span className="text-sm font-medium text-gray-900">{subject}</span>
         </div>
       )}
-      <div className="px-4 py-4 sm:px-5 whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">{body}</div>
+      <div className="whitespace-pre-wrap px-4 py-4 text-sm leading-relaxed text-gray-800 sm:px-5">{body}</div>
     </div>
   )
 }
 
-export default function InterviewLetterWorkspace({ project: initialProject, isGenerating, isAdmin }: Props) {
-  const router = useRouter()
+function Card({ children, tone = 'default', className = '' }: { children: React.ReactNode; tone?: 'default' | 'emerald'; className?: string }) {
+  return (
+    <div
+      className={`rounded-2xl border bg-white p-5 shadow-sm sm:p-6 ${
+        tone === 'emerald' ? 'border-emerald-200' : 'border-[#e5e3df]'
+      } ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">{children}</p>
+}
+
+// Primary rounded action button, matching the pattern used across the other
+// multi-stage AI workflows (Sales Coach, Meeting Prep) rather than the
+// shared form <Button> (which is meant for uppercase form submits).
+function PrimaryButton({
+  onClick, loading, disabled, children, icon,
+}: {
+  onClick: () => void
+  loading?: boolean
+  disabled?: boolean
+  children: React.ReactNode
+  icon?: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || loading}
+      className="inline-flex items-center justify-center gap-2 self-start rounded-xl bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-sm"
+    >
+      {loading ? <Loader2 size={15} className="animate-spin" /> : icon}
+      {children}
+    </button>
+  )
+}
+
+const STAGE_META: Record<string, { label: string; tone: string }> = {
+  input: { label: 'Starting…', tone: 'bg-[#fbf7ed] text-[#a07530]' },
+  researching: { label: 'Researching', tone: 'bg-[#fbf7ed] text-[#a07530]' },
+  hook_review: { label: 'Hook review', tone: 'bg-sky-50 text-sky-700' },
+  letter_generating: { label: 'Generating letter', tone: 'bg-[#fbf7ed] text-[#a07530]' },
+  letter_review: { label: 'Letter review', tone: 'bg-sky-50 text-sky-700' },
+  letter_approved: { label: 'Letter approved', tone: 'bg-emerald-50 text-emerald-700' },
+  email_generating: { label: 'Generating email', tone: 'bg-[#fbf7ed] text-[#a07530]' },
+  email_review: { label: 'Email review', tone: 'bg-sky-50 text-sky-700' },
+  complete: { label: 'Complete', tone: 'bg-emerald-50 text-emerald-700' },
+  failed: { label: 'Needs attention', tone: 'bg-red-50 text-red-700' },
+}
+
+function Stepper({ steps }: { steps: { label: string; sub: string; state: StepState }[] }) {
+  return (
+    <ol className="grid grid-cols-2 gap-2 border-t border-[#eceae5] px-6 py-4 sm:grid-cols-4">
+      {steps.map((s, i) => (
+        <li key={s.label} className="flex min-w-0 items-center gap-2.5">
+          <span
+            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+              s.state === 'done' ? 'bg-black text-white'
+              : s.state === 'active' ? 'bg-[#fbf7ed] text-[#a07530] ring-2 ring-[#c8973f]/50'
+              : s.state === 'error' ? 'bg-red-50 text-red-600 ring-1 ring-red-200'
+              : 'border border-[#e5e3df] bg-white text-gray-400'
+            }`}
+          >
+            {s.state === 'done' ? <Check size={13} /> : s.state === 'active' ? <Loader2 size={13} className="animate-spin" /> : s.state === 'error' ? <AlertCircle size={13} /> : i + 1}
+          </span>
+          <span className="min-w-0">
+            <span className={`block truncate text-xs font-semibold ${s.state === 'upcoming' ? 'text-gray-400' : 'text-gray-900'}`}>{s.label}</span>
+            <span className={`block truncate text-[11px] ${s.state === 'active' ? 'text-[#a07530]' : 'text-gray-400'}`}>{s.sub}</span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+export default function InterviewLetterWorkspace({ project: initialProject, isGenerating }: Props) {
   const [project, setProject] = useState(initialProject)
   const [statusText, setStatusText] = useState<string | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
@@ -303,25 +385,73 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
   const totalLetterWords = wordCount((project.paragraphs || []).map((p) => p.content).join('\n\n'))
   const unlockedCount = (project.paragraphs || []).filter((p) => p.type === 'variable' && p.status !== 'locked').length
 
+  const researchStep: StepState =
+    project.stage === 'failed' && project.research.length === 0 ? 'error'
+    : project.stage === 'input' || project.stage === 'researching' ? 'active'
+    : 'done'
+  const letterStep: StepState =
+    project.stage === 'hook_review' || project.stage === 'letter_review' ? 'active'
+    : project.stage === 'failed' && project.research.length > 0 && !project.master_letter ? 'error'
+    : project.stage === 'letter_approved' || project.stage === 'email_review' || project.stage === 'complete' ? 'done'
+    : 'upcoming'
+  const emailStep: StepState =
+    (project.stage === 'letter_approved' && busy) || project.stage === 'email_review' ? 'active'
+    : project.stage === 'complete' ? 'done'
+    : 'upcoming'
+  const doneStep: StepState = project.stage === 'complete' ? 'done' : 'upcoming'
+
+  const steps = [
+    { label: 'Research & Hook', sub: project.stage === 'researching' || project.stage === 'input' ? (statusText || 'Working…') : 'Why-now hook', state: researchStep },
+    { label: 'Letter', sub: project.stage === 'letter_review' ? `${totalLetterWords} words` : 'Paragraph by paragraph', state: letterStep },
+    { label: 'Email', sub: 'General cover email', state: emailStep },
+    { label: 'Send', sub: 'Export & personalize', state: doneStep },
+  ]
+
+  const stageMeta = STAGE_META[project.stage] || { label: project.stage, tone: 'bg-gray-100 text-gray-600' }
+
   return (
     <div ref={scrollProps.ref} onScroll={scrollProps.onScroll} onWheel={scrollProps.onWheel} className="h-full overflow-y-auto p-6 sm:p-8">
-      <div className="max-w-2xl mx-auto flex flex-col gap-6">
-        <div>
-          <h1 className="text-lg font-semibold text-gray-900">{project.company} — {project.media_partner}</h1>
-          <p className="text-sm text-gray-500 mt-1">{project.project_country}{project.media_partner_country ? ` · ${project.media_partner_country}` : ''}</p>
+      <div className="mx-auto flex max-w-2xl flex-col gap-6">
+        <div className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
+          <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex-shrink-0 rounded-xl border border-[#e5e3df] bg-[#f7f6f3] p-2.5 text-gray-700">
+                <Mail size={18} />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-semibold text-gray-900">{project.company} — {project.media_partner}</h1>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+                  <span className="inline-flex items-center gap-1.5"><Globe2 size={12} />{project.project_country}</span>
+                  {project.media_partner_country && (
+                    <span className="inline-flex items-center gap-1.5"><Newspaper size={12} />{project.media_partner_country}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <span className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${stageMeta.tone}`}>
+              {stageMeta.label}
+            </span>
+          </div>
+          <Stepper steps={steps} />
         </div>
 
         {runError && (
-          <div className="p-4 bg-red-50 border border-red-200 text-sm text-red-700 flex items-start gap-2">
-            <AlertTriangle size={15} className="flex-shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
+            <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
             <span>{runError}</span>
           </div>
         )}
 
         {stalled && (
-          <div className="p-4 bg-amber-50 border border-amber-200 text-sm text-amber-700 flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 shadow-sm">
             <span>This step seems to have stalled.</span>
-            <Button type="button" size="sm" onClick={handleRetryStalled}>Retry</Button>
+            <button
+              type="button"
+              onClick={handleRetryStalled}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-700 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-amber-800"
+            >
+              <RotateCcw size={12} /> Retry
+            </button>
           </div>
         )}
 
@@ -330,11 +460,14 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
         )}
 
         {project.stage === 'failed' && (
-          <div className="flex flex-col gap-4">
-            <div className="p-4 bg-red-50 border border-red-200 text-sm text-red-700">
-              {project.error || 'Something went wrong.'}
+          <div className="flex flex-col items-start gap-4 rounded-2xl border border-[#e5e3df] bg-white p-8 shadow-sm">
+            <div className="rounded-full bg-red-50 p-3 text-red-600">
+              <AlertCircle size={20} />
             </div>
-            <Button type="button" onClick={startResearch} loading={busy}>Retry Research</Button>
+            <p className="text-sm text-gray-600">{project.error || 'Something went wrong.'}</p>
+            <PrimaryButton onClick={startResearch} loading={busy} icon={<RotateCcw size={15} />}>
+              Retry Research
+            </PrimaryButton>
           </div>
         )}
 
@@ -344,43 +477,43 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
 
         {project.stage === 'hook_review' && !busy && (
           <div className="flex flex-col gap-5">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900 mb-3">Research</h2>
-              <div className="bg-white border border-[#e5e3df] p-4 sm:p-5 flex flex-col gap-2.5">
+            <Card>
+              <SectionLabel>Research</SectionLabel>
+              <div className="flex flex-col gap-2.5">
                 {project.research.length === 0 ? (
                   <p className="text-sm text-gray-400">No research bullets came back.</p>
                 ) : (
                   project.research.map((bullet, i) => (
-                    <p key={i} className="text-sm text-gray-700 leading-relaxed">• {bullet}</p>
+                    <p key={i} className="text-sm leading-relaxed text-gray-700">• {bullet}</p>
                   ))
                 )}
               </div>
-            </div>
+            </Card>
 
-            <div>
+            <Card>
               <Textarea
                 label="Why-Now Hook"
                 value={hook}
                 onChange={(e) => setHook(e.target.value)}
                 rows={3}
               />
-              <p className="text-xs text-gray-400 mt-1.5">
+              <p className="mt-1.5 text-xs text-gray-400">
                 {project.hook_input ? 'Your original hook takes priority — edit freely, or use the AI suggestion below.' : 'AI-proposed based on the research above. Edit, replace, or accept it.'}
               </p>
               {project.hook_ai_suggestion && project.hook_ai_suggestion !== hook && (
                 <button
                   type="button"
                   onClick={() => setHook(project.hook_ai_suggestion || '')}
-                  className="text-xs text-gray-500 hover:text-black underline underline-offset-2 mt-1.5"
+                  className="mt-1.5 text-xs text-gray-500 underline underline-offset-2 hover:text-black"
                 >
                   Use AI suggestion: “{project.hook_ai_suggestion}”
                 </button>
               )}
-            </div>
+            </Card>
 
-            <Button type="button" onClick={handleConfirmHook} loading={busy} disabled={!hook.trim()} arrow>
+            <PrimaryButton onClick={handleConfirmHook} loading={busy} disabled={!hook.trim()} icon={<Sparkles size={15} />}>
               Generate Letter
-            </Button>
+            </PrimaryButton>
           </div>
         )}
 
@@ -399,9 +532,9 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                 onRegenerate={(feedback) => handleRegenerateParagraph(p.key, feedback)}
               />
             ))}
-            <Button type="button" onClick={handleFinalApprove} loading={busy} disabled={unlockedCount > 0} arrow>
+            <PrimaryButton onClick={handleFinalApprove} loading={busy} disabled={unlockedCount > 0} icon={<Check size={15} />}>
               {unlockedCount > 0 ? `${unlockedCount} paragraph${unlockedCount === 1 ? '' : 's'} left to approve` : 'Final Approve'}
-            </Button>
+            </PrimaryButton>
           </div>
         )}
 
@@ -411,38 +544,38 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
 
         {project.stage === 'letter_approved' && !busy && (
           <div className="flex flex-col gap-5">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900 mb-3">Approved Letter</h2>
-              <div className="bg-white border border-emerald-200 p-4 sm:p-5 whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
+            <Card tone="emerald">
+              <SectionLabel>Approved Letter</SectionLabel>
+              <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
                 {project.master_letter}
               </div>
-            </div>
+            </Card>
             {project.sender_name && (
               <p className="text-xs text-gray-400">
                 The cover email will be signed by {project.sender_name}
                 {project.sender_title ? `, ${project.sender_title}` : ''}.
               </p>
             )}
-            <Button type="button" onClick={handleGenerateEmail} loading={busy} arrow>
-              <Sparkles size={14} className="mr-1.5 inline" /> Generate General Email
-            </Button>
+            <PrimaryButton onClick={handleGenerateEmail} loading={busy} icon={<Sparkles size={15} />}>
+              Generate General Email
+            </PrimaryButton>
           </div>
         )}
 
         {(project.stage === 'email_review' || project.stage === 'complete') && (
           <div className="flex flex-col gap-5">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-900">
+            <Card>
+              <div className="mb-3 flex items-center justify-between">
+                <SectionLabel>
                   {project.stage === 'complete' ? 'Approved General Email' : 'General Email Draft'}
-                </h2>
+                </SectionLabel>
                 <CopyButton text={project.master_email || ''} />
               </div>
               <EmailPreview text={project.master_email || ''} />
-            </div>
+            </Card>
 
             {project.stage === 'email_review' && (
-              <div className="flex flex-col gap-3">
+              <Card>
                 <Textarea
                   label="Feedback"
                   value={emailFeedback}
@@ -450,58 +583,58 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                   placeholder="Feedback for regenerating the email (optional)"
                   rows={2}
                 />
-                <div className="flex items-center gap-3">
-                  <Button type="button" onClick={handleApproveEmail} loading={busy} arrow>
+                <div className="mt-3 flex items-center gap-3">
+                  <PrimaryButton onClick={handleApproveEmail} loading={busy} icon={<Check size={15} />}>
                     Approve Email
-                  </Button>
+                  </PrimaryButton>
                   <button
                     type="button"
                     onClick={handleRegenerateEmail}
                     disabled={busy}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-black transition-colors disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-black disabled:opacity-50"
                   >
                     <RotateCcw size={12} /> Regenerate
                   </button>
                 </div>
-              </div>
+              </Card>
             )}
           </div>
         )}
 
         {project.stage === 'complete' && (
           <div className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <a
                 href={`/api/interview-letters/${project.id}/export`}
-                className="inline-flex items-center gap-2 text-xs font-medium tracking-wider uppercase bg-black text-white px-4 py-2.5 hover:bg-gray-900 transition-colors"
+                className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
               >
-                <Download size={13} /> Export Letter (.docx)
+                <Download size={14} /> Export Letter (.docx)
               </a>
               <button
                 type="button"
                 onClick={() => setPersonalizeOpen(true)}
-                className="inline-flex items-center gap-2 text-xs font-medium tracking-wider uppercase border border-[#e5e3df] px-4 py-2.5 hover:border-gray-400 transition-colors"
+                className="inline-flex items-center gap-2 rounded-xl border border-[#e5e3df] bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
               >
-                <UserPlus size={13} /> Personalize for a Recipient
+                <UserPlus size={14} /> Personalize for a Recipient
               </button>
             </div>
 
             {personalizations.length > 0 && (
               <div>
-                <h2 className="text-sm font-semibold text-gray-900 mb-3">Personalized Outputs</h2>
+                <h2 className="mb-3 text-sm font-semibold text-gray-900">Personalized Outputs</h2>
                 <div className="flex flex-col gap-3">
                   {personalizations.map((p) => {
                     const isOpen = expandedPersonalizationId === p.id
                     return (
-                      <div key={p.id} className="bg-white border border-[#e5e3df] p-4 sm:p-5">
-                        <div className="flex items-center justify-between mb-2">
+                      <Card key={p.id} className="!p-4 sm:!p-5">
+                        <div className="mb-2 flex items-center justify-between">
                           <span className="text-sm font-medium text-gray-800">
                             {p.recipient_name || 'Unnamed recipient'}
                             {p.recipient_title ? ` — ${p.recipient_title}` : ''}
                           </span>
-                          <span className="text-xs text-gray-400">{new Date(p.created_at).toLocaleDateString()}</span>
+                          <span className="text-xs text-gray-400">{formatDayMonthYear(p.created_at)}</span>
                         </div>
-                        <div className="flex items-center justify-between gap-3 mt-2 flex-wrap">
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                           <button
                             type="button"
                             onClick={() => {
@@ -512,24 +645,24 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                                 setPersonalizationView('email')
                               }
                             }}
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-black transition-colors"
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 transition-colors hover:text-black"
                           >
                             {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                             {isOpen ? 'Hide' : 'View'}
                           </button>
-                          <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
                             <CopyButton text={p.email_text} label="Copy email" />
                             <CopyButton text={p.letter_text} label="Copy letter" />
                           </div>
                         </div>
 
                         {isOpen && (
-                          <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-[#e5e3df]">
-                            <div className="inline-flex self-start border border-[#e5e3df]">
+                          <div className="mt-4 flex flex-col gap-3 border-t border-[#e5e3df] pt-4">
+                            <div className="inline-flex self-start overflow-hidden rounded-lg border border-[#e5e3df]">
                               <button
                                 type="button"
                                 onClick={() => setPersonalizationView('email')}
-                                className={`px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+                                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                                   personalizationView === 'email' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
                                 }`}
                               >
@@ -538,7 +671,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                               <button
                                 type="button"
                                 onClick={() => setPersonalizationView('letter')}
-                                className={`px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider border-l border-[#e5e3df] transition-colors ${
+                                className={`border-l border-[#e5e3df] px-3 py-1.5 text-xs font-medium transition-colors ${
                                   personalizationView === 'letter' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
                                 }`}
                               >
@@ -549,13 +682,13 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                             {personalizationView === 'email' ? (
                               <EmailPreview text={p.email_text} />
                             ) : (
-                              <div className="border border-[#e5e3df] px-4 py-4 sm:px-5 whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
-                                {p.letter_text}
+                              <div className="rounded-xl border border-[#e5e3df] px-4 py-4 text-sm leading-relaxed text-gray-800 sm:px-5">
+                                <div className="whitespace-pre-wrap">{p.letter_text}</div>
                               </div>
                             )}
                           </div>
                         )}
-                      </div>
+                      </Card>
                     )
                   })}
                 </div>
@@ -573,16 +706,6 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
               projectId={project.id}
             />
           </div>
-        )}
-
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => router.refresh()}
-            className="text-xs text-gray-400 hover:text-gray-600 self-start mt-4"
-          >
-            Refresh
-          </button>
         )}
       </div>
     </div>

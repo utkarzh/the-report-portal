@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Packer } from 'docx'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { buildInterviewLetterDocx } from '@/lib/interview-letter-docx'
+import { getApiUser } from '@/lib/auth/api-user'
 
 // GET /api/interview-letters/[id]/export — US-059. Serves the approved
 // master letter as a real Word (.docx) file. Owner or admin only. Exporting
@@ -11,9 +11,9 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

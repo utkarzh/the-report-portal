@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { canAccessMeetingPreparation } from '@/lib/access'
 
 export const runtime = 'nodejs'
 
 // DELETE /api/meeting-prep/advertiser-tracker/[country] — remove a country's tracker.
 export async function DELETE(_request: NextRequest, { params }: { params: { country: string } }) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

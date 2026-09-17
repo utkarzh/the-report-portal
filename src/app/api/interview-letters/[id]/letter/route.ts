@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, INTERVIEW_LETTER_LETTER_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
@@ -21,9 +21,9 @@ For each VARIABLE slot, write ONLY that paragraph's content, staying within its 
 Output each variable paragraph introduced by its own marker line on its own line (no other text on that line), in the same order as the template, using this exact format: <<<PARAGRAPH:key>>> where "key" is the slot's key from the template. Do not output anything for FIXED slots.`
 
 export async function POST(request: NextRequest, { params }: Params) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

@@ -1,8 +1,9 @@
 'use client'
 
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Flag, Quote, MessageCircleQuestion, Play } from 'lucide-react'
-import { formatScore, outcomeLabel, SALES_COACH_CRITERIA, positionHeadline, applicableCriteriaCount, formatTimestamp } from '@/lib/sales-coach'
-import type { SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict } from '@/types'
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play } from 'lucide-react'
+import { formatScore, scoreCoverageSuffix, outcomeLabel, SALES_COACH_CRITERIA, applicableCriteriaCount, formatTimestamp } from '@/lib/sales-coach'
+import { formatDayMonthYearTime } from '@/lib/date-format'
+import type { SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict, SalesCoachOutcome } from '@/types'
 
 // The Report Card as ONE document (US-039/040/041): identity header →
 // scoreline → summary → nine criteria with verbatim evidence → scoreline recap
@@ -18,15 +19,11 @@ const VERDICT: Record<SalesCoachVerdict, { label: string; chip: string; icon: Re
   uv: { label: 'Verify audio', chip: 'bg-sky-50 text-sky-700 ring-sky-200', icon: <HelpCircle size={13} /> },
 }
 
-const POSITION_TONE: Record<string, string> = {
-  'Positive/Won': 'bg-emerald-600 text-white',
-  'Apparent Positive/Won — confirmation required': 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200',
-  'Controlled retorno': 'bg-sky-50 text-sky-800 ring-1 ring-sky-200',
-  'Open retorno': 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
-  'Open, low-confidence retorno': 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
-  'Negative/Lost': 'bg-red-50 text-red-800 ring-1 ring-red-200',
-  'Uncertain — insufficient evidence': 'bg-stone-100 text-stone-700 ring-1 ring-stone-200',
-  'Management review recommended': 'bg-[#fbf7ed] text-[#a07530] ring-1 ring-[#c8973f]/40',
+const OUTCOME_TONE: Record<SalesCoachOutcome, string> = {
+  signed: 'bg-emerald-600 text-white',
+  retorno: 'bg-sky-50 text-sky-800 ring-1 ring-sky-200',
+  lost: 'bg-red-50 text-red-800 ring-1 ring-red-200',
+  uncertain: 'bg-stone-100 text-stone-700 ring-1 ring-stone-200',
 }
 
 export interface ReportCardMeta {
@@ -40,7 +37,7 @@ export interface ReportCardMeta {
   modelUsed?: string | null
 }
 
-export default function ReportCardView({ card, meta, isAdmin = false, onTimestampClick }: { card: SalesCoachReportCard; meta: ReportCardMeta; isAdmin?: boolean; onTimestampClick?: (ms: number) => void }) {
+export default function ReportCardView({ card, meta, onTimestampClick }: { card: SalesCoachReportCard; meta: ReportCardMeta; onTimestampClick?: (ms: number) => void }) {
   const scored = card.criteria.filter((c) => c.scored)
   const count = (v: SalesCoachVerdict) => scored.filter((c) => c.verdict === v).length
 
@@ -68,44 +65,26 @@ export default function ReportCardView({ card, meta, isAdmin = false, onTimestam
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">
-              Execution score · {card.execution_denominator} applicable points
+              Execution score · {card.execution_denominator} scored criteria{scoreCoverageSuffix(card.criteria)}
               {card.execution_denominator === applicableCriteriaCount(card.declared_outcome)
                 ? ` · fixed for "${outcomeLabel(card.declared_outcome)}"`
                 : ' · one or more criteria need audio verification'}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${POSITION_TONE[card.assessed_position] || 'bg-stone-100 text-stone-700'}`}>
-                {positionHeadline(card.assessed_position)}
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#e5e3df] bg-white px-3 py-1 text-xs text-gray-600">
-                <span className="text-gray-400">Declared</span>
-                <span className="font-medium text-gray-800">{outcomeLabel(card.declared_outcome)}</span>
+              <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${card.declared_outcome ? OUTCOME_TONE[card.declared_outcome] : 'bg-stone-100 text-stone-700'}`}>
+                {card.commercial_outcome_label}
               </span>
             </div>
             <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
               <span className="inline-flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-600" /> {count('pass')} met</span>
               <span className="inline-flex items-center gap-1"><AlertTriangle size={11} className="text-amber-600" /> {count('warn')} partly met</span>
               <span className="inline-flex items-center gap-1"><XCircle size={11} className="text-red-600" /> {count('fail')} not met</span>
-              <span className="inline-flex items-center gap-1"><MinusCircle size={11} className="text-stone-400" /> {card.criteria.length - scored.length} not applicable</span>
+              <span className="inline-flex items-center gap-1"><MinusCircle size={11} className="text-stone-400" /> {count('na')} not applicable</span>
+              {count('uv') > 0 && <span className="inline-flex items-center gap-1"><HelpCircle size={11} className="text-sky-500" /> {count('uv')} unverifiable</span>}
             </div>
           </div>
         </div>
         <p className="mt-4 border-t border-[#e9e7e2] pt-4 text-[15px] font-medium leading-relaxed text-gray-900">{card.headline}</p>
-        {((isAdmin && card.management_review) || card.discrepancy) && (
-          <div className="mt-4 flex items-start gap-2.5 rounded-lg border border-[#c8973f]/30 bg-[#fbf7ed] px-4 py-3 text-sm">
-            <Flag size={14} className="mt-0.5 flex-shrink-0 text-[#a07530]" />
-            <div>
-              {isAdmin && card.management_review && (
-                <p className="font-medium text-[#a07530]">
-                  {card.review
-                    ? `Reviewed by ${card.review.reviewed_by_name} — confirmed outcome: ${outcomeLabel(card.review.confirmed_outcome)}`
-                    : 'Management review recommended'}
-                </p>
-              )}
-              {card.discrepancy && <p className={`text-gray-700 ${isAdmin && card.management_review ? 'mt-0.5 text-xs' : ''}`}>{card.discrepancy}</p>}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="px-6 sm:px-12">
@@ -114,9 +93,28 @@ export default function ReportCardView({ card, meta, isAdmin = false, onTimestam
         {/* ── Criteria ─────────────────────────────────────────── */}
         <Eyebrow>Criteria</Eyebrow>
         <ol className="divide-y divide-[#eceae5] border-y border-[#eceae5]">
-          {card.criteria.map((c, i) => (
-            <CriterionRow key={c.key} index={i + 1} criterion={c} assessedPosition={card.assessed_position} onTimestampClick={onTimestampClick} />
-          ))}
+          {card.criteria.flatMap((c, i) => {
+            const row = <CriterionRow key={c.key} criterion={c} onTimestampClick={onTimestampClick} />
+            if (i !== 2) return [row]
+            return [
+              <li key="commercial-outcome" className="py-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                  <div className="flex items-baseline gap-2.5">
+                    <span className="text-xs font-semibold tabular-nums text-gray-400">03</span>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Commercial Outcome</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{card.commercial_outcome_note}</p>
+                    </div>
+                  </div>
+                  <span className={`inline-flex flex-shrink-0 items-center self-start rounded-full px-2.5 py-1 text-[11px] font-semibold ${card.declared_outcome ? OUTCOME_TONE[card.declared_outcome] : 'bg-stone-100 text-stone-700'}`}>
+                    {card.commercial_outcome_label}
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] uppercase tracking-widest text-gray-400 sm:pl-8">Not scored</p>
+              </li>,
+              row,
+            ]
+          })}
         </ol>
 
         {/* ── Scoreline recap ──────────────────────────────────── */}
@@ -124,11 +122,11 @@ export default function ReportCardView({ card, meta, isAdmin = false, onTimestam
         <dl className="grid gap-4 sm:grid-cols-2">
           <div>
             <dt className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Execution score</dt>
-            <dd className="mt-1 text-sm font-semibold tabular-nums text-gray-900">{formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} applicable points</dd>
+            <dd className="mt-1 text-sm font-semibold tabular-nums text-gray-900">{formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} scored criteria{scoreCoverageSuffix(card.criteria)}</dd>
           </div>
           <div>
             <dt className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Commercial outcome</dt>
-            <dd className="mt-1 text-sm font-semibold text-gray-900">{card.assessed_position}</dd>
+            <dd className="mt-1 text-sm font-semibold text-gray-900">{card.commercial_outcome_label}</dd>
           </div>
         </dl>
         <p className="mt-4 text-sm leading-7 text-gray-800"><span className="font-semibold text-gray-900">Report summary. </span>{card.report_summary}</p>
@@ -187,7 +185,7 @@ export default function ReportCardView({ card, meta, isAdmin = false, onTimestam
       </div>
 
       <footer className="border-t border-[#eceae5] px-6 py-3 text-center text-[11px] text-gray-400 sm:px-12">
-        {meta.generatedAt ? `Generated ${new Date(meta.generatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+        {meta.generatedAt ? `Generated ${formatDayMonthYearTime(meta.generatedAt)}` : ''}
         {meta.modelUsed ? ` · ${meta.modelUsed}` : ''}
         {' · Evidence quoted verbatim from the transcript · Score recomputed in code'}
       </footer>
@@ -199,29 +197,23 @@ function Eyebrow({ children, className = '' }: { children: React.ReactNode; clas
   return <p className={`mb-3 text-[10px] font-semibold uppercase tracking-[0.25em] text-gray-400 ${className}`}>{children}</p>
 }
 
-function CriterionRow({ index, criterion: c, assessedPosition, onTimestampClick }: { index: number; criterion: SalesCoachCriterion; assessedPosition: string; onTimestampClick?: (ms: number) => void }) {
+function CriterionRow({ criterion: c, onTimestampClick }: { criterion: SalesCoachCriterion; onTimestampClick?: (ms: number) => void }) {
   const style = VERDICT[c.verdict]
-  const label = SALES_COACH_CRITERIA.find((k) => k.key === c.key)?.label || c.label
-  const isOutcome = c.key === 'outcome' && c.scored
+  const meta = SALES_COACH_CRITERIA.find((k) => k.key === c.key)
+  const label = meta?.label || c.label
   return (
     <li className="py-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex items-baseline gap-2.5">
-          <span className="text-xs font-semibold tabular-nums text-gray-400">{String(index).padStart(2, '0')}</span>
+          <span className="text-xs font-semibold tabular-nums text-gray-400">{String(meta?.number ?? 0).padStart(2, '0')}</span>
           <div>
             <p className="text-sm font-semibold text-gray-900">{label}</p>
-            {c.note && !isOutcome && <p className="mt-0.5 text-xs text-gray-500">{c.note}</p>}
+            {c.note && <p className="mt-0.5 text-xs text-gray-500">{c.note}</p>}
           </div>
         </div>
-        {isOutcome ? (
-          <span className={`inline-flex flex-shrink-0 items-center self-start rounded-full px-2.5 py-1 text-[11px] font-semibold ${POSITION_TONE[assessedPosition] || 'bg-stone-100 text-stone-700'}`}>
-            {positionHeadline(assessedPosition)}{c.note ? ` — ${c.note}` : ''}
-          </span>
-        ) : (
-          <span className={`inline-flex flex-shrink-0 items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${style.chip}`}>
-            {style.icon}{style.label}
-          </span>
-        )}
+        <span className={`inline-flex flex-shrink-0 items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${style.chip}`}>
+          {style.icon}{style.label}
+        </span>
       </div>
       {(c.evidence?.length || c.reason) && (
         <div className="mt-3 flex flex-col gap-2 sm:pl-8">

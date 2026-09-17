@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { Bell } from 'lucide-react'
 import type { FinanceNotification } from '@/types'
+import { formatDayMonthYearTime } from '@/lib/date-format'
 
 // Brief G-02: "notified of what needs my attention" — in-app inbox (see the
 // note in migration 018 about why this isn't email yet).
@@ -54,7 +55,7 @@ export default function NotificationBell() {
               className={`block px-3.5 py-2.5 text-xs border-b border-gray-100 last:border-0 hover:bg-gray-50 ${n.read ? 'text-gray-500' : 'text-gray-900 font-medium'}`}
             >
               {n.message}
-              <div className="text-[10px] text-gray-400 mt-0.5">{new Date(n.created_at).toLocaleString()}</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">{formatDayMonthYearTime(n.created_at)}</div>
             </Link>
           ))}
         </div>

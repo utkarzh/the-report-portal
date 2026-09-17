@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 import { isInterviewType } from '@/lib/meeting-prep'
 
 // POST /api/meeting-prep — Step 1 of the brief: captures interviewee/meeting
@@ -11,9 +11,9 @@ import { isInterviewType } from '@/lib/meeting-prep'
 // /api/meeting-prep/[id]/research, so a missing media profile halts with zero
 // API cost (US-022).
 export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { getApiUser } from '@/lib/auth/api-user'
 
 interface Params {
   params: { id: string }
@@ -11,8 +12,9 @@ interface Params {
 // since this uses the cookie-scoped client, not the service role.
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data, error } = await supabase
     .from('meeting_prep_sessions')
@@ -29,9 +31,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // fields a user is allowed to hand-edit at any review stage: research
 // sections, presentation points, and the planteo text.
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single()
 
@@ -90,9 +92,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 // DELETE — admin only.
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

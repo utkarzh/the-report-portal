@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcileDocumentStatus } from '@/lib/documents-reconcile'
+import { getApiUser } from '@/lib/auth/api-user'
 
 // GET /api/documents/[id] — poll endpoint used by the output page when a run was
 // started elsewhere (can't re-attach the SSE stream).
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')
@@ -44,9 +44,9 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
 // DELETE /api/documents/[id] — admin-only (mirrors research session delete).
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')

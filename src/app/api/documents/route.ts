@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getDocConfig, isDocType } from '@/lib/documents'
 import { validateDocumentInputs } from '@/lib/claude/validate-inputs'
+import { getApiUser } from '@/lib/auth/api-user'
 
 // POST /api/documents — creates a document_sessions row (Business Case /
 // Editorial Brief). Mirrors /api/sessions: this route does NOT call Claude; it
 // only records the row and returns its id. The destination page opens the
 // streaming generation so a live SSE connection is never abandoned by a nav.
 export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await getApiUser()
+  if (!auth.user) return auth.response
+  const user = auth.user
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')
