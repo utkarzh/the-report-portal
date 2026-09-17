@@ -17,6 +17,10 @@ interface Props {
   onLogged: () => void
   projectId: string
   settlementCurrency: string
+  // Seeds each new entry's editable exchange-rate field — the project's
+  // configured rate is a starting point now, not an enforced value (exchange
+  // rates aren't fixed; the field user types the real rate per expense).
+  defaultExchangeRate: number
 }
 
 interface EditableEntry {
@@ -29,6 +33,10 @@ interface EditableEntry {
   localAmount: string
   localCurrency: string
   settlementAmount: number | null
+  // Per-expense, editable — e.g. one taxi ride's own rate, not the project
+  // default. Optional proof photo travels with it.
+  exchangeRate: string
+  exchangeRateProofFile: File | null
   nights: string
   lowConfidenceFields: string[]
   suspiciousPersonal: boolean
@@ -45,7 +53,6 @@ interface ReceiptGroup {
   fileName: string
   receiptId: string | null
   receiptFilePath: string
-  exchangeRate: number
   note: string | null
   entries: EditableEntry[]
   couldNotRead: boolean
@@ -59,6 +66,8 @@ const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', '
 
 function extToMimeType(ext: string): string | null {
   if (ext === 'pdf') return 'application/pdf'
+  if (ext === 'doc') return 'application/msword'
+  if (ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
   if (IMAGE_EXTENSIONS.has(ext)) return `image/${ext}`
   return null
@@ -66,8 +75,8 @@ function extToMimeType(ext: string): string | null {
 
 // Zips are expanded client-side only — receipts inside are still uploaded
 // and read one by one exactly like individually-picked files. Anything in
-// the archive that isn't an image or a PDF (folders, .DS_Store, __MACOSX
-// junk) is silently skipped rather than rejected.
+// the archive that isn't an image, PDF, or Word doc (folders, .DS_Store,
+// __MACOSX junk) is silently skipped rather than rejected.
 async function expandZip(zipFile: File): Promise<File[]> {
   const zip = await JSZip.loadAsync(zipFile)
   const out: File[] = []
@@ -84,15 +93,16 @@ async function expandZip(zipFile: File): Promise<File[]> {
   return out
 }
 
-function blankEntry(): EditableEntry {
+function blankEntry(defaultExchangeRate: number): EditableEntry {
   return {
     concept: '', category: 'transport', subLine: defaultSubLine('transport'), date: new Date().toISOString().slice(0, 10),
     reference: '', vendor: '', localAmount: '', localCurrency: '', settlementAmount: null,
+    exchangeRate: String(defaultExchangeRate), exchangeRateProofFile: null,
     nights: '', lowConfidenceFields: [], suspiciousPersonal: false, aiComment: '', ruleViolation: null,
   }
 }
 
-export default function UploadReceiptModal({ open, onClose, onLogged, projectId, settlementCurrency }: Props) {
+export default function UploadReceiptModal({ open, onClose, onLogged, projectId, settlementCurrency, defaultExchangeRate }: Props) {
   const [step, setStep] = useState<Step>('select')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [expandingZip, setExpandingZip] = useState(false)
@@ -177,7 +187,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
         if (!canAutoRead) {
           nextGroups.push({
             key: path, fileName: file.name, receiptId: null, receiptFilePath: path,
-            exchangeRate: 1, note: null, entries: [blankEntry()], couldNotRead: true, submitError: null,
+            note: null, entries: [blankEntry(defaultExchangeRate)], couldNotRead: true, submitError: null,
           })
           continue
         }
@@ -192,18 +202,21 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
         if (!res.ok || data.couldNotRead || data.entries.length === 0) {
           nextGroups.push({
             key: path, fileName: file.name, receiptId: data.receiptId ?? null, receiptFilePath: path,
-            exchangeRate: data.exchangeRate ?? 1, note: null, entries: [blankEntry()], couldNotRead: true, submitError: null,
+            note: null, entries: [blankEntry(data.exchangeRate ?? defaultExchangeRate)], couldNotRead: true, submitError: null,
           })
           continue
         }
 
-        const exchangeRate = data.exchangeRate
+        // The extract route's "exchangeRate" is just the project's configured
+        // rate, echoed back as a suggestion — used here only to seed each
+        // entry's own editable field, per brief: rates aren't fixed, and a
+        // multi-trip receipt's entries may each need a different one.
+        const seedRate = data.exchangeRate ?? defaultExchangeRate
         nextGroups.push({
           key: path,
           fileName: file.name,
           receiptId: data.receiptId,
           receiptFilePath: path,
-          exchangeRate,
           note: data.note || null,
           couldNotRead: false,
           submitError: null,
@@ -222,6 +235,8 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
             localAmount: e.localAmount != null ? String(e.localAmount) : '',
             localCurrency: e.localCurrency || '',
             settlementAmount: e.settlementAmount,
+            exchangeRate: String(seedRate),
+            exchangeRateProofFile: null,
             nights: e.nights != null ? String(e.nights) : '',
             lowConfidenceFields: e.lowConfidenceFields ?? [],
             suspiciousPersonal: e.suspiciousPersonal,
@@ -232,7 +247,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
       } catch (err) {
         nextGroups.push({
           key: `${file.name}-${i}`, fileName: file.name, receiptId: null, receiptFilePath: '',
-          exchangeRate: 1, note: null, entries: [],
+          note: null, entries: [],
           couldNotRead: true,
           submitError: err instanceof Error ? err.message : 'Upload failed.',
         })
@@ -254,7 +269,8 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
           const next = { ...e, ...patch }
           if (patch.category && patch.category !== e.category) next.subLine = defaultSubLine(patch.category)
           const amt = parseFloat(next.localAmount)
-          next.settlementAmount = Number.isFinite(amt) && g.exchangeRate ? Math.round((amt / g.exchangeRate) * 100) / 100 : null
+          const rate = parseFloat(next.exchangeRate)
+          next.settlementAmount = Number.isFinite(amt) && Number.isFinite(rate) && rate > 0 ? Math.round((amt / rate) * 100) / 100 : null
           return next
         }),
       }
@@ -278,21 +294,32 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
           setGlobalError(`"${g.fileName}": every entry needs a concept, date, amount and currency.`)
           return
         }
+        const rate = parseFloat(e.exchangeRate)
+        if (!Number.isFinite(rate) || rate <= 0) {
+          setGlobalError(`"${g.fileName}": every entry needs a positive exchange rate.`)
+          return
+        }
       }
     }
 
     setLoading(true)
     const failed: ReceiptGroup[] = []
     let succeededCount = 0
+    const supabase = getSupabaseBrowserClient()
 
     for (const g of groups) {
-      const res = await fetch(`/api/finance/projects/${projectId}/expenses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          receiptId: g.receiptId,
-          receiptFilePath: g.receiptId ? null : g.receiptFilePath,
-          entries: g.entries.map(e => ({
+      let entryPayloads: Record<string, unknown>[]
+      try {
+        entryPayloads = await Promise.all(g.entries.map(async (e) => {
+          let exchangeRateProofPath: string | null = null
+          if (e.exchangeRateProofFile) {
+            const ext = e.exchangeRateProofFile.name.split('.').pop() || 'jpg'
+            const path = `${projectId}/${crypto.randomUUID()}-rate-proof.${ext}`
+            const { error: upErr } = await supabase.storage.from('finance-receipts').upload(path, e.exchangeRateProofFile)
+            if (upErr) throw new Error(upErr.message)
+            exchangeRateProofPath = path
+          }
+          return {
             category: e.category,
             subLine: e.subLine || null,
             concept: e.concept.trim(),
@@ -301,13 +328,28 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
             vendor: e.vendor.trim() || null,
             localAmount: parseFloat(e.localAmount),
             localCurrency: e.localCurrency.trim().toUpperCase(),
+            exchangeRate: parseFloat(e.exchangeRate),
+            exchangeRateProofPath,
             settlementAmount: e.settlementAmount ?? parseFloat(e.localAmount),
             nights: e.nights ? parseInt(e.nights, 10) : null,
             lowConfidenceFields: e.lowConfidenceFields,
             suspiciousPersonal: e.suspiciousPersonal,
             aiComment: e.aiComment || null,
             ruleViolation: e.ruleViolation || null,
-          })),
+          }
+        }))
+      } catch (err) {
+        failed.push({ ...g, submitError: err instanceof Error ? err.message : 'Failed to upload exchange rate proof.' })
+        continue
+      }
+
+      const res = await fetch(`/api/finance/projects/${projectId}/expenses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receiptId: g.receiptId,
+          receiptFilePath: g.receiptId ? null : g.receiptFilePath,
+          entries: entryPayloads,
         }),
       })
 
@@ -369,7 +411,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                 <input
                   type="file"
                   multiple
-                  accept="image/*,.pdf,application/pdf,.zip,application/zip"
+                  accept="image/*,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.zip,application/zip"
                   capture="environment"
                   onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = '' }}
                   className="sr-only"
@@ -379,7 +421,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                 </div>
                 <div>
                   <div className="text-sm font-medium text-gray-700">Take a photo or drop receipts</div>
-                  <div className="text-xs text-gray-400 mt-1">JPG, PNG, PDF, or a ZIP of receipts · select or drop several at once</div>
+                  <div className="text-xs text-gray-400 mt-1">JPG, PNG, PDF, Word doc, or a ZIP of receipts · select or drop several at once</div>
                 </div>
                 <span className="mt-1 text-xs font-medium text-[#a07530] bg-[#fbf7ed] border border-[#c8973f]/30 rounded-full px-3.5 py-1.5">
                   Choose file(s)
@@ -508,10 +550,23 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                             <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Local currency</label>
                             <input className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 uppercase" value={entry.localCurrency} onChange={e => updateEntry(group.key, i, { localCurrency: e.target.value })} />
                           </div>
+                          <div>
+                            <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Exchange rate</label>
+                            <input type="number" step="0.0001" min="0" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={entry.exchangeRate} onChange={e => updateEntry(group.key, i, { exchangeRate: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Proof of exchange rate (optional)</label>
+                            <input
+                              type="file"
+                              accept="image/*,.pdf"
+                              className="w-full text-xs border border-[#e5e3df] rounded-lg px-2.5 py-2 file:mr-2 file:text-xs"
+                              onChange={e => updateEntry(group.key, i, { exchangeRateProofFile: e.target.files?.[0] ?? null })}
+                            />
+                          </div>
                           <div className="sm:col-span-2 text-xs text-gray-500 pt-1">
                             {entry.settlementAmount != null
-                              ? `≈ ${settlementCurrency} ${entry.settlementAmount.toFixed(2)} at rate ${group.exchangeRate}`
-                              : 'Enter a local amount to see the converted total.'}
+                              ? `≈ ${settlementCurrency} ${entry.settlementAmount.toFixed(2)} at rate ${entry.exchangeRate}`
+                              : 'Enter a local amount and exchange rate to see the converted total.'}
                           </div>
                         </div>
                       </div>

@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getTemplate } from '@/lib/download-templates/registry'
 import { buildTemplatedDocx } from '@/lib/download-templates/docx'
 import { renderTemplatedPdf } from '@/lib/download-templates/pdf'
+import { TRANSLATION_LANGUAGES_WITHOUT_PDF, type TranslationLanguage } from '@/lib/transcriptions'
 
 export const runtime = 'nodejs'
 
@@ -48,6 +49,18 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     : row.raw_transcript
   if (!text) {
     return NextResponse.json({ error: `No ${variant} transcript available yet` }, { status: 409 })
+  }
+  // The PDF font is a Latin+Cyrillic-only subset (see fonts.ts) — CJK glyphs
+  // silently render broken rather than erroring, so block it outright instead.
+  if (
+    format === 'pdf' &&
+    variant === 'translated' &&
+    TRANSLATION_LANGUAGES_WITHOUT_PDF.includes(row.translation_language as TranslationLanguage)
+  ) {
+    return NextResponse.json(
+      { error: `PDF export isn't supported for ${row.translation_language} translations — download Word instead.` },
+      { status: 422 },
+    )
   }
 
   const title = row.title || 'Transcript'

@@ -16,8 +16,14 @@ export const TRANSCRIPTION_PROVIDER: TranscriptionProvider =
 
 // Languages the raw transcript can be translated into. A transcription holds at
 // most ONE translation at a time (single slot); re-translating overwrites it.
-export const TRANSLATION_LANGUAGES = ['English', 'German', 'Spanish', 'Italian', 'Russian'] as const
+export const TRANSLATION_LANGUAGES = ['English', 'German', 'Spanish', 'Italian', 'Russian', 'Japanese'] as const
 export type TranslationLanguage = (typeof TRANSLATION_LANGUAGES)[number]
+
+// PDF export embeds a Latin+Cyrillic-only font subset (see fonts.ts) — CJK glyphs
+// silently fail to render. Languages here get PDF disabled in the download picker;
+// Word export is unaffected (the OS/Word supplies CJK glyphs, we only reference the
+// font by name).
+export const TRANSLATION_LANGUAGES_WITHOUT_PDF: readonly TranslationLanguage[] = ['Japanese']
 
 export function isTranslationLanguage(v: unknown): v is TranslationLanguage {
   return typeof v === 'string' && (TRANSLATION_LANGUAGES as readonly string[]).includes(v)

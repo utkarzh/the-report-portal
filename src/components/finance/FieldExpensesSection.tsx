@@ -2,21 +2,25 @@
 
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Receipt, Sparkles, ChevronDown, ChevronUp, ChevronRight, Layers, Car, BedDouble, Phone, Printer, Landmark, X, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
+import { Search, Receipt, ChevronRight, Layers, Car, BedDouble, Phone, Printer, Landmark, X, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceExpense, FinanceExpenseCategory, FinanceExpenseFlag, FinanceFunding, FinanceTransfer } from '@/types'
+import { projectWeekNumberForDate } from '@/lib/finance-weeks'
 import ExpenseDetailModal from '@/components/finance/ExpenseDetailModal'
+import AiReviewDisclosure from '@/components/finance/AiReviewDisclosure'
+import ReceiptLightbox, { isPreviewableReceiptUrl } from '@/components/finance/ReceiptLightbox'
+import WeekNavigator from '@/components/finance/WeekNavigator'
 
 type StatusFilter = 'all' | 'pending' | 'verified' | 'rejected'
 type TypeFilter = 'all' | 'expense' | 'funding' | 'transfer'
-type ExpenseWithReceipt = FinanceExpense & { receiptUrl: string | null; finance_expense_flags?: FinanceExpenseFlag[] }
+type ExpenseWithReceipt = FinanceExpense & { receiptUrl: string | null; exchangeRateProofUrl?: string | null; finance_expense_flags?: FinanceExpenseFlag[] }
 type FundingRow = FinanceFunding & { profiles: { full_name: string | null; email: string } | null }
 
 type LedgerRow =
   | { kind: 'funding'; date: string; label: string; amountIn: number; sortKey: number }
   | { kind: 'transfer_in'; date: string; label: string; amountIn: number; sortKey: number }
   | { kind: 'transfer_out'; date: string; label: string; amountOut: number; sortKey: number }
-  | { kind: 'expense'; date: string; expense: ExpenseWithReceipt; amountOut: number; countsInBalance: boolean; sortKey: number }
+  | { kind: 'expense'; date: string; expense: ExpenseWithReceipt; amountOut: number; sortKey: number }
 
 // Same icon set as admin's SpendByCategoryModal (admin/projects/[id]/page.tsx)
 // — kept in sync so a category means the same picture everywhere.
@@ -36,6 +40,7 @@ interface Props {
   transfersOut: FinanceTransfer[]
   categorySpend: Record<string, number>
   currencySymbol: string
+  projectCreatedAt: string
 }
 
 // A field user's history used to be expenses only — funding sent by admin
@@ -46,27 +51,25 @@ interface Props {
 // this merges expenses + fundings + transfers into one ledger, same as
 // admin/projects/[id]/page.tsx, with a type filter alongside the existing
 // status/category ones (which only apply to expense rows, same as admin).
-export default function FieldExpensesSection({ expenses, fundings, transfersIn, transfersOut, categorySpend, currencySymbol }: Props) {
+export default function FieldExpensesSection({ expenses, fundings, transfersIn, transfersOut, categorySpend, currencySymbol, projectCreatedAt }: Props) {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [category, setCategory] = useState<FinanceExpenseCategory | 'all'>('all')
-  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set())
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
   const [detailExpense, setDetailExpense] = useState<ExpenseWithReceipt | null>(null)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
 
   const totalCategorySpend = Object.values(categorySpend).reduce((sum, v) => sum + (v || 0), 0)
   const topCategory = Object.entries(FINANCE_EXPENSE_CATEGORY_LABELS)
     .map(([key, label]) => ({ key, label, amount: categorySpend[key] || 0 }))
     .sort((a, b) => b.amount - a.amount)[0]
 
-  function toggleNote(expenseId: string) {
-    setExpandedNotes((prev) => {
-      const next = new Set(prev)
-      if (next.has(expenseId)) next.delete(expenseId)
-      else next.add(expenseId)
-      return next
-    })
+  function openReceipt(url: string | null) {
+    if (!url) return
+    if (isPreviewableReceiptUrl(url)) setLightboxUrl(url)
+    else window.open(url, '_blank', 'noreferrer')
   }
 
   const ledgerRows: LedgerRow[] = useMemo(() => [
@@ -81,7 +84,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
       kind: 'transfer_in' as const,
       date: t.created_at.slice(0, 10),
       label: `Transfer in${t.reason ? ` — ${t.reason}` : ''}`,
-      amountIn: Number(t.amount),
+      amountIn: Number(t.to_amount ?? t.amount),
       sortKey: new Date(t.created_at).getTime(),
     })),
     ...transfersOut.map(t => ({
@@ -96,7 +99,6 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
       date: e.expense_date,
       expense: e,
       amountOut: Number(e.settlement_amount),
-      countsInBalance: e.status !== 'rejected',
       sortKey: new Date(e.expense_date).getTime(),
     })),
   ].sort((a, b) => b.sortKey - a.sortKey), [fundings, transfersIn, transfersOut, expenses])
@@ -120,6 +122,18 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
   }, [ledgerRows, search, typeFilter, status, category])
 
   const filtersActive = search.trim() !== '' || typeFilter !== 'all' || status !== 'all' || category !== 'all'
+
+  // Calendar-style single-week view — same convention/navigator as the
+  // admin ledger, see WeekNavigator.tsx and finance-weeks.ts.
+  const weekNumberOf = (dateStr: string) => projectWeekNumberForDate(projectCreatedAt, new Date(`${dateStr}T00:00:00Z`))
+  const currentWeekNumber = projectWeekNumberForDate(projectCreatedAt, new Date())
+  const effectiveWeek = selectedWeek ?? currentWeekNumber
+  const weekCounts = ledgerRows.reduce<Record<number, number>>((acc, row) => {
+    const wn = weekNumberOf(row.date)
+    acc[wn] = (acc[wn] || 0) + 1
+    return acc
+  }, {})
+  const weekLedger = filtered.filter(row => weekNumberOf(row.date) === effectiveWeek)
 
   function toggleCategory(key: string) {
     setCategory((prev) => (prev === key ? 'all' : (key as FinanceExpenseCategory)))
@@ -171,6 +185,16 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
         )}
       </div>
 
+      <div className="mb-3">
+        <WeekNavigator
+          projectCreatedAt={projectCreatedAt}
+          currentWeekNumber={currentWeekNumber}
+          selectedWeek={effectiveWeek}
+          onChange={setSelectedWeek}
+          counts={weekCounts}
+        />
+      </div>
+
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -217,9 +241,9 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
         <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-8 text-sm text-gray-500 text-center">
           No transactions yet. Use &quot;Upload receipt&quot; above to log your first one.
         </div>
-      ) : filtered.length === 0 ? (
+      ) : weekLedger.length === 0 ? (
         <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-8 text-sm text-gray-500 text-center">
-          No transactions match these filters.
+          {(weekCounts[effectiveWeek] ?? 0) === 0 ? 'No transactions this week.' : 'No transactions match these filters.'}
         </div>
       ) : (
         // Same table format as the admin ledger (admin/projects/[id]/page.tsx)
@@ -236,7 +260,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
               </tr>
             </thead>
             <tbody className="divide-y divide-[#eeece7]">
-              {filtered.map((row, i) => (
+              {weekLedger.map((row, i) => (
                 <tr
                   key={i}
                   onClick={row.kind === 'expense' ? () => setDetailExpense(row.expense) : undefined}
@@ -248,14 +272,14 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                       <td className="px-4 py-3.5">
                         <div className="flex items-start gap-2.5">
                           {row.expense.receiptUrl ? (
-                            <a href={row.expense.receiptUrl} target="_blank" rel="noreferrer" onClick={ev => ev.stopPropagation()} className="block group flex-shrink-0">
+                            <button onClick={ev => { ev.stopPropagation(); openReceipt(row.expense.receiptUrl) }} className="block group flex-shrink-0">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={row.expense.receiptUrl}
                                 alt="Receipt"
                                 className="w-9 h-9 rounded-lg object-cover border border-[#e5e3df] transition-transform duration-200 group-hover:scale-105 group-hover:shadow-md"
                               />
-                            </a>
+                            </button>
                           ) : (
                             <div className="w-9 h-9 rounded-lg bg-gray-100 text-gray-400 flex items-center justify-center flex-shrink-0">
                               <Receipt size={14} />
@@ -264,40 +288,19 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                           <div className="min-w-0">
                             <div className="font-medium text-gray-900">{row.expense.concept}</div>
                             <div className="text-xs text-gray-500 mt-0.5">{FINANCE_EXPENSE_CATEGORY_LABELS[row.expense.category]}</div>
-                            {row.expense.ai_note && (
-                              <div className="mt-1.5" onClick={ev => ev.stopPropagation()}>
-                                <button
-                                  onClick={() => toggleNote(row.expense.id)}
-                                  className="inline-flex items-center gap-1 text-[10.5px] font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5 hover:bg-blue-100 transition-colors"
-                                >
-                                  <Sparkles size={10} /> AI review
-                                  {expandedNotes.has(row.expense.id) ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                                </button>
-                                {expandedNotes.has(row.expense.id) && (
-                                  <div className="text-xs text-blue-700 italic mt-1.5 max-w-md">{row.expense.ai_note}</div>
-                                )}
-                              </div>
-                            )}
-                            {(row.expense.finance_expense_flags ?? []).filter(f => !f.resolved).length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1.5">
-                                {(row.expense.finance_expense_flags ?? []).filter(f => !f.resolved).map(f => (
-                                  <span
-                                    key={f.id}
-                                    className={`text-[10.5px] font-medium px-1.5 py-0.5 rounded ${
-                                      f.severity === 'crit' ? 'bg-red-50 text-red-700' : f.severity === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
-                                    }`}
-                                  >
-                                    {f.message}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                            <AiReviewDisclosure aiNote={row.expense.ai_note} flags={(row.expense.finance_expense_flags ?? []).filter(f => !f.resolved)} />
                             {row.expense.rejection_reason && <div className="text-xs text-red-700 mt-1.5">Rejected: {row.expense.rejection_reason}</div>}
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap">
-                        {row.countsInBalance ? <span className="text-gray-900 font-medium">−{currencySymbol}{row.amountOut.toFixed(2)}</span> : <span className="line-through text-gray-400">{currencySymbol}{row.amountOut.toFixed(2)}</span>}
+                        {row.expense.status === 'verified' ? (
+                          <span className="text-gray-900 font-medium">−{currencySymbol}{row.amountOut.toFixed(2)}</span>
+                        ) : row.expense.status === 'rejected' ? (
+                          <span className="line-through text-gray-400">{currencySymbol}{row.amountOut.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-amber-600" title="Not yet counted — awaiting verification">{currencySymbol}{row.amountOut.toFixed(2)}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3.5">
                         <StatusBadge status={row.expense.status} />
@@ -337,8 +340,14 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
         />
       )}
       {detailExpense && (
-        <ExpenseDetailModal expense={detailExpense} symbol={currencySymbol} onClose={() => setDetailExpense(null)} />
+        <ExpenseDetailModal
+          expense={detailExpense}
+          symbol={currencySymbol}
+          onClose={() => setDetailExpense(null)}
+          exchangeRateProofUrl={detailExpense.exchangeRateProofUrl}
+        />
       )}
+      {lightboxUrl && <ReceiptLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
     </>
   )
 }

@@ -64,9 +64,11 @@ export default async function FieldProjectPage({ params }: Props) {
   const expensesWithReceipts = await Promise.all(
     rawExpenses.map(async (e) => {
       const path = e.finance_receipts?.file_path || e.receipt_file_path
-      if (!path) return { ...e, receiptUrl: null as string | null }
-      const { data: signed } = await supabase.storage.from('finance-receipts').createSignedUrl(path, 3600)
-      return { ...e, receiptUrl: signed?.signedUrl ?? null }
+      const receiptUrl = path ? (await supabase.storage.from('finance-receipts').createSignedUrl(path, 3600)).data?.signedUrl ?? null : null
+      const exchangeRateProofUrl = e.exchange_rate_proof_path
+        ? (await supabase.storage.from('finance-receipts').createSignedUrl(e.exchange_rate_proof_path, 3600)).data?.signedUrl ?? null
+        : null
+      return { ...e, receiptUrl, exchangeRateProofUrl }
     }),
   )
 
@@ -87,6 +89,7 @@ export default async function FieldProjectPage({ params }: Props) {
           <FieldProjectActions
             projectId={project.id}
             settlementCurrency={project.settlement_currency}
+            defaultExchangeRate={Number(project.exchange_rate)}
           />
         </div>
       </div>
@@ -122,6 +125,7 @@ export default async function FieldProjectPage({ params }: Props) {
         transfersOut={(transfersOut ?? []) as FinanceTransfer[]}
         categorySpend={categorySpend}
         currencySymbol={currencySymbol}
+        projectCreatedAt={project.created_at}
       />
     </div>
   )

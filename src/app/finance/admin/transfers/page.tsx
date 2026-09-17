@@ -9,6 +9,8 @@ interface Project { id: string; name: string; settlement_currency: string }
 interface Transfer {
   id: string
   amount: number
+  to_amount: number
+  exchange_rate: number
   reason: string
   created_at: string
   from_project: { name: string; settlement_currency: string }
@@ -17,14 +19,26 @@ interface Transfer {
 
 // Brief J-01: move funds between a Director's own projects (e.g. India tops
 // up Pakistan) while both stay fully independent ledgers — see
-// computeBalance's transfersIn/transfersOut in src/lib/finance.ts.
+// computeBalance's transfersIn/transfersOut in src/lib/finance.ts. When the
+// two projects' settlement currencies differ, an exchange rate is required
+// so the amount debited from one side and credited to the other convert
+// correctly (see api/finance/transfers/route.ts).
 export default function TransfersPage() {
   const [transfers, setTransfers] = useState<Transfer[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState({ fromProjectId: '', toProjectId: '', amount: '', reason: '' })
+  const [form, setForm] = useState({ fromProjectId: '', toProjectId: '', amount: '', exchangeRate: '', reason: '' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const fromProject = projects.find(p => p.id === form.fromProjectId)
+  const toProject = projects.find(p => p.id === form.toProjectId)
+  const crossCurrency = !!fromProject && !!toProject && fromProject.settlement_currency !== toProject.settlement_currency
+  const rateNum = Number(form.exchangeRate)
+  const amountNum = Number(form.amount)
+  const previewToAmount = crossCurrency && Number.isFinite(rateNum) && rateNum > 0 && Number.isFinite(amountNum) && amountNum > 0
+    ? amountNum * rateNum
+    : null
 
   const load = useCallback(() => {
     setLoading(true)
@@ -42,11 +56,15 @@ export default function TransfersPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    if (crossCurrency && (!Number.isFinite(rateNum) || rateNum <= 0)) {
+      setError(`An exchange rate is required to convert ${fromProject!.settlement_currency} to ${toProject!.settlement_currency}.`)
+      return
+    }
     setSubmitting(true)
     const res = await fetch('/api/finance/transfers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, exchangeRate: crossCurrency ? form.exchangeRate : undefined }),
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
@@ -54,7 +72,7 @@ export default function TransfersPage() {
       setSubmitting(false)
       return
     }
-    setForm({ fromProjectId: '', toProjectId: '', amount: '', reason: '' })
+    setForm({ fromProjectId: '', toProjectId: '', amount: '', exchangeRate: '', reason: '' })
     setSubmitting(false)
     load()
   }
@@ -84,7 +102,7 @@ export default function TransfersPage() {
             placeholder="Select…"
           />
           <Input
-            label="Amount"
+            label={`Amount${fromProject ? ` (${fromProject.settlement_currency})` : ''}`}
             type="number"
             step="0.01"
             value={form.amount}
@@ -93,6 +111,23 @@ export default function TransfersPage() {
           />
           <Button type="submit" size="sm" loading={submitting}>Transfer</Button>
         </div>
+        {crossCurrency && (
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+            <Input
+              label={`Exchange rate (${fromProject!.settlement_currency} → ${toProject!.settlement_currency})`}
+              type="number"
+              step="0.0001"
+              value={form.exchangeRate}
+              onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value }))}
+              required
+            />
+            <div className="text-xs text-gray-500 sm:col-span-3">
+              {previewToAmount != null
+                ? `${toProject!.name} receives ${toProject!.settlement_currency} ${previewToAmount.toFixed(2)}`
+                : `Different currencies (${fromProject!.settlement_currency} → ${toProject!.settlement_currency}) — an exchange rate is required.`}
+            </div>
+          </div>
+        )}
         <div className="mt-3">
           <Input
             label="Reason"
@@ -121,17 +156,24 @@ export default function TransfersPage() {
               </tr>
             </thead>
             <tbody>
-              {transfers.map(t => (
-                <tr key={t.id} className="border-b border-[#e5e3df] last:border-0">
-                  <td className="px-4 py-3 tabular-nums whitespace-nowrap">{t.created_at.slice(0, 10)}</td>
-                  <td className="px-4 py-3">{t.from_project?.name}</td>
-                  <td className="px-4 py-3">{t.to_project?.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{t.reason || '—'}</td>
-                  <td className="px-4 py-3 text-right tabular-nums font-medium">
-                    {t.to_project?.settlement_currency === 'USD' ? '$' : '€'}{Number(t.amount).toFixed(2)}
-                  </td>
-                </tr>
-              ))}
+              {transfers.map(t => {
+                const differs = t.from_project?.settlement_currency !== t.to_project?.settlement_currency
+                const fromSymbol = t.from_project?.settlement_currency === 'USD' ? '$' : '€'
+                const toSymbol = t.to_project?.settlement_currency === 'USD' ? '$' : '€'
+                return (
+                  <tr key={t.id} className="border-b border-[#e5e3df] last:border-0">
+                    <td className="px-4 py-3 tabular-nums whitespace-nowrap">{t.created_at.slice(0, 10)}</td>
+                    <td className="px-4 py-3">{t.from_project?.name}</td>
+                    <td className="px-4 py-3">{t.to_project?.name}</td>
+                    <td className="px-4 py-3 text-gray-500">{t.reason || '—'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums font-medium whitespace-nowrap">
+                      {differs
+                        ? `${fromSymbol}${Number(t.amount).toFixed(2)} → ${toSymbol}${Number(t.to_amount).toFixed(2)} · rate ${t.exchange_rate}`
+                        : `${toSymbol}${Number(t.to_amount ?? t.amount).toFixed(2)}`}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

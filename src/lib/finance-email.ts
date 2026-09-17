@@ -42,6 +42,60 @@ ${emailButton('Fix and resubmit', link)}`,
   })
 }
 
+// Weekly receipt-upload reminders (Wed/Fri, via the finance-reminders cron —
+// see src/app/api/cron/finance-reminders/route.ts). Blasted to every active
+// field user every week, no per-user "already uploaded?" check.
+export async function emailReceiptReminderMidweek(baseUrl: string, to: string) {
+  const link = `${baseUrl}/finance`
+  await safeSend({
+    to,
+    subject: 'Cash Box: upload this week’s receipts before Friday',
+    text: `Reminder: please upload this week's receipts before Friday.\n\n${link}`,
+    html: renderEmailShell({
+      preheader: 'Reminder: receipts are due before Friday',
+      bodyHtml: `
+<p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#111111;">Receipt reminder</p>
+<p style="margin:0 0 22px;color:#4b4844;">Please upload this week&apos;s receipts before Friday so Finance has time to review them.</p>
+${emailButton('Upload receipts', link)}`,
+    }),
+  })
+}
+
+export async function emailReceiptReminderFriday(baseUrl: string, to: string) {
+  const link = `${baseUrl}/finance`
+  await safeSend({
+    to,
+    subject: 'Cash Box: today is the last day to upload this week’s receipts',
+    text: `Today is the last day to upload receipts for this week.\n\n${link}`,
+    html: renderEmailShell({
+      preheader: 'Last day to upload this week’s receipts',
+      bodyHtml: `
+<p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#111111;">Last day to upload</p>
+<p style="margin:0 0 22px;color:#4b4844;">Today is the last day to upload receipts for this week &mdash; please get them in before the day ends.</p>
+${emailButton('Upload receipts', link)}`,
+    }),
+  })
+}
+
+// Fires alongside the Friday "last day to upload" field reminder — Finance
+// gets nudged to go clear the review queue right as that week's window
+// closes, instead of pending cajas just sitting there until someone remembers.
+export async function emailAdminReviewReminder(baseUrl: string, to: string) {
+  const link = `${baseUrl}/finance/admin/review`
+  await safeSend({
+    to,
+    subject: 'Cash Box: cajas ready for your review',
+    text: `This week's uploads are in — please review the pending cajas.\n\n${link}`,
+    html: renderEmailShell({
+      preheader: 'Pending cajas are ready for review',
+      bodyHtml: `
+<p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#111111;">Cajas ready for review</p>
+<p style="margin:0 0 22px;color:#4b4844;">This week&apos;s receipt uploads are in — please review the pending cajas.</p>
+${emailButton('Open the review queue', link)}`,
+    }),
+  })
+}
+
 async function safeSend(params: { to: string; subject: string; text: string; html: string }) {
   try {
     await sendEmail(params)

@@ -18,6 +18,8 @@ interface Props {
   extraParams?: Record<string, string>
   /** Suggested download filename base (no extension). */
   filenameBase?: string
+  /** When set, the PDF option is disabled and shows this as its hint (e.g. a script the embedded PDF font can't render). Word is unaffected. */
+  pdfDisabledReason?: string
 }
 
 // Namespaced per document (baseUrl already includes the session/transcript
@@ -27,7 +29,7 @@ interface Props {
 // Newsweek pick anywhere leaked into all future downloads everywhere.
 const LS_KEY_PREFIX = 'download-template:'
 
-export default function DownloadTemplateModal({ open, onClose, baseUrl, extraParams, filenameBase }: Props) {
+export default function DownloadTemplateModal({ open, onClose, baseUrl, extraParams, filenameBase, pdfDisabledReason }: Props) {
   const [step, setStep] = useState<'template' | 'format'>('template')
   const [templateId, setTemplateId] = useState<string>(DEFAULT_TEMPLATE_ID)
   const lsKey = `${LS_KEY_PREFIX}${baseUrl}`
@@ -153,8 +155,9 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
                   <FormatCard
                     icon={<FileType2 size={22} />}
                     label="PDF"
-                    hint="Print-ready, fixed layout"
+                    hint={pdfDisabledReason || 'Print-ready, fixed layout'}
                     onClick={() => download('pdf')}
+                    disabled={Boolean(pdfDisabledReason)}
                   />
                   <FormatCard
                     icon={<FileText size={22} />}
@@ -172,11 +175,28 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
   )
 }
 
-function FormatCard({ icon, label, hint, onClick }: { icon: React.ReactNode; label: string; hint: string; onClick: () => void }) {
+function FormatCard({
+  icon,
+  label,
+  hint,
+  onClick,
+  disabled,
+}: {
+  icon: React.ReactNode
+  label: string
+  hint: string
+  onClick: () => void
+  disabled?: boolean
+}) {
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-center gap-2 rounded-xl border border-[#e5e3df] bg-white px-4 py-6 text-center transition-all hover:-translate-y-0.5 hover:border-black hover:shadow-sm"
+      disabled={disabled}
+      className={`flex flex-col items-center gap-2 rounded-xl border border-[#e5e3df] bg-white px-4 py-6 text-center transition-all ${
+        disabled
+          ? 'cursor-not-allowed opacity-50'
+          : 'hover:-translate-y-0.5 hover:border-black hover:shadow-sm'
+      }`}
     >
       <span className="text-gray-700">{icon}</span>
       <span className="text-sm font-semibold text-gray-900">{label}</span>

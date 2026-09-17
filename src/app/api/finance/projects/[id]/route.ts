@@ -51,13 +51,16 @@ export async function GET(request: Request, { params }: Params) {
     .eq('project_id', params.id)
     .order('expense_date', { ascending: false })
 
-  // Signed URLs so the ledger can show the receipt beside each line without
-  // a second round trip per row.
+  // Signed URLs so the ledger can show the receipt (and, if present, the
+  // optional exchange-rate proof photo) beside each line without a second
+  // round trip per row.
   const expenses = await Promise.all((rawExpenses ?? []).map(async (e) => {
     const path = e.finance_receipts?.file_path || e.receipt_file_path
-    if (!path) return { ...e, receiptUrl: null }
-    const { data: signed } = await supabaseAdmin.storage.from('finance-receipts').createSignedUrl(path, 3600)
-    return { ...e, receiptUrl: signed?.signedUrl ?? null }
+    const receiptUrl = path ? (await supabaseAdmin.storage.from('finance-receipts').createSignedUrl(path, 3600)).data?.signedUrl ?? null : null
+    const exchangeRateProofUrl = e.exchange_rate_proof_path
+      ? (await supabaseAdmin.storage.from('finance-receipts').createSignedUrl(e.exchange_rate_proof_path, 3600)).data?.signedUrl ?? null
+      : null
+    return { ...e, receiptUrl, exchangeRateProofUrl }
   }))
 
   const { data: transfersIn } = await supabaseAdmin.from('finance_transfers').select('*').eq('to_project_id', params.id)

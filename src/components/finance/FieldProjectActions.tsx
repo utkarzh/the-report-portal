@@ -9,12 +9,13 @@ import UploadReceiptModal from './UploadReceiptModal'
 interface Props {
   projectId: string
   settlementCurrency: string
+  defaultExchangeRate: number
 }
 
 // Just the "Upload receipt" trigger + its modal — kept separate from the
 // "Needs your attention" section (NeedsAttentionSection) so this can sit
 // inline in a button row without a full-width block breaking the layout.
-export default function FieldProjectActions({ projectId, settlementCurrency }: Props) {
+export default function FieldProjectActions({ projectId, settlementCurrency, defaultExchangeRate }: Props) {
   const router = useRouter()
   const [uploadOpen, setUploadOpen] = useState(false)
 
@@ -29,6 +30,7 @@ export default function FieldProjectActions({ projectId, settlementCurrency }: P
         onLogged={() => router.refresh()}
         projectId={projectId}
         settlementCurrency={settlementCurrency}
+        defaultExchangeRate={defaultExchangeRate}
       />
     </>
   )

@@ -1,3 +1,4 @@
+import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceExpense, FinanceExpenseCategory, FinanceFlagSeverity, FinanceProject } from '@/types'
 
 export interface NewFlag {
@@ -105,6 +106,37 @@ export function computeDeterministicFlags(
   }
 
   return flags
+}
+
+// Category ↔ description sanity check — deterministic, zero-cost (no AI
+// call), same spirit as the other checks above. Not exhaustive: it only
+// catches a clear-cut mismatch (a taxi ride logged as Communications) via a
+// small keyword list per category, rather than trying to classify every
+// expense. `other_services` is deliberately keyword-free — it's a catch-all
+// category, nothing else's keywords should contradict landing there.
+const CATEGORY_KEYWORDS: Record<FinanceExpenseCategory, string[]> = {
+  transport: ['taxi', 'uber', 'cab ', 'ride-hailing', 'ride hailing', 'flight', 'airline', 'airfare', 'train', 'railway', 'bus ticket', 'metro', 'fuel', 'petrol', 'gas station', 'parking', 'toll', 'car rental'],
+  accommodation: ['hotel', 'hostel', 'motel', 'airbnb', 'lodging', 'resort', 'guesthouse', 'night stay'],
+  communications: ['sim card', 'data plan', 'internet', 'wifi', 'wi-fi', 'phone bill', 'mobile top', 'airtime', 'roaming', 'phone credit'],
+  printing_office: ['printing', 'photocopy', 'photocopying', 'stationery', 'office supplies', 'ink cartridge'],
+  bank_charges: ['bank fee', 'wire fee', 'transfer fee', 'atm fee', 'withdrawal fee', 'bank commission'],
+  other_services: [],
+}
+
+export function categoryMismatchFlag(category: FinanceExpenseCategory, concept: string, vendor: string | null): NewFlag[] {
+  const text = `${concept} ${vendor || ''}`.toLowerCase()
+  for (const [otherCategory, keywords] of Object.entries(CATEGORY_KEYWORDS) as [FinanceExpenseCategory, string[]][]) {
+    if (otherCategory === category) continue
+    const hit = keywords.find(k => text.includes(k))
+    if (hit) {
+      return [{
+        flagType: 'category_mismatch',
+        severity: 'warn',
+        message: `"${hit.trim()}" in the description usually means ${FINANCE_EXPENSE_CATEGORY_LABELS[otherCategory]}, not ${FINANCE_EXPENSE_CATEGORY_LABELS[category]} — double check the category.`,
+      }]
+    }
+  }
+  return []
 }
 
 export function missingFieldFlags(lowConfidenceFields: string[]): NewFlag[] {

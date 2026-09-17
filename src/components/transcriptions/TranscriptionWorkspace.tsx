@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation'
 import { marked } from 'marked'
 import { AudioLines, Mic, WandSparkles, FileText, Loader2, Download, Languages, ChevronDown, Copy, Check, Sparkles } from 'lucide-react'
 import type { Transcription } from '@/types'
-import { TRANSCRIPTION_PROVIDER, TRANSLATION_LANGUAGES, type TranslationLanguage } from '@/lib/transcriptions'
+import {
+  TRANSCRIPTION_PROVIDER,
+  TRANSLATION_LANGUAGES,
+  TRANSLATION_LANGUAGES_WITHOUT_PDF,
+  type TranslationLanguage,
+} from '@/lib/transcriptions'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import AudioPlayer from './AudioPlayer'
 import TranscribingLoader from './TranscribingLoader'
@@ -356,6 +361,12 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
         filenameBase={`${transcription.title || 'Transcript'} — ${
           downloadVariant === 'refined' ? 'Refined' : downloadVariant === 'translated' ? 'Translated' : 'Raw'
         }`}
+        pdfDisabledReason={
+          downloadVariant === 'translated' &&
+          TRANSLATION_LANGUAGES_WITHOUT_PDF.includes(translatedLang as TranslationLanguage)
+            ? `PDF can't render ${translatedLang} — use Word`
+            : undefined
+        }
       />
       {/* Header + audio */}
       <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">

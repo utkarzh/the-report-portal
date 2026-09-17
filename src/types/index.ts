@@ -141,6 +141,10 @@ export interface FinanceExpense {
   settlement_amount: number
   receipt_file_path: string | null
   receipt_id: string | null
+  // Optional photo of the exchange-rate proof (e.g. a currency-exchange
+  // receipt) for this expense's own manually-entered exchange_rate_used —
+  // see the UploadReceiptModal note on why the rate is per-expense now.
+  exchange_rate_proof_path: string | null
   nights: number | null
   prior_approval_granted: boolean
   caja_id: string | null
@@ -252,7 +256,12 @@ export interface FinanceTransfer {
   id: string
   from_project_id: string
   to_project_id: string
+  // Debited from from_project, in from_project's own settlement currency.
   amount: number
+  // Credited to to_project, in to_project's own settlement currency —
+  // equals `amount` when both projects share a currency (exchange_rate 1).
+  to_amount: number
+  exchange_rate: number
   reason: string
   created_by: string | null
   created_at: string

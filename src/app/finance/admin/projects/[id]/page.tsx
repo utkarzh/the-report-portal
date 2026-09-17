@@ -5,20 +5,24 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, X, Check, Download, Landmark, Wallet, Clock, Users, Car, BedDouble,
-  Phone, Layers, Printer, ArrowDownLeft, ArrowUpRight, Receipt, Sparkles, UserPlus, Banknote,
-  ChevronDown, ChevronUp, ChevronRight, Pencil, ScrollText,
+  Phone, Layers, Printer, ArrowDownLeft, ArrowUpRight, Receipt, UserPlus, Banknote,
+  ChevronRight, Pencil, ScrollText,
 } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { countryFlag } from '@/lib/country-flags'
+import { projectWeekNumberForDate } from '@/lib/finance-weeks'
 import SendFundsModal from '@/components/finance/SendFundsModal'
 import AddMemberModal from '@/components/finance/AddMemberModal'
 import ChangeDirectorModal from '@/components/finance/ChangeDirectorModal'
 import ExportWeekModal from '@/components/finance/ExportWeekModal'
 import ExpenseDetailModal from '@/components/finance/ExpenseDetailModal'
+import AiReviewDisclosure from '@/components/finance/AiReviewDisclosure'
+import ReceiptLightbox, { isPreviewableReceiptUrl } from '@/components/finance/ReceiptLightbox'
+import WeekNavigator from '@/components/finance/WeekNavigator'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceExpense, FinanceExpenseCategory, FinanceExpenseFlag, FinanceFunding, FinanceProject, FinanceProjectMember, FinanceTransfer } from '@/types'
 
-type ExpenseRow = FinanceExpense & { finance_expense_flags: FinanceExpenseFlag[]; receiptUrl: string | null }
+type ExpenseRow = FinanceExpense & { finance_expense_flags: FinanceExpenseFlag[]; receiptUrl: string | null; exchangeRateProofUrl: string | null }
 type FundingRow = FinanceFunding & { profiles: { full_name: string | null; email: string } | null }
 
 interface Detail {
@@ -39,7 +43,7 @@ type LedgerRow =
   | { kind: 'funding'; date: string; label: string; amountIn: number; sortKey: number }
   | { kind: 'transfer_in'; date: string; label: string; amountIn: number; sortKey: number }
   | { kind: 'transfer_out'; date: string; label: string; amountOut: number; sortKey: number }
-  | { kind: 'expense'; date: string; expense: ExpenseRow; amountOut: number; countsInBalance: boolean; sortKey: number }
+  | { kind: 'expense'; date: string; expense: ExpenseRow; amountOut: number; sortKey: number }
 
 type StatusFilter = 'all' | 'pending' | 'verified' | 'rejected'
 type TypeFilter = 'all' | 'expense' | 'funding' | 'transfer'
@@ -67,7 +71,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
   const [rejectTarget, setRejectTarget] = useState<ExpenseRow | null>(null)
   const [detailExpense, setDetailExpense] = useState<ExpenseRow | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set())
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [bulkRejectOpen, setBulkRejectOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
@@ -81,6 +85,9 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<FinanceExpenseCategory | 'all'>('all')
+  // null = not yet chosen by the user — defaults to the project's current
+  // week once `detail` has loaded (see effectiveWeek below).
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -121,13 +128,10 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
     })
   }
 
-  function toggleNote(expenseId: string) {
-    setExpandedNotes(prev => {
-      const next = new Set(prev)
-      if (next.has(expenseId)) next.delete(expenseId)
-      else next.add(expenseId)
-      return next
-    })
+  function openReceipt(url: string | null) {
+    if (!url) return
+    if (isPreviewableReceiptUrl(url)) setLightboxUrl(url)
+    else window.open(url, '_blank', 'noreferrer')
   }
 
   async function handleApproveSelected() {
@@ -226,7 +230,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
       kind: 'transfer_in' as const,
       date: t.created_at.slice(0, 10),
       label: `Transfer in${t.reason ? ` — ${t.reason}` : ''}`,
-      amountIn: Number(t.amount),
+      amountIn: Number(t.to_amount ?? t.amount),
       sortKey: new Date(t.created_at).getTime(),
     })),
     ...transfersOut.map(t => ({
@@ -241,7 +245,6 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
       date: e.expense_date,
       expense: e,
       amountOut: Number(e.settlement_amount),
-      countsInBalance: e.status !== 'rejected',
       sortKey: new Date(e.expense_date).getTime(),
     })),
   ].sort((a, b) => b.sortKey - a.sortKey)
@@ -260,7 +263,22 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
   })
   const filtersActive = typeFilter !== 'all' || statusFilter !== 'all' || categoryFilter !== 'all'
 
-  const visiblePendingExpenseIds = filteredLedger
+  // Calendar-style single-week view (client request: "should not be shown
+  // one below the other, should be dropdown changeable") — reuses the same
+  // project-week convention the legacy caja flow and the Excel export
+  // already use (see finance-weeks.ts), just applied as a filter rather
+  // than stacking every week's table on the page at once.
+  const weekNumberOf = (dateStr: string) => projectWeekNumberForDate(project.created_at, new Date(`${dateStr}T00:00:00Z`))
+  const currentWeekNumber = projectWeekNumberForDate(project.created_at, new Date())
+  const effectiveWeek = selectedWeek ?? currentWeekNumber
+  const weekCounts = ledgerRows.reduce<Record<number, number>>((acc, row) => {
+    const wn = weekNumberOf(row.date)
+    acc[wn] = (acc[wn] || 0) + 1
+    return acc
+  }, {})
+  const weekLedger = filteredLedger.filter(row => weekNumberOf(row.date) === effectiveWeek)
+
+  const visiblePendingExpenseIds = weekLedger
     .filter((r): r is Extract<LedgerRow, { kind: 'expense' }> => r.kind === 'expense' && r.expense.status === 'pending')
     .map(r => r.expense.id)
   const allPendingSelected = visiblePendingExpenseIds.length > 0 && visiblePendingExpenseIds.every(pid => selectedIds.has(pid))
@@ -402,6 +420,16 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         Transactions
       </SectionHeader>
 
+      <div className="mb-3">
+        <WeekNavigator
+          projectCreatedAt={project.created_at}
+          currentWeekNumber={currentWeekNumber}
+          selectedWeek={effectiveWeek}
+          onChange={setSelectedWeek}
+          counts={weekCounts}
+        />
+      </div>
+
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <select
           value={typeFilter}
@@ -443,9 +471,9 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         )}
       </div>
 
-      {filteredLedger.length === 0 ? (
+      {weekLedger.length === 0 ? (
         <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-8 text-sm text-gray-500 mb-10 text-center">
-          {ledgerRows.length === 0 ? 'No transactions yet.' : 'No transactions match these filters.'}
+          {ledgerRows.length === 0 ? 'No transactions yet.' : (weekCounts[effectiveWeek] ?? 0) === 0 ? 'No transactions this week.' : 'No transactions match these filters.'}
         </div>
       ) : (
         <div className="bg-white border border-[#e5e3df] rounded-xl overflow-hidden overflow-x-auto shadow-sm mb-10">
@@ -470,7 +498,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
               </tr>
             </thead>
             <tbody className="divide-y divide-[#eeece7]">
-              {filteredLedger.map((row, i) => (
+              {weekLedger.map((row, i) => (
                 <tr
                   key={i}
                   onClick={row.kind === 'expense' ? () => setDetailExpense(row.expense) : undefined}
@@ -493,14 +521,14 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                       <td className="px-4 py-3.5">
                         <div className="flex items-start gap-2.5">
                           {row.expense.receiptUrl ? (
-                            <a href={row.expense.receiptUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="block group flex-shrink-0">
+                            <button onClick={e => { e.stopPropagation(); openReceipt(row.expense.receiptUrl) }} className="block group flex-shrink-0">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={row.expense.receiptUrl}
                                 alt="Receipt"
                                 className="w-9 h-9 rounded-lg object-cover border border-[#e5e3df] transition-transform duration-200 group-hover:scale-105 group-hover:shadow-md"
                               />
-                            </a>
+                            </button>
                           ) : (
                             <div className="w-9 h-9 rounded-lg bg-gray-100 text-gray-400 flex items-center justify-center flex-shrink-0">
                               <Receipt size={14} />
@@ -511,29 +539,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                             <div className="text-xs text-gray-500 mt-0.5">
                               {FINANCE_EXPENSE_CATEGORY_LABELS[row.expense.category]} · logged by {row.expense.logged_by_name}
                             </div>
-                            {row.expense.ai_note && (
-                              <div className="mt-1.5" onClick={e => e.stopPropagation()}>
-                                <button
-                                  onClick={() => toggleNote(row.expense.id)}
-                                  className="inline-flex items-center gap-1 text-[10.5px] font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5 hover:bg-blue-100 transition-colors"
-                                >
-                                  <Sparkles size={10} /> AI review
-                                  {expandedNotes.has(row.expense.id) ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                                </button>
-                                {expandedNotes.has(row.expense.id) && (
-                                  <div className="text-xs text-blue-700 italic mt-1.5 max-w-md">{row.expense.ai_note}</div>
-                                )}
-                              </div>
-                            )}
-                            {row.expense.finance_expense_flags.filter(f => !f.resolved).length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1.5">
-                                {row.expense.finance_expense_flags.filter(f => !f.resolved).map(f => (
-                                  <span key={f.id} className={`text-[10.5px] font-medium px-1.5 py-0.5 rounded ${f.severity === 'crit' ? 'bg-red-50 text-red-700' : f.severity === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
-                                    {f.message}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                            <AiReviewDisclosure aiNote={row.expense.ai_note} flags={row.expense.finance_expense_flags.filter(f => !f.resolved)} />
                             {row.expense.rejection_reason && (
                               <div className="text-xs text-red-700 mt-1.5">Rejected: {row.expense.rejection_reason}</div>
                             )}
@@ -541,7 +547,13 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap">
-                        {row.countsInBalance ? <span className="text-gray-900 font-medium">−{symbol}{row.amountOut.toFixed(2)}</span> : <span className="line-through text-gray-400">{symbol}{row.amountOut.toFixed(2)}</span>}
+                        {row.expense.status === 'verified' ? (
+                          <span className="text-gray-900 font-medium">−{symbol}{row.amountOut.toFixed(2)}</span>
+                        ) : row.expense.status === 'rejected' ? (
+                          <span className="line-through text-gray-400">{symbol}{row.amountOut.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-amber-600" title="Not yet counted — awaiting verification">{symbol}{row.amountOut.toFixed(2)}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
                         <div className="flex flex-col items-start gap-2">
@@ -609,11 +621,19 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         projectId={project.id}
         projectCreatedAt={project.created_at}
       />
+      {lightboxUrl && <ReceiptLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
       {rejectTarget && (
         <RejectExpenseModal expense={rejectTarget} onClose={() => setRejectTarget(null)} onRejected={() => { setRejectTarget(null); load() }} />
       )}
       {detailExpense && (
-        <ExpenseDetailModal expense={detailExpense} symbol={symbol} onClose={() => setDetailExpense(null)} />
+        <ExpenseDetailModal
+          expense={detailExpense}
+          symbol={symbol}
+          onClose={() => setDetailExpense(null)}
+          exchangeRateProofUrl={detailExpense.exchangeRateProofUrl}
+          canEdit
+          onUpdated={load}
+        />
       )}
       {bulkRejectOpen && (
         <BulkRejectModal count={selectedIds.size} busy={bulkBusy} onClose={() => setBulkRejectOpen(false)} onSubmit={handleBulkReject} />

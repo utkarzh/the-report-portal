@@ -46,7 +46,7 @@ Search silently — do not narrate your plan or announce what you're about to se
 function subjectBlock(session: Record<string, unknown>) {
   return `--- MEETING DETAILS ---
 Interviewee: ${session.interviewee_name} (${session.interviewee_title})
-Interviewee Type: ${session.interviewee_type === 'company_ceo' ? 'Company CEO' : 'Government Official'}
+Interviewee Type: ${session.interviewee_type === 'company_ceo' ? 'Company Executive' : 'Government Official'}
 Company / Organisation: ${session.company_org}
 Country of the Company: ${session.company_country}
 Publication: ${session.publication}

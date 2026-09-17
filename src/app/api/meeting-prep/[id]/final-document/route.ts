@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import Anthropic from '@anthropic-ai/sdk'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
@@ -119,17 +120,48 @@ export async function POST(_request: NextRequest, { params }: Params) {
   const HARD_CAP_MS = maxDuration * 1000
   const CORRECTIVE_PASS_MARGIN_MS = 60_000
 
-  async function runPass(extra?: string): Promise<string> {
+  const FINAL_DOC_MAX_TOKENS = 8192
+
+  async function callModel(messages: Anthropic.MessageParam[]): Promise<{ text: string; stopReason: string | null }> {
     const message = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 4096,
+      max_tokens: FINAL_DOC_MAX_TOKENS,
       system: `${promptText}\n\n${NO_PREAMBLE_INSTRUCTION}`,
-      messages: [{ role: 'user', content: extra ? `${userContent}\n\n--- CORRECTION NEEDED ---\n${extra}` : userContent }],
+      messages,
     })
     const usage = parseUsage(message.usage as unknown, 0)
     promptTokens += totalPromptTokens(usage)
     outputTokens += usage.outputTokens
-    return extractAfterMarker(message.content.map((b) => (b.type === 'text' ? b.text : '')).join(''))
+    const text = message.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
+    return { text, stopReason: message.stop_reason ?? null }
+  }
+
+  // missingHeadings() alone can't catch a truncation that lands mid-sentence
+  // AFTER the last heading (a real, observed failure at the old 4096-token
+  // cap) — every heading is already present and matched, so nothing flags it.
+  // If a pass stops because it ran out of output tokens, continue the SAME
+  // response via assistant-turn prefill (the model picks up exactly where it
+  // left off — it is not asked to retype anything, so nothing is duplicated)
+  // instead of silently saving a cut-off document.
+  const MAX_CONTINUATIONS = 3
+
+  async function runPass(extra?: string): Promise<string> {
+    const userMsg = extra ? `${userContent}\n\n--- CORRECTION NEEDED ---\n${extra}` : userContent
+    let full = ''
+    let stopReason: string | null = null
+    let rounds = 0
+    do {
+      const messages: Anthropic.MessageParam[] = full
+        ? [{ role: 'user', content: userMsg }, { role: 'assistant', content: full }]
+        : [{ role: 'user', content: userMsg }]
+      const result = await callModel(messages)
+      full += result.text
+      stopReason = result.stopReason
+      rounds += 1
+      const timeLeftMs = HARD_CAP_MS - (Date.now() - requestStartedAt)
+      if (timeLeftMs < CORRECTIVE_PASS_MARGIN_MS) break
+    } while (stopReason === 'max_tokens' && rounds <= MAX_CONTINUATIONS)
+    return extractAfterMarker(full)
   }
 
   try {

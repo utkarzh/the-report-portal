@@ -6,8 +6,9 @@ interface Params { params: { id: string } }
 
 // POST /api/finance/expenses/[id]/verify — brief E-03: verifying draws down
 // the balance automatically. The balance itself is computed on read from
-// status='verified' rows (see computeBalance), so this action IS the
-// draw-down — no separate ledger write needed.
+// status='verified' rows only (see computeBalance) — a pending expense
+// doesn't count until this happens, so this action IS the first (and only)
+// draw-down moment, not a formality on top of an already-deducted amount.
 export async function POST(_request: Request, { params }: Params) {
   const auth = await requireFinanceAdmin()
   if ('error' in auth) return auth.error

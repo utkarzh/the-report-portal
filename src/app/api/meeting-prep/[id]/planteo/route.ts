@@ -90,7 +90,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const previousRecommendation = splitPlanteoOutput(session.planteo_output || '').recommendation
 
   const system = isCeoFixedFormula
-    ? `${promptText}\n\n--- TASK FOR THIS CALL ---\nDetermine and output ONLY the internal commercial recommendation for this Company CEO (the "Recommended offer / Basis / Why" format described above), using the approved research, advertiser history, and presentation points below. This recommendation is for the sales representative only — never speak it to the interviewee, and never write, reproduce, or paraphrase the spoken planteo/formula itself: the approved formula is appended separately, verbatim, by the system.\n\n${NO_PREAMBLE_INSTRUCTION}`
+    ? `${promptText}\n\n--- TASK FOR THIS CALL ---\nDetermine and output ONLY the internal commercial recommendation for this Company Executive (the "Recommended offer / Basis / Why" format described above), using the approved research, advertiser history, and presentation points below. This recommendation is for the sales representative only — never speak it to the interviewee, and never write, reproduce, or paraphrase the spoken planteo/formula itself: the approved formula is appended separately, verbatim, by the system.\n\n${NO_PREAMBLE_INSTRUCTION}`
     : `${promptText}\n\n--- APPROVED PLANTEO LIBRARY FORMULA FOR THIS VARIANT (source of truth — do not deviate) ---\n${libraryText || '(no formula has been added to the Planteo Library yet for this variant — use the structure described in your instructions above as closely as possible, and note in the output where the approved formula is still pending)'}\n\n${NO_PREAMBLE_INSTRUCTION}`
 
   const userContent = isCeoFixedFormula

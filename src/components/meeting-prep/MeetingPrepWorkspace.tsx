@@ -593,7 +593,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
 
           <div className="mt-5 space-y-3.5">
             <InfoRow label="Title" value={session.interviewee_title} />
-            <InfoRow label="Type" value={session.interviewee_type === 'company_ceo' ? 'Company CEO' : 'Government Official'} />
+            <InfoRow label="Type" value={session.interviewee_type === 'company_ceo' ? 'Company Executive' : 'Government Official'} />
             <InfoRow label="Organisation" value={session.company_org} />
             <InfoRow label="Company Country" value={session.company_country} />
             <InfoRow label="Publication" value={session.publication} />

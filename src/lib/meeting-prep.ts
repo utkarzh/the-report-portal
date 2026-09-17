@@ -1,7 +1,7 @@
 import type { InterviewType, MeetingPrepPromptKey, MeetingPrepResearchSections } from '@/types'
 
 export const INTERVIEW_TYPES: { value: InterviewType; label: string }[] = [
-  { value: 'company_ceo', label: 'Company CEO' },
+  { value: 'company_ceo', label: 'Company Executive' },
   { value: 'government_official', label: 'Government Official' },
 ]
 

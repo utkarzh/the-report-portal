@@ -130,7 +130,7 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
 
       <Input
         label="Interviewee Title / Position *"
-        placeholder={isGov ? 'e.g. Minister of Economy' : 'e.g. Chief Executive Officer'}
+        placeholder={isGov ? 'e.g. Minister of Economy' : 'e.g. President & COO'}
         value={form.intervieweeTitle}
         onChange={(e) => handleChange('intervieweeTitle', e.target.value)}
         required

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requireFinanceAccess } from '@/lib/finance-auth'
 import { isFinanceAdmin } from '@/lib/access'
-import { computeDeterministicFlags, missingFieldFlags, suspiciousPersonalFlag } from '@/lib/finance-flags'
+import { computeDeterministicFlags, missingFieldFlags, suspiciousPersonalFlag, categoryMismatchFlag } from '@/lib/finance-flags'
 import { verifyEntriesAgainstReceipt, type EntryVerification } from '@/lib/finance-ai'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceExpenseCategory } from '@/types'
@@ -20,6 +20,10 @@ interface EntryInput {
   vendor: string | null
   localAmount: number
   localCurrency: string
+  // Per-expense, not the project default — rates aren't fixed, the field
+  // user enters the real rate for this expense (see UploadReceiptModal).
+  exchangeRate: number
+  exchangeRateProofPath?: string | null
   settlementAmount: number
   nights: number | null
   lowConfidenceFields?: string[]
@@ -78,6 +82,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       || e.localAmount == null || e.localAmount <= 0 || !e.localCurrency
       || e.settlementAmount == null || e.settlementAmount <= 0) {
       return NextResponse.json({ error: 'Every expense needs a concept, category, date, amount, currency and computed settlement amount.' }, { status: 400 })
+    }
+    if (e.exchangeRate == null || e.exchangeRate <= 0) {
+      return NextResponse.json({ error: 'Every expense needs a positive exchange rate.' }, { status: 400 })
     }
   }
 
@@ -159,7 +166,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         vendor: e.vendor || null,
         local_amount: e.localAmount,
         local_currency: e.localCurrency,
-        exchange_rate_used: Number(project.exchange_rate),
+        exchange_rate_used: Number(e.exchangeRate),
+        exchange_rate_proof_path: e.exchangeRateProofPath || null,
         settlement_amount: e.settlementAmount,
         nights: e.nights ?? null,
         ai_note: e.aiComment || null,
@@ -184,7 +192,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           reference: e.reference,
           localAmount: e.localAmount,
           settlementAmount: e.settlementAmount,
-          exchangeRateUsed: Number(project.exchange_rate),
+          exchangeRateUsed: Number(e.exchangeRate),
           nights: e.nights ?? null,
           loggedBy: profile.id,
         },
@@ -193,6 +201,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       ),
       ...missingFieldFlags(e.lowConfidenceFields ?? []),
       ...suspiciousPersonalFlag(e.suspiciousPersonal ?? false, e.aiComment ?? ''),
+      ...categoryMismatchFlag(e.category, e.concept, e.vendor),
       // Crit: the submitted value for this field doesn't match what's
       // actually visible on the receipt — whether an honest mistake or a
       // deliberate edit after the AI's first read, it needs a human's eyes.

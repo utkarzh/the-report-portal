@@ -6,11 +6,13 @@ import { getBaseUrl } from '@/lib/url'
 
 interface Params { params: { id: string } }
 
-// POST /api/finance/expenses/[id]/reject — the balance reverses immediately
-// (computeBalance simply stops counting a rejected row — see lib/finance.ts)
-// and the uploader is emailed the reason right away, not batched — a
-// rejection is a low-frequency, directly-actionable event per the client's
-// corrected flow, unlike a routine verify.
+// POST /api/finance/expenses/[id]/reject — only ever applies to a pending
+// expense (the only status the UI offers Reject on), and since the balance
+// now only counts verified spend (see computeBalance), a pending expense
+// never drew down the balance in the first place — rejecting it is balance-
+// neutral, not a reversal. The uploader is still emailed the reason right
+// away, not batched — a rejection is a low-frequency, directly-actionable
+// event.
 export async function POST(request: NextRequest, { params }: Params) {
   const auth = await requireFinanceAdmin()
   if ('error' in auth) return auth.error

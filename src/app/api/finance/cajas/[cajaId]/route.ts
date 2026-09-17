@@ -64,7 +64,7 @@ export async function GET(_request: Request, { params }: Params) {
     .lte('expense_date', caja.week_end)
 
   const { data: transfersIn } = await supabaseAdmin
-    .from('finance_transfers').select('amount').eq('to_project_id', caja.project_id).lte('created_at', `${caja.week_end}T23:59:59`)
+    .from('finance_transfers').select('amount, to_amount').eq('to_project_id', caja.project_id).lte('created_at', `${caja.week_end}T23:59:59`)
   const { data: transfersOut } = await supabaseAdmin
     .from('finance_transfers').select('amount').eq('from_project_id', caja.project_id).lte('created_at', `${caja.week_end}T23:59:59`)
 
