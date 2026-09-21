@@ -5,36 +5,41 @@ import { matchAdvertiserHistory, type TrackerEntry } from '@/lib/meeting-prep-tr
 
 export const runtime = 'nodejs'
 
-// GET /api/meeting-prep/advertiser-tracker/lookup?country=&company=
-// Auto-matches the company in that country's tracker and returns an editable
-// Commercial Alert (status + details). Used by the meeting-prep form.
+// GET /api/meeting-prep/advertiser-tracker/lookup?company=&country=
+// Auto-matches the company against EVERY uploaded tracker pooled together —
+// matching is worldwide, not scoped to the interviewee's own country, since a
+// company can have advertised anywhere. `country` is accepted for backward
+// compatibility but no longer used to filter. Returns an editable Commercial
+// Alert (status + details). Used by the meeting-prep form.
 export async function GET(request: NextRequest) {
   const supabase = createSupabaseServerClient()
   const auth = await getApiUser()
   if (!auth.user) return auth.response
 
-  const country = (request.nextUrl.searchParams.get('country') || '').trim()
   const company = (request.nextUrl.searchParams.get('company') || '').trim()
-  if (!country || !company) {
-    return NextResponse.json({ error: 'country and company are required' }, { status: 400 })
+  if (!company) {
+    return NextResponse.json({ error: 'company is required' }, { status: 400 })
   }
 
-  const { data: tracker } = await supabase
+  const { data: trackers } = await supabase
     .from('meeting_prep_advertiser_tracker')
-    .select('entries, filename, updated_at')
-    .ilike('country', country)
-    .maybeSingle()
+    .select('entries, updated_at')
 
-  if (!tracker) {
-    // No tracker on file for this country — the user is told to upload one.
+  if (!trackers || trackers.length === 0) {
+    // No tracker on file at all — the user is told to upload one.
     return NextResponse.json({ trackerFound: false })
   }
 
-  const match = matchAdvertiserHistory((tracker.entries as TrackerEntry[]) || [], company)
+  const allEntries = trackers.flatMap((t) => (t.entries as TrackerEntry[]) || [])
+  const updatedAt = trackers.reduce<string | null>(
+    (latest, t) => (!latest || t.updated_at > latest ? t.updated_at : latest),
+    null,
+  )
+
+  const match = matchAdvertiserHistory(allEntries, company)
   return NextResponse.json({
     trackerFound: true,
-    filename: tracker.filename,
-    updatedAt: tracker.updated_at,
+    updatedAt,
     status: match.status,
     details: match.details,
     hasHistory: match.hasHistory,

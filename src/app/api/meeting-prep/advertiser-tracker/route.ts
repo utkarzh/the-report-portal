@@ -8,7 +8,9 @@ import { parseTrackerWorkbook } from '@/lib/meeting-prep-tracker'
 
 export const runtime = 'nodejs'
 
-// GET — list the per-country trackers (metadata only; not the full entries).
+// GET — list the uploaded trackers (metadata only; not the full entries).
+// Their `country` is just an admin-chosen label now — matching (see the
+// lookup route) pools every tracker's rows together, worldwide.
 export async function GET() {
   const supabase = createSupabaseServerClient()
   const auth = await getApiUser()
@@ -22,9 +24,10 @@ export async function GET() {
   return NextResponse.json(data || [])
 }
 
-// POST — upload a country's tracker .xlsx. Parses it server-side and upserts by
-// country (re-upload = the weekly update). Any meeting-prep user (or admin) may
-// maintain the trackers.
+// POST — upload a tracker .xlsx under an admin-chosen label (a country, or
+// e.g. "Worldwide" for one consolidated file). Parses it server-side and
+// upserts by label (re-upload = the weekly update). Any meeting-prep user (or
+// admin) may maintain the trackers.
 export async function POST(request: NextRequest) {
   const auth = await getApiUser()
   if (!auth.user) return auth.response
@@ -50,8 +53,8 @@ export async function POST(request: NextRequest) {
   const file = form.get('file')
   if (!country) return NextResponse.json({ error: 'Country is required' }, { status: 400 })
   if (!(file instanceof File)) return NextResponse.json({ error: 'A spreadsheet file is required' }, { status: 400 })
-  if (!/\.(xlsx|xls)$/i.test(file.name)) {
-    return NextResponse.json({ error: 'Please upload an .xlsx or .xls spreadsheet' }, { status: 400 })
+  if (!/\.(xlsx|xlsm|xls)$/i.test(file.name)) {
+    return NextResponse.json({ error: 'Please upload an .xlsx, .xlsm or .xls spreadsheet' }, { status: 400 })
   }
 
   let entries

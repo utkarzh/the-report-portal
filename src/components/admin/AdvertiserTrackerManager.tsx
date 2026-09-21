@@ -61,24 +61,26 @@ export default function AdvertiserTrackerManager({ initial }: { initial: Tracker
     <div className="flex flex-col gap-6">
       {/* Upload */}
       <div className="bg-white border border-[#e5e3df] p-5 sm:p-6">
-        <h2 className="text-sm font-semibold text-gray-900">Upload a country tracker</h2>
+        <h2 className="text-sm font-semibold text-gray-900">Upload a tracker</h2>
         <p className="text-xs text-gray-500 mt-1">
-          Uploading a country that already exists replaces its tracker (this is the weekly update). Only the
-          parsed rows are stored — the file itself isn&apos;t kept.
+          Label it however is useful for your own bookkeeping — &ldquo;Worldwide&rdquo; for one consolidated file, or a
+          country name if you keep separate files. Matching pools every uploaded tracker together, so this label
+          doesn&apos;t restrict what a session can match against. Re-uploading the same label replaces it (the weekly
+          update). Only the parsed rows are stored — the file itself isn&apos;t kept.
         </p>
 
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Country</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Label</label>
             <input
               value={country}
               onChange={(e) => setCountry(e.target.value)}
-              placeholder="e.g. Georgia"
+              placeholder="e.g. Worldwide"
               className="w-full rounded-lg border border-[#e5e3df] bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400"
             />
           </div>
           <div className="flex-1">
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Spreadsheet (.xlsx)</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Spreadsheet (.xlsx / .xlsm)</label>
             {file ? (
               <div className="flex items-center justify-between gap-2 rounded-lg border border-[#e5e3df] bg-[#fcfbf8] px-3 py-2">
                 <span className="flex min-w-0 items-center gap-2 text-sm text-gray-800">
@@ -97,7 +99,7 @@ export default function AdvertiserTrackerManager({ initial }: { initial: Tracker
                 <Upload size={15} /> Choose file
               </button>
             )}
-            <input ref={inputRef} type="file" accept=".xlsx,.xls" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <input ref={inputRef} type="file" accept=".xlsx,.xlsm,.xls" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] || null)} />
           </div>
           <button
             onClick={upload}
@@ -116,7 +118,7 @@ export default function AdvertiserTrackerManager({ initial }: { initial: Tracker
       {/* List */}
       <div className="bg-white border border-[#e5e3df]">
         {initial.length === 0 ? (
-          <p className="p-6 text-sm text-gray-400">No country trackers yet. Upload one above.</p>
+          <p className="p-6 text-sm text-gray-400">No trackers yet. Upload one above.</p>
         ) : (
           <ul className="divide-y divide-[#e5e3df]">
             {initial.map((t) => (

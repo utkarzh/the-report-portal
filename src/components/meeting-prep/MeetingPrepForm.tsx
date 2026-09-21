@@ -34,11 +34,12 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  // Advertiser history is auto-matched from the per-country tracker, then
-  // remains editable. Lookup runs when company + country are both filled.
+  // Advertiser history is auto-matched worldwide across every uploaded
+  // tracker, then remains editable. Lookup runs when company + country are
+  // both filled (country is no longer used to filter, just as a UX gate).
   const [looking, setLooking] = useState(false)
   const [lookup, setLookup] = useState<
-    { trackerFound: boolean; hasHistory?: boolean; matchCount?: number; filename?: string } | null
+    { trackerFound: boolean; hasHistory?: boolean; matchCount?: number } | null
   >(null)
   const [lastKey, setLastKey] = useState('')
 
@@ -187,25 +188,25 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
           {looking && <span className="text-xs text-gray-400">Checking tracker…</span>}
         </div>
         <p className="mt-1 text-xs text-gray-500">
-          Optional — auto-filled from the {form.companyCountry.trim() || 'country'} advertiser tracker where available.
+          Optional — auto-filled from the advertiser tracker (searched worldwide) where available.
           Leave as &ldquo;Not aware&rdquo; if you don&rsquo;t know.
         </p>
 
         {lookup && !lookup.trackerFound && (
           <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            No advertiser tracker on file for &ldquo;{form.companyCountry.trim()}&rdquo;. Ask an admin to upload it under
+            No advertiser tracker uploaded yet. Ask an admin to upload one under
             Meeting Preparation → Advertiser Tracker, or enter the history manually below.
           </p>
         )}
         {lookup && lookup.trackerFound && lookup.hasHistory && (
           <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-            Matched {lookup.matchCount} row{lookup.matchCount === 1 ? '' : 's'} in {lookup.filename || 'the tracker'} —
+            Matched {lookup.matchCount} row{lookup.matchCount === 1 ? '' : 's'} in the advertiser tracker —
             advertising history found and filled in below.
           </p>
         )}
         {lookup && lookup.trackerFound && !lookup.hasHistory && (
           <p className="mt-2 rounded-lg border border-[#e5e3df] bg-[#faf9f7] px-3 py-2 text-xs text-gray-600">
-            No previous advertising found for &ldquo;{form.companyOrg.trim()}&rdquo; in the {form.companyCountry.trim()} tracker.
+            No previous advertising found for &ldquo;{form.companyOrg.trim()}&rdquo; in the advertiser tracker.
             Marked as &ldquo;No&rdquo; — override below if you know otherwise.
           </p>
         )}

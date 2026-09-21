@@ -27,9 +27,10 @@ export default async function AdvertiserTrackerPage() {
         <div className="mb-8">
           <h1 className="text-lg font-semibold text-gray-900">Advertiser Tracker</h1>
           <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">
-            One tracker spreadsheet per country. When a meeting-prep session runs, the interviewee&apos;s company
-            is matched against the tracker for its country to auto-fill the Commercial Alert (publication, ad
-            space, year). Re-upload a country to apply the weekly update.
+            Upload one or more tracker spreadsheets — a single worldwide file, one per country, or a mix. When a
+            meeting-prep session runs, the interviewee&apos;s company is matched by name across every uploaded
+            tracker (not just the one for its country) to auto-fill the Commercial Alert (publication, ad space,
+            year). Re-upload the same label to apply the weekly update.
           </p>
         </div>
 

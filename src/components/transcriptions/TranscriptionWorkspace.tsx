@@ -320,9 +320,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
     startRefine(refineSource, refineInstruction)
   }
 
-  // Downloading the raw transcript before it's been refined is the exact
-  // moment a user ends up sending out an unpolished result, so it's the one
-  // we interrupt with a nudge — unless they've opted out for good.
+  // Raw transcripts must never go to an interviewee unrefined — downloading
+  // raw is for reference only, so this warns (and still allows) it, unless
+  // they've opted out for good.
   function handleRawDownloadClick() {
     let skipNudge = false
     if (typeof window !== 'undefined') {
@@ -856,20 +856,21 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
         </div>
       )}
 
-      {/* Nudge shown when downloading the raw transcript before it's been
-          refined — the moment a raw, unpolished transcript actually goes out
-          the door. "Don't show this again" persists per-browser. */}
+      {/* Warning shown when downloading the raw transcript before it's been
+          refined: raw is reference-only and must never be sent to an
+          interviewee as-is. "Don't show this again" persists per-browser. */}
       {showRefineRecommend && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={closeRefineRecommend} />
           <div className="relative mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
             <div className="flex items-center gap-2 text-gray-900">
               <WandSparkles size={16} />
-              <h3 className="text-sm font-semibold">Refine before downloading?</h3>
+              <h3 className="text-sm font-semibold">This is the raw transcript</h3>
             </div>
             <p className="mt-1.5 text-sm text-gray-500">
-              This is the raw transcript. Refining cleans up filler, false starts and formatting for a polished
-              final result — we recommend it before sending this out.
+              It has not been refined or proofread and must never be sent to an interviewee as-is. You can download
+              it for your own reference, but refining and proof-reading it first is mandatory before it goes out to
+              anyone.
             </p>
 
             <label className="mt-4 flex items-center gap-2 text-xs text-gray-500">
