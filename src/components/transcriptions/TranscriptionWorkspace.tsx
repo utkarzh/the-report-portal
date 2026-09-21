@@ -35,6 +35,9 @@ async function revealText(full: string, onUpdate: (t: string) => void) {
 
 marked.use({ gfm: true, breaks: true })
 
+// Per-browser opt-out for the "refine before downloading raw" nudge below.
+const REFINE_RECOMMEND_LS_KEY = 'transcriptions:hide-refine-recommendation'
+
 // Renders the refined transcript, turning [[ … ]] client-confirmation spans into
 // yellow highlights (brackets removed). marked passes the inline <mark> HTML
 // through. Only complete [[ … ]] pairs match, so partial spans mid-stream stay
@@ -169,6 +172,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   const [refineSource, setRefineSource] = useState<RefineSource>('raw')
   const [showRefineModal, setShowRefineModal] = useState(false)
   const [refineInstruction, setRefineInstruction] = useState('')
+  // Nudge shown when downloading the raw transcript before it's been refined.
+  const [showRefineRecommend, setShowRefineRecommend] = useState(false)
+  const [dontShowRefineRecommend, setDontShowRefineRecommend] = useState(false)
   const [usage, setUsage] = useState({
     tokens_total: transcription.tokens_total || 0,
     cost_usd: Number(transcription.cost_usd) || 0,
@@ -199,9 +205,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   }, [])
 
   useEffect(() => {
-    document.body.style.overflow = showLangPicker || showRefineModal ? 'hidden' : ''
+    document.body.style.overflow = showLangPicker || showRefineModal || showRefineRecommend ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
-  }, [showLangPicker, showRefineModal])
+  }, [showLangPicker, showRefineModal, showRefineRecommend])
 
   async function startTranscribe() {
     if (TRANSCRIPTION_PROVIDER === 'assemblyai') {
@@ -312,6 +318,37 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
 
   function confirmRefine() {
     startRefine(refineSource, refineInstruction)
+  }
+
+  // Downloading the raw transcript before it's been refined is the exact
+  // moment a user ends up sending out an unpolished result, so it's the one
+  // we interrupt with a nudge — unless they've opted out for good.
+  function handleRawDownloadClick() {
+    let skipNudge = false
+    if (typeof window !== 'undefined') {
+      try {
+        skipNudge = window.localStorage.getItem(REFINE_RECOMMEND_LS_KEY) === '1'
+      } catch {
+        skipNudge = false
+      }
+    }
+    if (!hasRefined && !skipNudge) {
+      setShowRefineRecommend(true)
+    } else {
+      setDownloadVariant('raw')
+    }
+  }
+
+  function closeRefineRecommend() {
+    if (dontShowRefineRecommend && typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(REFINE_RECOMMEND_LS_KEY, '1')
+      } catch {
+        /* localStorage unavailable — the nudge will just show again next time */
+      }
+    }
+    setShowRefineRecommend(false)
+    setDontShowRefineRecommend(false)
   }
 
   // Translate the raw transcript into the selected language (single slot —
@@ -447,9 +484,18 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               </span>
             ) : raw ? (
               <>
+                <button
+                  onClick={openRefineModal}
+                  disabled={refining || translating}
+                  title="Refine — clean up the transcript for a polished final result"
+                  className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {refining ? <Loader2 size={13} className="animate-spin" /> : <WandSparkles size={13} />}
+                  <span>{refining ? 'Refining…' : hasRefined ? 'Refine again' : 'Refine'}</span>
+                </button>
                 <CopyButton text={raw} />
                 <button
-                  onClick={() => setDownloadVariant('raw')}
+                  onClick={handleRawDownloadClick}
                   title="Download raw transcript"
                   className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                 >
@@ -502,7 +548,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               </div>
             )}
 
-            {/* Actions: translate (left) · refine (right) */}
+            {/* Translate — Refine now lives in the header above, always visible. */}
             {rawReady && (
               <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-[#e5e3df] pt-5">
                 <button
@@ -514,15 +560,6 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                   <span>
                     {translating ? 'Translating…' : hasTranslation ? `Translated · ${translatedLang}` : 'Translate'}
                   </span>
-                </button>
-
-                <button
-                  onClick={openRefineModal}
-                  disabled={refining || translating}
-                  className="ml-auto inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-5 text-sm font-medium tracking-wide text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {refining ? <Loader2 size={15} className="animate-spin" /> : <WandSparkles size={15} />}
-                  <span>{refining ? 'Refining…' : hasRefined ? 'Refine again' : 'Refine'}</span>
                 </button>
               </div>
             )}
@@ -813,6 +850,57 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               >
                 <WandSparkles size={15} />
                 <span>{hasRefined ? 'Refine again' : 'Refine'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nudge shown when downloading the raw transcript before it's been
+          refined — the moment a raw, unpolished transcript actually goes out
+          the door. "Don't show this again" persists per-browser. */}
+      {showRefineRecommend && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={closeRefineRecommend} />
+          <div className="relative mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center gap-2 text-gray-900">
+              <WandSparkles size={16} />
+              <h3 className="text-sm font-semibold">Refine before downloading?</h3>
+            </div>
+            <p className="mt-1.5 text-sm text-gray-500">
+              This is the raw transcript. Refining cleans up filler, false starts and formatting for a polished
+              final result — we recommend it before sending this out.
+            </p>
+
+            <label className="mt-4 flex items-center gap-2 text-xs text-gray-500">
+              <input
+                type="checkbox"
+                checked={dontShowRefineRecommend}
+                onChange={(e) => setDontShowRefineRecommend(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-gray-300 text-black focus:ring-0"
+              />
+              Don&apos;t show this again
+            </label>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => {
+                  closeRefineRecommend()
+                  setDownloadVariant('raw')
+                }}
+                className="flex-1 rounded-lg border border-[#e5e3df] bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-[#f7f6f3]"
+              >
+                Download raw anyway
+              </button>
+              <button
+                onClick={() => {
+                  closeRefineRecommend()
+                  openRefineModal()
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+              >
+                <WandSparkles size={15} />
+                <span>Refine now</span>
               </button>
             </div>
           </div>
