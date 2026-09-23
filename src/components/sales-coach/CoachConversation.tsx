@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines } from 'lucide-react'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
-import type { SalesCoachMessage } from '@/types'
+import type { SalesCoachMessage, SalesCoachCoachingPrompt } from '@/types'
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking'
 type Msg = { role: 'user' | 'assistant'; content: string }
@@ -22,15 +22,16 @@ interface SpeechRecognitionLike {
   onstart: (() => void) | null
 }
 
-const GREETING =
+// Generic fallbacks for the rare case the caller has no Report Card to
+// personalize from yet — in practice coaching only unlocks once a card
+// exists, so this path is mostly defensive.
+const FALLBACK_GREETING =
   "Ask me anything about this negotiation. I've read your Report Card, the full transcript and the four TRC knowledge documents — every answer comes from them."
-
-// One-tap openers shown before the first message.
-const STARTERS = [
-  'Walk me through my Report Card.',
-  'Where exactly did I lose control of the negotiation?',
-  'What should I have said at the decisive moment? Give me the TRC wording.',
-  'Which TRC principle applies to the objection I handled worst?',
+const FALLBACK_STARTERS: SalesCoachCoachingPrompt[] = [
+  { label: 'Walk me through my Report Card.', prompt: 'Walk me through my Report Card.' },
+  { label: 'Where exactly did I lose control of the negotiation?', prompt: 'Where exactly did I lose control of the negotiation?' },
+  { label: 'What should I have said at the decisive moment?', prompt: 'What should I have said at the decisive moment? Give me the TRC wording.' },
+  { label: 'Which TRC principle applies to my weakest moment?', prompt: 'Which TRC principle applies to the objection I handled worst?' },
 ]
 
 export default function CoachConversation({
@@ -38,6 +39,10 @@ export default function CoachConversation({
   initialMessages,
   canCoach,
   context,
+  initialInput,
+  onInitialInputConsumed,
+  greeting,
+  starters,
 }: {
   negotiationId: string
   initialMessages: SalesCoachMessage[]
@@ -45,6 +50,17 @@ export default function CoachConversation({
   // What the coach has been given — shown as a strip so the executive can
   // see the conversation is grounded, not generic.
   context?: { hasReportCard: boolean; transcriptWords: number }
+  // Pre-fills the text box on mount (e.g. the Report Card's "Discuss this
+  // with your coach" button, which brings its Final Coaching Question over
+  // rather than leaving it a dead end). The caller clears its own copy via
+  // onInitialInputConsumed right after mount, so revisiting this tab plainly
+  // (not via that button) doesn't keep re-filling it.
+  initialInput?: string | null
+  onInitialInputConsumed?: () => void
+  // Personalized from this negotiation's own Report Card (suggestedCoachingPrompts()/
+  // coachGreeting() in sales-coach.ts) — falls back to generic copy if omitted.
+  greeting?: string
+  starters?: SalesCoachCoachingPrompt[]
 }) {
   const [messages, setMessages] = useState<Msg[]>(
     initialMessages.map((m) => ({ role: m.role, content: m.content })),
@@ -52,7 +68,7 @@ export default function CoachConversation({
   const [streaming, setStreaming] = useState('')
   const [phase, setPhase] = useState<Phase>('idle')
   const [mode, setMode] = useState<'voice' | 'text'>('text')
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(initialInput || '')
   const [interim, setInterim] = useState('')
   const [muted, setMuted] = useState(false)
   const [handsFree, setHandsFree] = useState(true)
@@ -82,6 +98,11 @@ export default function CoachConversation({
   useEffect(() => { mutedRef.current = muted }, [muted])
   useEffect(() => { handsFreeRef.current = handsFree }, [handsFree])
   useEffect(() => { modeRef.current = mode }, [mode])
+  useEffect(() => {
+    if (initialInput) onInitialInputConsumed?.()
+    // Only ever meant to fire once, for the mount that received the prefill.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const scroll = useStickToBottom<HTMLDivElement>(messages.length + streaming.length + interim.length)
 
@@ -388,17 +409,17 @@ export default function CoachConversation({
         {messages.length === 0 && !streaming && (
           <div className="mx-auto max-w-xl py-6 text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f2f1ec] text-gray-500"><MessageSquare size={20} /></div>
-            <p className="text-sm leading-6 text-gray-600">{GREETING}</p>
+            <p className="text-sm leading-6 text-gray-600">{greeting || FALLBACK_GREETING}</p>
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              {STARTERS.map((q) => (
+              {(starters && starters.length > 0 ? starters : FALLBACK_STARTERS).map((s) => (
                 <button
-                  key={q}
+                  key={s.label}
                   type="button"
-                  onClick={() => send(q)}
+                  onClick={() => send(s.prompt)}
                   disabled={!canCoach || phase === 'thinking'}
                   className="rounded-xl border border-[#e5e3df] bg-white px-4 py-3 text-left text-xs leading-5 text-gray-700 transition-colors hover:border-[#c8973f]/50 hover:bg-[#fcfbf8] disabled:opacity-50"
                 >
-                  {q}
+                  {s.label}
                 </button>
               ))}
             </div>

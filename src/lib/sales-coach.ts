@@ -11,6 +11,7 @@ import type {
   SalesCoachAnalysisSection,
   SalesCoachTranscriptSegment,
   SalesCoachCorrection,
+  SalesCoachCoachingPrompt,
 } from '@/types'
 
 // Isomorphic helpers for the Sales Negotiation Coach module — safe to import
@@ -180,6 +181,48 @@ export function verdictMark(v: SalesCoachVerdict): string {
     case 'na': return 'N/A'
     case 'uv': return 'UV'
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Coaching-tab personalization — replaces four fixed generic starter prompts
+// with ones drawn from THIS negotiation's own Report Card, so the chat feels
+// like a continuation of what the Sales Executive just read rather than a
+// blank box they have to think of something to type into.
+// ────────────────────────────────────────────────────────────────────────────
+
+export function coachGreeting(card: SalesCoachReportCard, company: string | null): string {
+  return `I've read your Report Card${company ? ` for ${company}` : ''}, the full transcript and the TRC knowledge documents. ${card.headline} Ask me anything, or start here:`
+}
+
+// Weakest scored criteria first (fail, then warn), turned into a direct
+// "fix this" prompt; the model's own verdict, not re-judged here. Falls back
+// to two generic prompts if the card has nothing to improve on (or isn't a
+// scored criterion at all), so this never returns fewer than the featured
+// coaching question plus one other option.
+export function suggestedCoachingPrompts(card: SalesCoachReportCard): SalesCoachCoachingPrompt[] {
+  const prompts: SalesCoachCoachingPrompt[] = []
+  if (card.coaching_question) {
+    prompts.push({ label: 'Your coach’s question', prompt: card.coaching_question })
+  }
+  const weight = (v: SalesCoachVerdict) => (v === 'fail' ? 0 : v === 'warn' ? 1 : 2)
+  const weak = card.criteria
+    .filter((c) => c.scored && (c.verdict === 'fail' || c.verdict === 'warn'))
+    .sort((a, b) => weight(a.verdict) - weight(b.verdict))
+  for (const c of weak.slice(0, 3)) {
+    const meta = SALES_COACH_CRITERIA.find((k) => k.key === c.key)
+    const label = meta?.label || c.label
+    prompts.push({
+      label: `Fix your ${label}`,
+      prompt: `I scored ${verdictMark(c.verdict)} on ${label}. Walk me through exactly what I should have said, and what to do differently next time.`,
+    })
+  }
+  if (prompts.length < 2) {
+    prompts.push({ label: 'Walk me through my Report Card', prompt: 'Walk me through my Report Card.' })
+  }
+  if (prompts.length < 2) {
+    prompts.push({ label: 'What matters most for next time?', prompt: 'If I could only fix one thing before my next negotiation, what should it be and why?' })
+  }
+  return prompts.slice(0, 4)
 }
 
 // The outcome-conditional details captured on the form (US-036), turned into

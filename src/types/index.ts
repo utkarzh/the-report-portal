@@ -892,3 +892,11 @@ export interface SalesCoachCorrection {
   submitted_by: string | null
   created_at: string
 }
+
+// One clickable opening prompt in the Coaching tab — see
+// suggestedCoachingPrompts() in sales-coach.ts, which personalizes these
+// from the negotiation's own Report Card instead of four fixed questions.
+export interface SalesCoachCoachingPrompt {
+  label: string
+  prompt: string
+}

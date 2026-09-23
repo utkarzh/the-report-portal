@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare } from 'lucide-react'
 import { formatScore, scoreCoverageSuffix, outcomeLabel, SALES_COACH_CRITERIA, applicableCriteriaCount, formatTimestamp } from '@/lib/sales-coach'
 import { formatDayMonthYearTime, formatDayMonth } from '@/lib/date-format'
 import type { SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict, SalesCoachOutcome, SalesCoachCorrection } from '@/types'
@@ -45,15 +45,26 @@ export default function ReportCardView({
   onTimestampClick,
   corrections = [],
   onFlag,
+  onDiscussCoachingQuestion,
+  hasCoachingHistory,
+  onStartCoaching,
 }: {
   card: SalesCoachReportCard
   meta: ReportCardMeta
   onTimestampClick?: (ms: number) => void
   corrections?: SalesCoachCorrection[]
   onFlag?: FlagHandler
+  onDiscussCoachingQuestion?: () => void
+  // First-visit nudge at the top of the card, right after the score — the
+  // moment attention is highest, rather than only inviting coaching after a
+  // full scroll to the Final Coaching Question at the bottom.
+  hasCoachingHistory?: boolean
+  onStartCoaching?: () => void
 }) {
   const scored = card.criteria.filter((c) => c.scored)
   const count = (v: SalesCoachVerdict) => scored.filter((c) => c.verdict === v).length
+  const weakest = card.criteria.find((c) => c.scored && c.verdict === 'fail') || card.criteria.find((c) => c.scored && c.verdict === 'warn')
+  const weakestLabel = weakest ? (SALES_COACH_CRITERIA.find((k) => k.key === weakest.key)?.label || weakest.label) : null
 
   return (
     <article className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
@@ -100,6 +111,24 @@ export default function ReportCardView({
         </div>
         <p className="mt-4 border-t border-[#e9e7e2] pt-4 text-[15px] font-medium leading-relaxed text-gray-900">{card.headline}</p>
       </div>
+
+      {onStartCoaching && !hasCoachingHistory && (
+        <div className="mx-6 mt-4 flex flex-col items-start gap-3 rounded-xl border border-[#e5e3df] bg-[#fffdf8] px-5 py-3.5 sm:mx-12 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-gray-700">
+            <span className="font-medium text-gray-900">
+              {weakestLabel ? `Want to fix your ${weakestLabel} before the next call?` : 'Want to make next time even stronger?'}
+            </span>{' '}
+            Your coach has read this Report Card and is ready to walk through it with you.
+          </p>
+          <button
+            type="button"
+            onClick={onStartCoaching}
+            className="inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-black px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-900"
+          >
+            <MessageSquare size={13} /> Start coaching
+          </button>
+        </div>
+      )}
 
       <div className="px-6 sm:px-12">
         {corrections.length > 0 && (
@@ -222,6 +251,15 @@ export default function ReportCardView({
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">Final coaching question</p>
           </div>
           <p className="mt-2.5 text-[15px] leading-7 text-gray-900">{card.coaching_question}</p>
+          {onDiscussCoachingQuestion && (
+            <button
+              type="button"
+              onClick={onDiscussCoachingQuestion}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-black px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-900"
+            >
+              <MessageSquare size={13} /> Discuss this with your coach
+            </button>
+          )}
         </div>
       </div>
 

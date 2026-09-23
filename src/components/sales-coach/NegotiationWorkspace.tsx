@@ -13,7 +13,7 @@ import ReportCardView from '@/components/sales-coach/ReportCardView'
 import CorrectionModal, { type FlagTarget } from '@/components/sales-coach/CorrectionModal'
 import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
-import { formatOutcomeDetails, formatScore, outcomeLabel, pickTranscript } from '@/lib/sales-coach'
+import { coachGreeting, formatOutcomeDetails, formatScore, outcomeLabel, pickTranscript, suggestedCoachingPrompts } from '@/lib/sales-coach'
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
 import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection } from '@/types'
 
@@ -57,6 +57,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   const [n, setN] = useState<SalesCoachNegotiation>(initial)
   const [corrections, setCorrections] = useState<SalesCoachCorrection[]>(initialCorrections)
   const [flagTarget, setFlagTarget] = useState<FlagTarget | null>(null)
+  const [coachPrefill, setCoachPrefill] = useState<string | null>(null)
   const [busy, setBusy] = useState<Busy>(() =>
     initial.stage === 'transcribing' ? 'transcribing' : initial.stage === 'analyzing' ? 'analyzing' : null,
   )
@@ -275,6 +276,12 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
     modelUsed: n.model_used,
   }
 
+  // Personalized from THIS negotiation's own Report Card, so the coach feels
+  // like a continuation of what was just read, not a blank box.
+  const coachStarters = n.report_card ? suggestedCoachingPrompts(n.report_card) : []
+  const coachGreetingText = n.report_card ? coachGreeting(n.report_card, n.company) : undefined
+  const hasCoachingHistory = messages.length > 0
+
   return (
     <div className="flex flex-col gap-5">
       {/* ── Header ───────────────────────────────────────────────── */}
@@ -382,7 +389,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
             <div className="flex items-center gap-1 rounded-xl border border-[#e5e3df] bg-white p-1 text-xs font-medium shadow-sm">
               <TabButton active={tab === 'card'} onClick={() => setTab('card')} icon={<Sparkles size={13} />} label="Report Card" />
               <TabButton active={tab === 'transcript'} onClick={() => setTab('transcript')} icon={<FileText size={13} />} label="Transcript" />
-              <TabButton active={tab === 'coach'} onClick={() => setTab('coach')} icon={<MessageSquare size={13} />} label="Coaching" />
+              <TabButton active={tab === 'coach'} onClick={() => setTab('coach')} icon={<MessageSquare size={13} />} label="Coaching" badge={!hasCoachingHistory} />
               <TabButton active={tab === 'submission'} onClick={() => setTab('submission')} icon={<ClipboardList size={13} />} label="Submission" />
             </div>
             {tab === 'card' && (
@@ -412,6 +419,12 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               onTimestampClick={audioUrl ? jumpToTranscript : undefined}
               corrections={corrections}
               onFlag={(criterionKey, fieldLabel, aiSaid) => setFlagTarget({ criterionKey, fieldLabel, aiSaid })}
+              onDiscussCoachingQuestion={() => {
+                setCoachPrefill(n.report_card?.coaching_question || '')
+                setTab('coach')
+              }}
+              hasCoachingHistory={hasCoachingHistory}
+              onStartCoaching={() => setTab('coach')}
             />
           )}
           {tab === 'transcript' && (
@@ -431,6 +444,10 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               initialMessages={messages}
               canCoach
               context={{ hasReportCard: true, transcriptWords: transcript.text.split(/\s+/).filter(Boolean).length }}
+              initialInput={coachPrefill}
+              onInitialInputConsumed={() => setCoachPrefill(null)}
+              greeting={coachGreetingText}
+              starters={coachStarters}
             />
           )}
           {tab === 'submission' && <SubmissionPanel n={n} open />}
@@ -484,10 +501,11 @@ function ProcessingPanel({ label, estimate, elapsedSecs, hints }: { label: strin
   )
 }
 
-function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+function TabButton({ active, onClick, icon, label, badge }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string; badge?: boolean }) {
   return (
-    <button type="button" onClick={onClick} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors ${active ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}>
+    <button type="button" onClick={onClick} className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors ${active ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}>
       {icon}{label}
+      {badge && !active && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#c8973f]" />}
     </button>
   )
 }

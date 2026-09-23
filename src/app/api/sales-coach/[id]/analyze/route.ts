@@ -17,6 +17,7 @@ import {
   applicabilityInstruction,
   attachEvidenceTimestamps,
   formatCorrectionsBlock,
+  isSalesCoachOutcome,
   pickTranscript,
   renderReportCardMarkdown,
   validateReportCard,
@@ -85,6 +86,17 @@ export async function POST(_request: NextRequest, { params }: Params) {
   const n = neg as SalesCoachNegotiation
   if (n.user_id !== user.id && profile.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // Belt-and-suspenders: POST /api/sales-coach is the only creation path and
+  // already requires a declared outcome (client + isSalesCoachOutcome()
+  // server-side), and there is no edit route that could null it out
+  // afterward — but the column itself has no NOT NULL constraint, and
+  // fixedNaCriteria()/validateReportCard's N/A check both silently no-op
+  // when declared_outcome is falsy (wrong denominator, no N/A enforcement)
+  // rather than erroring. Fail loudly here instead of scoring a broken card.
+  if (!isSalesCoachOutcome(n.declared_outcome)) {
+    return NextResponse.json({ error: 'This negotiation has no declared outcome. It cannot be scored.' }, { status: 409 })
   }
 
   const transcript = pickTranscript(n)
