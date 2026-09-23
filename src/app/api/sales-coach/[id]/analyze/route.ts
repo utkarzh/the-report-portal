@@ -16,6 +16,7 @@ import {
   REPORT_CARD_OUTPUT_SCHEMA,
   applicabilityInstruction,
   attachEvidenceTimestamps,
+  formatCorrectionsBlock,
   pickTranscript,
   renderReportCardMarkdown,
   validateReportCard,
@@ -98,6 +99,14 @@ export async function POST(_request: NextRequest, { params }: Params) {
   }
 
   const knowledge = await loadKnowledgeBundle()
+  // Every correction ever submitted for this negotiation is folded into
+  // EVERY regenerate from here on — not just the one that prompted it — so a
+  // corrected fact stays corrected on a plain Retry too.
+  const { data: corrections } = await supabaseAdmin
+    .from('sales_coach_corrections')
+    .select('*')
+    .eq('negotiation_id', n.id)
+    .order('created_at')
 
   await supabaseAdmin
     .from('sales_coach_negotiations')
@@ -115,7 +124,8 @@ export async function POST(_request: NextRequest, { params }: Params) {
     { type: 'text', text: `${ANALYST_PERSONA}\n\n=== TRC KNOWLEDGE DOCUMENTS (your doctrine) ===\n\n${knowledge.block}` },
     { type: 'text', text: REPORT_CARD_CONTRACT, cache_control: CACHE_1H },
   ]
-  const submission = `${buildNegotiationContext(n)}\n\n${applicabilityInstruction(n.declared_outcome)}\n\n${buildTranscriptBlock(n)}\n\nProduce the Report Card for this negotiation now.`
+  const correctionsBlock = formatCorrectionsBlock(corrections || [])
+  const submission = `${buildNegotiationContext(n)}${correctionsBlock ? `\n\n${correctionsBlock}` : ''}\n\n${applicabilityInstruction(n.declared_outcome)}\n\n${buildTranscriptBlock(n)}\n\nProduce the Report Card for this negotiation now.`
 
   const stream = new ReadableStream({
     async start(controller) {

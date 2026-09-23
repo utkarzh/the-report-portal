@@ -4,17 +4,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Building2, Globe2, Newspaper, UserRound, Users, Mic, Copy, Check,
-  Sparkles, RefreshCw, AlertCircle, CalendarDays, Download, Loader2, ClipboardList, MessageSquare, FileText,
+  Sparkles, RefreshCw, AlertCircle, CalendarDays, Download, Loader2, ClipboardList, MessageSquare, FileText, Flag,
 } from 'lucide-react'
 import AudioPlayer, { type AudioPlayerHandle } from '@/components/transcriptions/AudioPlayer'
 import MeetingPrepLoader from '@/components/meeting-prep/MeetingPrepLoader'
 import CoachConversation from '@/components/sales-coach/CoachConversation'
 import ReportCardView from '@/components/sales-coach/ReportCardView'
+import CorrectionModal, { type FlagTarget } from '@/components/sales-coach/CorrectionModal'
 import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
 import { formatOutcomeDetails, formatScore, outcomeLabel, pickTranscript } from '@/lib/sales-coach'
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
-import type { SalesCoachNegotiation, SalesCoachMessage } from '@/types'
+import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection } from '@/types'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -42,6 +43,7 @@ const TRANSCRIBE_HINTS = [
 interface Props {
   negotiation: SalesCoachNegotiation
   messages: SalesCoachMessage[]
+  corrections: SalesCoachCorrection[]
   audioUrl: string | null
   isAdmin: boolean
   // True right after submission: transcribe (if audio) and generate the Report
@@ -50,9 +52,11 @@ interface Props {
   creatorName: string | null
 }
 
-export default function NegotiationWorkspace({ negotiation: initial, messages, audioUrl, isAdmin, autoStart, creatorName }: Props) {
+export default function NegotiationWorkspace({ negotiation: initial, messages, corrections: initialCorrections, audioUrl, isAdmin, autoStart, creatorName }: Props) {
   const router = useRouter()
   const [n, setN] = useState<SalesCoachNegotiation>(initial)
+  const [corrections, setCorrections] = useState<SalesCoachCorrection[]>(initialCorrections)
+  const [flagTarget, setFlagTarget] = useState<FlagTarget | null>(null)
   const [busy, setBusy] = useState<Busy>(() =>
     initial.stage === 'transcribing' ? 'transcribing' : initial.stage === 'analyzing' ? 'analyzing' : null,
   )
@@ -383,6 +387,13 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
             </div>
             {tab === 'card' && (
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFlagTarget({ criterionKey: null, fieldLabel: 'General feedback', aiSaid: '', general: true })}
+                  className="inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400"
+                >
+                  <Flag size={13} /> Give feedback
+                </button>
                 <CopyTextButton text={n.report_card_markdown} />
                 <a
                   href={`/api/sales-coach/${n.id}/download`}
@@ -395,7 +406,13 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
           </div>
 
           {tab === 'card' && n.report_card && (
-            <ReportCardView card={n.report_card} meta={meta} onTimestampClick={audioUrl ? jumpToTranscript : undefined} />
+            <ReportCardView
+              card={n.report_card}
+              meta={meta}
+              onTimestampClick={audioUrl ? jumpToTranscript : undefined}
+              corrections={corrections}
+              onFlag={(criterionKey, fieldLabel, aiSaid) => setFlagTarget({ criterionKey, fieldLabel, aiSaid })}
+            />
           )}
           {tab === 'transcript' && (
             <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
@@ -419,6 +436,14 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, a
           {tab === 'submission' && <SubmissionPanel n={n} open />}
         </>
       )}
+
+      <CorrectionModal
+        negotiationId={n.id}
+        target={flagTarget}
+        onClose={() => setFlagTarget(null)}
+        onSaved={(c) => setCorrections((prev) => [...prev, c])}
+        onRegenerate={runAnalyze}
+      />
     </div>
   )
 }

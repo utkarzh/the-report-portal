@@ -877,3 +877,18 @@ export interface SalesCoachMessage {
   content: string
   created_at: string
 }
+
+// A fact the Sales Executive has told the coach the AI got wrong (a misheard
+// number, a fact that happened off the recording) — see 029_sales_coach_corrections.sql.
+// criterion_key null = a general/commercial-outcome correction, not tied to
+// one of the eight scored criteria.
+export interface SalesCoachCorrection {
+  id: string
+  negotiation_id: string
+  criterion_key: string | null
+  field_label: string
+  ai_said: string | null
+  correction: string
+  submitted_by: string | null
+  created_at: string
+}

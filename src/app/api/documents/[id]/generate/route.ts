@@ -22,6 +22,26 @@ function stripNarration(text: string): string {
     .trim()
 }
 
+// Defensive cleanup: strip a LEADING process-narration paragraph the model may
+// still emit despite the output contract (e.g. "Now I have sufficient data to
+// produce the full business case…" or "The research is now sufficient to
+// produce a complete business case…"). Matching the model's exact WORDING is a
+// losing game — it phrases this differently on every run — so instead of a
+// phrase whitelist, this uses the one thing that's actually reliable: every
+// real document, across every sample we've inspected, opens with a Markdown
+// heading (its title), optionally preceded by a "---" rule the model itself
+// uses to mark the end of its preamble. So: find the FIRST heading line in the
+// text and cut everything before it (plus one immediately-preceding rule
+// line). If the text already starts with a heading, this is a no-op.
+function stripLeadingNarration(text: string): string {
+  const lines = text.split('\n')
+  const firstHeadingLine = lines.findIndex((l) => /^#{1,6}\s/.test(l.trim()))
+  if (firstHeadingLine <= 0) return text.replace(/^\s+/, '')
+  let cut = firstHeadingLine
+  if (/^(-{3,}|\*{3,}|_{3,})$/.test(lines[cut - 1].trim())) cut -= 1
+  return lines.slice(cut).join('\n').replace(/^\s+/, '')
+}
+
 // Long-running route: a web-searched, multi-thousand-token document (the
 // Editorial Brief allows 32k output tokens + 10 searches) can take several
 // minutes. Without this, Vercel's low default timeout kills the function before
@@ -161,7 +181,8 @@ You are generating ONE document as Markdown, and nothing else. This application 
 
 Therefore:
 - Output ONLY the finished document content, in Markdown. Do not produce two versions of anything.
-- Do NOT narrate your process or announce steps. Never write preamble, sign-offs, or commentary such as "Now I will build the Word document", "I will now research…", "Here is the brief", "Let me…", or similar — not before, between, or after the document.
+- Do NOT narrate your process, announce steps, or state your own readiness. Never write preamble, sign-offs, or commentary such as "Now I will build the Word document", "Now I have sufficient data to produce the full business case", "I now have enough information…", "I will now research…", "Here is the brief", "Let me…", or similar — not before, between, or after the document. The very first character you output must belong to the document itself (its title or first heading) — not a sentence about the document.
+- Every section required by the structure above — including the FIRST one — must be written as a real Markdown heading (## or ###) carrying its exact number and title (e.g. "## 1. Header Block"). Never render a section's heading as bold plain text, and never leave the first section un-numbered or un-headed — the renderer that turns this into the final document locates each section by its heading, so a missing or malformed heading makes that entire section disappear from the output.
 - Begin directly with the document's first line (e.g. the cover-page title) and end with its final content line.
 - Use Markdown tables for every table and Markdown links [domain.com](https://full-url) for citations.
 
@@ -396,7 +417,7 @@ ${inputs || '(no structured inputs provided)'}${
         // treat it as finished to avoid an endless Continue.
         const stalled = !softDeadlineHit && !hasMarker && fullText.trim().length === 0
         const done = !softDeadlineHit && (hasMarker || stopReason !== 'max_tokens' || stalled)
-        const cleanOutput = done ? stripNarration(combined) : combined
+        const cleanOutput = done ? stripNarration(stripLeadingNarration(combined)) : combined
 
         const newTokensTotal = baseTokensTotal + roundTokens
         const newSearches = baseSearches + roundSearches

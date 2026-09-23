@@ -1,9 +1,9 @@
 'use client'
 
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag } from 'lucide-react'
 import { formatScore, scoreCoverageSuffix, outcomeLabel, SALES_COACH_CRITERIA, applicableCriteriaCount, formatTimestamp } from '@/lib/sales-coach'
-import { formatDayMonthYearTime } from '@/lib/date-format'
-import type { SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict, SalesCoachOutcome } from '@/types'
+import { formatDayMonthYearTime, formatDayMonth } from '@/lib/date-format'
+import type { SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict, SalesCoachOutcome, SalesCoachCorrection } from '@/types'
 
 // The Report Card as ONE document (US-039/040/041): identity header →
 // scoreline → summary → nine criteria with verbatim evidence → scoreline recap
@@ -37,7 +37,21 @@ export interface ReportCardMeta {
   modelUsed?: string | null
 }
 
-export default function ReportCardView({ card, meta, onTimestampClick }: { card: SalesCoachReportCard; meta: ReportCardMeta; onTimestampClick?: (ms: number) => void }) {
+export type FlagHandler = (criterionKey: string | null, fieldLabel: string, aiSaid: string) => void
+
+export default function ReportCardView({
+  card,
+  meta,
+  onTimestampClick,
+  corrections = [],
+  onFlag,
+}: {
+  card: SalesCoachReportCard
+  meta: ReportCardMeta
+  onTimestampClick?: (ms: number) => void
+  corrections?: SalesCoachCorrection[]
+  onFlag?: FlagHandler
+}) {
   const scored = card.criteria.filter((c) => c.scored)
   const count = (v: SalesCoachVerdict) => scored.filter((c) => c.verdict === v).length
 
@@ -88,13 +102,29 @@ export default function ReportCardView({ card, meta, onTimestampClick }: { card:
       </div>
 
       <div className="px-6 sm:px-12">
+        {corrections.length > 0 && (
+          <div className="mt-6 rounded-xl bg-[#faf9f7] p-4">
+            <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+              <Flag size={11} className="text-[#a07530]" /> Corrections on record
+            </p>
+            <div className="mt-2.5 flex flex-col gap-2.5">
+              {corrections.map((c) => (
+                <div key={c.id} className="text-sm leading-6 text-gray-800">
+                  <span className="font-semibold text-gray-900">{c.field_label}. </span>
+                  {c.correction}
+                  <span className="ml-1.5 text-xs text-gray-400">· {formatDayMonth(c.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <p className="py-6 text-[15px] leading-7 text-gray-800">{card.summary}</p>
 
         {/* ── Criteria ─────────────────────────────────────────── */}
         <Eyebrow>Criteria</Eyebrow>
         <ol className="divide-y divide-[#eceae5] border-y border-[#eceae5]">
           {card.criteria.flatMap((c, i) => {
-            const row = <CriterionRow key={c.key} criterion={c} onTimestampClick={onTimestampClick} />
+            const row = <CriterionRow key={c.key} criterion={c} onTimestampClick={onTimestampClick} onFlag={onFlag} />
             if (i !== 2) return [row]
             return [
               <li key="commercial-outcome" className="py-5">
@@ -110,7 +140,18 @@ export default function ReportCardView({ card, meta, onTimestampClick }: { card:
                     {card.commercial_outcome_label}
                   </span>
                 </div>
-                <p className="mt-1 text-[10px] uppercase tracking-widest text-gray-400 sm:pl-8">Not scored</p>
+                <div className="mt-1 flex items-center justify-between sm:pl-8">
+                  <p className="text-[10px] uppercase tracking-widest text-gray-400">Not scored</p>
+                  {onFlag && (
+                    <button
+                      type="button"
+                      onClick={() => onFlag(null, 'Commercial Outcome', card.commercial_outcome_note)}
+                      className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 transition-colors hover:text-[#a07530]"
+                    >
+                      <Flag size={10} /> Something not right here?
+                    </button>
+                  )}
+                </div>
               </li>,
               row,
             ]
@@ -197,10 +238,11 @@ function Eyebrow({ children, className = '' }: { children: React.ReactNode; clas
   return <p className={`mb-3 text-[10px] font-semibold uppercase tracking-[0.25em] text-gray-400 ${className}`}>{children}</p>
 }
 
-function CriterionRow({ criterion: c, onTimestampClick }: { criterion: SalesCoachCriterion; onTimestampClick?: (ms: number) => void }) {
+function CriterionRow({ criterion: c, onTimestampClick, onFlag }: { criterion: SalesCoachCriterion; onTimestampClick?: (ms: number) => void; onFlag?: FlagHandler }) {
   const style = VERDICT[c.verdict]
   const meta = SALES_COACH_CRITERIA.find((k) => k.key === c.key)
   const label = meta?.label || c.label
+  const aiSaid = c.evidence?.[0]?.text || c.reason || c.note || ''
   return (
     <li className="py-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
@@ -237,6 +279,15 @@ function CriterionRow({ criterion: c, onTimestampClick }: { criterion: SalesCoac
           ))}
           {c.reason && <p className="text-sm leading-6 text-gray-800"><span className="font-semibold text-gray-900">Reason. </span>{c.reason}</p>}
         </div>
+      )}
+      {onFlag && (c.scored || c.verdict === 'uv') && (
+        <button
+          type="button"
+          onClick={() => onFlag(c.key, label, aiSaid)}
+          className="mt-2.5 inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 transition-colors hover:text-[#a07530] sm:pl-8"
+        >
+          <Flag size={10} /> {c.verdict === 'uv' ? 'Tell the coach what happened' : 'Something not right here?'}
+        </button>
       )}
     </li>
   )

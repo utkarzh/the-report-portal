@@ -492,31 +492,50 @@ function coverPage(session: CoverSession, config: DocTypeConfig, verdict: string
 // ── Public API ──────────────────────────────────────────────────────────────────
 
 export function buildDocumentDocx(output: string, config: DocTypeConfig, session: CoverSession): Document {
-  const tokens = marked.lexer(output)
+  const tokens = marked.lexer(output) as Tokens.Generic[]
 
-  // Cover region = tokens before the first numbered / TOC section heading.
-  let coverEnd = tokens.findIndex(
+  // The model's own document title (its first H1) is pure duplicate of the
+  // coded cover's title line, so it's the one thing we always drop. Everything
+  // else the model writes before the first numbered section — e.g. a
+  // "HEADER BLOCK"/decision-scorecard section that should have been its own
+  // numbered heading but wasn't — is kept and rendered as body content further
+  // below. This used to be discarded wholesale (everything before the first
+  // digit-numbered heading was treated as disposable "cover" text), which
+  // silently deleted that content from the download whenever the model failed
+  // to wrap it in a proper "1. ..." heading — a real section vanishing from the
+  // export, not merely a cosmetic slip.
+  const titleIdx = tokens.findIndex((t) => t.type === 'heading' && (t as Tokens.Heading).depth === 1)
+
+  // Search window for a VERDICT callout to lift onto the cover page: from just
+  // after the title up to the first numbered/TOC section heading (the model's
+  // own front-matter region). Only used to locate + remove that one callout so
+  // it isn't duplicated (once on the cover, once in the body) — no longer used
+  // to decide what else to keep.
+  let frontEnd = tokens.findIndex(
     (t) =>
       t.type === 'heading' &&
       (/^\d+[.)]\s/.test((t as Tokens.Heading).text) ||
         /^(TABLE OF CONTENTS|CONTENTS)\b/i.test((t as Tokens.Heading).text)),
   )
-  if (coverEnd < 0) coverEnd = 0
-  const coverTokens = tokens.slice(0, coverEnd) as Tokens.Generic[]
-  const bodyTokens = tokens.slice(coverEnd)
+  if (frontEnd < 0) frontEnd = tokens.length
 
-  // Pull the VERDICT callout out of the cover region for the cover page.
   let verdict: string | null = null
-  for (const t of coverTokens) {
+  let verdictIdx = -1
+  for (let i = titleIdx < 0 ? 0 : titleIdx + 1; i < frontEnd; i++) {
+    const t = tokens[i]
     if (t.type === 'blockquote' && CALLOUT_LABELS.test((t.text ?? '').replace(/^\*\*|\*\*$/g, ''))) {
       verdict = t.text ?? null
+      verdictIdx = i
       break
     }
     if (isCalloutParagraph(t)) {
       verdict = t.text ?? null
+      verdictIdx = i
       break
     }
   }
+
+  const bodyTokens = tokens.filter((_, i) => i !== titleIdx && i !== verdictIdx)
 
   // Split the body at the first appendix heading. Appendices carry the wide,
   // many-column tables; they go on their own LANDSCAPE section (as the reference

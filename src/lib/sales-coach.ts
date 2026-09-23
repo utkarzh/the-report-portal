@@ -10,6 +10,7 @@ import type {
   SalesCoachObjection,
   SalesCoachAnalysisSection,
   SalesCoachTranscriptSegment,
+  SalesCoachCorrection,
 } from '@/types'
 
 // Isomorphic helpers for the Sales Negotiation Coach module — safe to import
@@ -217,6 +218,29 @@ export function formatOutcomeDetails(
     rows.push({ label: 'Reason given by the client', value: s('lostReason') || 'Not recorded' })
   }
   return rows
+}
+
+// Facts and feedback the Sales Executive has given after reviewing a
+// previous Report Card — either scoped to one criterion/the Commercial
+// Outcome (a misheard number, a fact that happened off the recording) or
+// general, card-wide feedback not tied to any one section — see
+// 029_sales_coach_corrections.sql. Every entry ever submitted for a
+// negotiation is folded into every future analyze call (not just the one
+// that prompted it), so once given, it stays in effect. Returns '' when
+// there are none so callers can splice it in unconditionally.
+export function formatCorrectionsBlock(corrections: SalesCoachCorrection[]): string {
+  if (corrections.length === 0) return ''
+  const lines = [
+    '--- CONFIRMED CORRECTIONS & FEEDBACK FROM THE SALES EXECUTIVE ---',
+    'The Sales Executive has reviewed a previous Report Card and provided the following. Where it corrects a specific fact, treat it as ground truth: do not re-flag the original AI reading as unverifiable (uv) or as a discrepancy, and score/reason using the corrected fact. Where it is general feedback, weigh it as context from the person who ran the negotiation.',
+  ]
+  corrections.forEach((c, i) => {
+    const meta = c.criterion_key ? SALES_COACH_CRITERIA.find((k) => k.key === c.criterion_key) : null
+    const label = meta?.label || c.field_label || 'Commercial Outcome'
+    const aiRead = c.ai_said ? ` AI read: "${c.ai_said}" —` : ''
+    lines.push(`${i + 1}. [${label}]${aiRead} ${c.correction}`)
+  })
+  return lines.join('\n')
 }
 
 // Section 3, COMMERCIAL OUTCOME — NOT SCORED (Project Prompt). A factual
@@ -680,6 +704,10 @@ HOW THIS CONTRACT RELATES TO THE PROJECT PROMPT: the Project Prompt (loaded abov
 8. next_steps_stakeholders
 9. scheduled_meeting
 Apply the Project Prompt's own verdict thresholds and examples for each of these. If the Project Prompt is silent on a point, use the Manual and Method.
+
+OFF-RECORDING FACTS: a declared or confirmed fact that did not itself happen on the recording (e.g. a contract signed after the call ended, a decision made in a later off-audio conversation) is NOT a contradiction to penalise. Note it factually and matter-of-factly — in the summary or the relevant criterion's reason — as a natural limit of reviewing only the recorded portion (e.g. "this was agreed after the recorded portion of the call, so I can only speak to what's on the audio"), never as a discrepancy or a mark against the Sales Executive.
+
+CONFIRMED CORRECTIONS & FEEDBACK: if the submission includes a "CONFIRMED CORRECTIONS & FEEDBACK FROM THE SALES EXECUTIVE" block, entries scoped to a specific criterion or the Commercial Outcome are ground truth — supersede your own reading of the transcript for that specific fact, do not mark the corrected criterion "uv" for that reason again, and do not describe it as a discrepancy. Entries labelled "General feedback" are not tied to one criterion — weigh them as context from the Sales Executive when writing the summary and reasons, without forcing them onto a single criterion that may not fit.
 
 VOICE (mandatory): address the Sales Executive DIRECTLY as "you"/"your" throughout — headline, summary, every criterion's reason, report_summary, objections and the coaching question. Never write "the Sales Executive", "the rep" or "the representative" in third person; never call the role anything but "Sales Executive" if you must name it at all. Write as if speaking straight to the person who ran the negotiation.
 

@@ -9,7 +9,7 @@ import { SALES_COACH_AUDIO_BUCKET } from '@/lib/sales-coach'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import NegotiationWorkspace from '@/components/sales-coach/NegotiationWorkspace'
 import DeleteNegotiationButton from '@/components/sales-coach/DeleteNegotiationButton'
-import type { SalesCoachNegotiation, SalesCoachMessage } from '@/types'
+import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection } from '@/types'
 
 interface Props {
   params: { id: string }
@@ -50,6 +50,13 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
     .order('created_at', { ascending: true })
   const messages = (msgRows || []) as SalesCoachMessage[]
 
+  const { data: correctionRows } = await supabase
+    .from('sales_coach_corrections')
+    .select('*')
+    .eq('negotiation_id', n.id)
+    .order('created_at', { ascending: true })
+  const corrections = (correctionRows || []) as SalesCoachCorrection[]
+
   // Admins see who submitted it (same approach as the other modules).
   let creatorName: string | null = null
   if (profile.role === 'admin') {
@@ -73,6 +80,7 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
         <NegotiationWorkspace
           negotiation={n}
           messages={messages}
+          corrections={corrections}
           audioUrl={audioUrl}
           isAdmin={profile.role === 'admin'}
           autoStart={searchParams.start === '1'}

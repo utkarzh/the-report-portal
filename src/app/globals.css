@@ -167,6 +167,12 @@ body {
 }
 
 /* Prose styles for research output (used with marked HTML) */
+.prose-research {
+  /* A long unbroken token (most commonly a raw source URL rendered as link
+     text) has no natural break point, so without this it overflows the
+     container's right edge instead of wrapping. */
+  overflow-wrap: anywhere;
+}
 .prose-research h1,
 .prose-research h2,
 .prose-research h3,

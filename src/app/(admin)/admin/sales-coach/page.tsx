@@ -2,11 +2,25 @@ export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 import { requireAdminHeader } from '@/lib/auth/session'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import { SALES_COACH_KNOWLEDGE_DOCS } from '@/lib/sales-coach'
 
-export default function SalesCoachAdminPage() {
+export default async function SalesCoachAdminPage() {
   requireAdminHeader()
+
+  // Flagged = a fact correction on record or a criterion needing audio
+  // verification. Fetched (capped, not paginated — same reasoning as the
+  // Negotiations list) rather than filtered in SQL, since it spans a jsonb
+  // array column and a related table's count.
+  const { data: rows } = await supabaseAdmin
+    .from('sales_coach_negotiations')
+    .select('uv_criteria, sales_coach_corrections(count)')
+    .limit(200)
+  const flaggedCount = (rows || []).filter((r) => {
+    const correctionsCount = Array.isArray(r.sales_coach_corrections) ? (r.sales_coach_corrections[0]?.count ?? 0) : 0
+    return (r.uv_criteria?.length || 0) > 0 || correctionsCount > 0
+  }).length
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
@@ -53,6 +67,24 @@ export default function SalesCoachAdminPage() {
                 </Link>
               ))}
             </div>
+          </section>
+
+          <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
+            <h2 className="text-sm font-semibold text-gray-900">Negotiations</h2>
+            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+              Browse every negotiation submitted across the team, and see which ones have a fact correction on record
+              or a criterion the coach marked unverifiable. Visibility only — declared outcomes are never disputed here.
+            </p>
+            <Link
+              href="/admin/sales-coach/negotiations"
+              className="flex items-center justify-between px-4 py-3 mt-4 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
+            >
+              <span>
+                Flagged{' '}
+                <span className={flaggedCount ? 'text-[#a07530] font-medium' : 'text-gray-400'}>({flaggedCount})</span>
+              </span>
+              <span aria-hidden>→</span>
+            </Link>
           </section>
         </div>
       </div>

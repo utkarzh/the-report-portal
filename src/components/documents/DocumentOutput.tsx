@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { marked } from 'marked'
-import { Download, FileText, Sparkles, WandSparkles, Copy, Check, ArrowLeft, Square } from 'lucide-react'
+import { Download, FileText, Sparkles, WandSparkles, Copy, Check, ArrowLeft } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DeleteDocumentButton from '@/components/documents/DeleteDocumentButton'
@@ -69,13 +69,11 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   // automatically. Each round is byte-for-byte the request the button sent, so
   // the document is produced exactly as before; only the clicking is gone.
   //
-  // Bounded on purpose: every round costs real money, so we cap the chain and
-  // give the user a Stop control. Hitting the cap falls back to manual Continue
-  // rather than running forever.
+  // Bounded on purpose: every round costs real money, so we cap the chain.
+  // Hitting the cap falls back to manual Continue rather than running forever.
   const AUTO_CONTINUE_MAX = 12
   const [autoRunning, setAutoRunning] = useState(false)
   const [roundsRun, setRoundsRun] = useState(0)
-  const stopRequestedRef = useRef(false)
 
   useEffect(() => {
     if (hasStartedRef.current) return
@@ -91,10 +89,9 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Drives generateChunk until the document is finished, the cap is reached, the
-  // user hits Stop, or a pass fails.
+  // Drives generateChunk until the document is finished, the cap is reached, or
+  // a pass fails.
   async function runToCompletion(mode: 'fresh' | 'continue' | 'regenerate') {
-    stopRequestedRef.current = false
     setAutoRunning(true)
     setRoundsRun(0)
     try {
@@ -104,10 +101,6 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
         setRoundsRun(round)
         // 'done' — finished. 'error' — surfaced to the user, don't spend more.
         if (result !== 'more') return
-        if (stopRequestedRef.current) {
-          setNeedsContinue(true)
-          return
-        }
         next = 'continue'
       }
       // Cap reached with the document still unfinished — hand control back.
@@ -341,25 +334,13 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
               </div>
               <div className="flex items-center gap-1">
                 {isProcessing ? (
-                  <>
-                    <span className="flex items-center gap-2 pr-1 text-xs text-gray-500">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
-                      {streamingLabel}
-                      {roundsRun > 0 && (
-                        <span className="tabular-nums text-gray-400">part {roundsRun + 1}</span>
-                      )}
-                    </span>
-                    {autoRunning && (
-                      <button
-                        onClick={() => { stopRequestedRef.current = true }}
-                        title="Stop after the current part finishes"
-                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
-                      >
-                        <Square size={11} />
-                        <span>{stopRequestedRef.current ? 'Stopping…' : 'Stop'}</span>
-                      </button>
+                  <span className="flex items-center gap-2 pr-1 text-xs text-gray-500">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+                    {streamingLabel}
+                    {roundsRun > 0 && (
+                      <span className="tabular-nums text-gray-400">part {roundsRun + 1}</span>
                     )}
-                  </>
+                  </span>
                 ) : output ? (
                   <>
                     <CopyButton text={output} />
@@ -372,10 +353,55 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                       <Download size={13} />
                       <span>Download</span>
                     </a>
+                    {done && (
+                      <button
+                        onClick={() => setShowForm((v) => !v)}
+                        title="Regenerate this document"
+                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                          showForm
+                            ? 'bg-[#f7f6f3] text-gray-900'
+                            : 'text-gray-500 hover:bg-[#f7f6f3] hover:text-gray-900'
+                        }`}
+                      >
+                        <WandSparkles size={13} />
+                        <span>Regenerate</span>
+                      </button>
+                    )}
                   </>
                 ) : null}
               </div>
             </div>
+
+            {/* Regenerate with optional feedback — a header action, so it never
+                requires scrolling past a long document to reach. Sits directly
+                under the toolbar that opened it. */}
+            {showForm && (
+              <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-5">
+                <Textarea
+                  label="Feedback"
+                  hint="optional"
+                  placeholder="e.g. Add more recent figures. Expand the competitive section. Tighten the executive summary."
+                  value={extra}
+                  onChange={(e) => setExtra(e.target.value)}
+                  rows={3}
+                />
+                <div className="mt-4 flex gap-3">
+                  <button
+                    onClick={() => runToCompletion('regenerate')}
+                    className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-900"
+                  >
+                    <WandSparkles size={15} />
+                    Regenerate
+                  </button>
+                  <button
+                    onClick={() => { setShowForm(false); setExtra('') }}
+                    className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:text-gray-900"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="mt-4">
               {output ? (
@@ -417,47 +443,6 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                     <Sparkles size={15} />
                     Continue
                   </button>
-                </div>
-              )}
-
-              {/* Regenerate with optional feedback (overwrites the saved output) */}
-              {done && (
-                <div className="mt-6 border-t border-[#e5e3df] pt-5">
-                  {!showForm ? (
-                    <button
-                      onClick={() => setShowForm(true)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
-                    >
-                      <WandSparkles size={15} />
-                      Regenerate
-                    </button>
-                  ) : (
-                    <div className="rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-5">
-                      <Textarea
-                        label="Feedback"
-                        hint="optional"
-                        placeholder="e.g. Add more recent figures. Expand the competitive section. Tighten the executive summary."
-                        value={extra}
-                        onChange={(e) => setExtra(e.target.value)}
-                        rows={3}
-                      />
-                      <div className="mt-4 flex gap-3">
-                        <button
-                          onClick={() => runToCompletion('regenerate')}
-                          className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-900"
-                        >
-                          <WandSparkles size={15} />
-                          Regenerate
-                        </button>
-                        <button
-                          onClick={() => { setShowForm(false); setExtra('') }}
-                          className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:text-gray-900"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
