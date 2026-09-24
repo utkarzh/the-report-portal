@@ -28,6 +28,39 @@ export const STANDARD_MARGIN_TWIPS = {
   right: Math.round(1.9 * TWIPS_PER_CM), // 1077
 }
 
+// Some earlier revisions of the transcript refining prompt instructed Claude
+// to open the refined transcript with its own title / byline / "For
+// publication in <media>" block — reasonable before buildStandardHeader()
+// existed, but it now duplicates that standardised header verbatim (see the
+// refine route's own override instruction, which stops this for new refines).
+// This strips a leading block like that from already-refined text so it
+// renders cleanly without requiring a re-refine. Matched purely on the
+// unmistakable "For publication in …" line — real transcript dialogue would
+// not open with that phrase — so a transcript without the legacy block is
+// left completely untouched.
+const PUBLICATION_LINE = /for publication in\b/i
+const HEADER_SCAN_LINES = 8
+
+export function stripLeadingPublicationHeader(markdown: string): string {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n')
+  const scanLimit = Math.min(lines.length, HEADER_SCAN_LINES)
+  let cutAt = -1
+  for (let i = 0; i < scanLimit; i++) {
+    if (PUBLICATION_LINE.test(lines[i])) {
+      cutAt = i
+      break
+    }
+  }
+  if (cutAt === -1) return markdown
+
+  const rest = lines.slice(cutAt + 1)
+  while (rest.length && rest[0].trim() === '') rest.shift()
+  if (rest.length && /^-{3,}\s*$/.test(rest[0].trim())) rest.shift()
+  while (rest.length && rest[0].trim() === '') rest.shift()
+
+  return rest.join('\n')
+}
+
 export interface StandardDocumentHeaderMeta {
   /** "Interview Outline" | "Interview Transcript" | "Interview Request" */
   title: string

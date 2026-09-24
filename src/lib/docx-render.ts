@@ -7,6 +7,7 @@ import {
   HeadingLevel,
   AlignmentType,
   PageNumber,
+  BorderStyle,
 } from 'docx'
 import {
   LETTERHEAD_LOGO_PNG_BASE64,
@@ -67,12 +68,21 @@ export function letterheadHeaderFooter() {
   }
 }
 
+interface RunStyleOpts {
+  color?: string
+  /** Force every run italic regardless of markdown emphasis (blockquotes). */
+  forceItalic?: boolean
+}
+
 // Splits a plain-text segment into bold/italic-aware runs, optionally
 // highlighted. Longest-match-first so "***x***" (bold+italic) is never
 // misparsed as separate "**" and "*" tokens.
-function styledRuns(text: string, highlight: boolean): TextRun[] {
+function styledRuns(text: string, highlight: boolean, opts: RunStyleOpts = {}): TextRun[] {
+  const { color, forceItalic } = opts
   const parts = text.split(/(\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*)/g).filter((p) => p !== '')
-  if (parts.length === 0) return [new TextRun({ text: '', highlight: highlight ? 'yellow' : undefined })]
+  if (parts.length === 0) {
+    return [new TextRun({ text: '', highlight: highlight ? 'yellow' : undefined, color, italics: forceItalic || undefined })]
+  }
   return parts.map((p) => {
     const boldItalic = p.startsWith('***') && p.endsWith('***')
     const bold = !boldItalic && p.startsWith('**') && p.endsWith('**')
@@ -81,26 +91,52 @@ function styledRuns(text: string, highlight: boolean): TextRun[] {
     return new TextRun({
       text: stripped,
       bold: boldItalic || bold || undefined,
-      italics: boldItalic || italics || undefined,
+      italics: boldItalic || italics || forceItalic || undefined,
       highlight: highlight ? 'yellow' : undefined,
+      color,
     })
   })
 }
 
 // Inline runs for one line. When highlightConfirm is set, spans wrapped in
 // [[ … ]] are emitted with a yellow highlight and the brackets removed.
-function inlineRuns(text: string, highlightConfirm: boolean): TextRun[] {
-  if (!highlightConfirm) return styledRuns(text, false)
+function inlineRuns(text: string, highlightConfirm: boolean, opts: RunStyleOpts = {}): TextRun[] {
+  if (!highlightConfirm) return styledRuns(text, false, opts)
   const runs: TextRun[] = []
   for (const part of text.split(/(\[\[[\s\S]+?\]\])/g)) {
     if (!part) continue
     if (part.startsWith('[[') && part.endsWith(']]')) {
-      runs.push(...styledRuns(part.slice(2, -2), true))
+      runs.push(...styledRuns(part.slice(2, -2), true, opts))
     } else {
-      runs.push(...styledRuns(part, false))
+      runs.push(...styledRuns(part, false, opts))
     }
   }
   return runs.length > 0 ? runs : [new TextRun('')]
+}
+
+// ">" blocks — the transcript refining prompt's standard "Disclaimer" note —
+// render italic with a left border, same convention as the PDF download's
+// blockquote styling. Red specifically when the quote opens with
+// "Disclaimer:"; plain grey for any other blockquote content.
+const QUOTE_GREY = '595959'
+const QUOTE_RED = 'C00000'
+const DISCLAIMER_RE = /^\*{0,3}disclaimer\s*:/i
+
+function blockquoteParagraphs(blockLines: string[], highlight: boolean, spacingAfter: number): Paragraph[] {
+  // A bare ">" line is a paragraph break inside the quote (GFM convention);
+  // stripping the marker turns it into an empty line, which we drop.
+  const lines = blockLines.map((l) => l.replace(/^>\s?/, '').trim()).filter(Boolean)
+  if (lines.length === 0) return []
+  const color = DISCLAIMER_RE.test(lines[0]) ? QUOTE_RED : QUOTE_GREY
+  return lines.map(
+    (line) =>
+      new Paragraph({
+        children: inlineRuns(line, highlight, { color, forceItalic: true }),
+        indent: { left: 240 },
+        border: { left: { style: BorderStyle.SINGLE, size: 12, color, space: 8 } },
+        spacing: { after: spacingAfter, line: LINE_SPACING },
+      }),
+  )
 }
 
 // Line spacing throughout is the standard 1.15 (see docx-standard-format.ts —
@@ -121,6 +157,12 @@ export function markdownToParagraphs(
   const blocks = text.replace(/\r\n/g, '\n').split(/\n{2,}/)
 
   for (const block of blocks) {
+    const blockLines = block.split('\n').map((l) => l.trim()).filter(Boolean)
+    if (blockLines.length > 0 && blockLines.every((l) => l.startsWith('>'))) {
+      paras.push(...blockquoteParagraphs(blockLines, highlight, spacingAfter))
+      continue
+    }
+
     for (const rawLine of block.split('\n')) {
       const line = rawLine.trim()
       if (!line) continue

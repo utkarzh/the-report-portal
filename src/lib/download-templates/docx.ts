@@ -18,7 +18,7 @@ import {
 } from 'docx'
 import { markdownToParagraphs } from '@/lib/docx-render'
 import { LETTERHEAD_LOGO_PNG_BASE64 } from '@/lib/letterhead-logo'
-import { STANDARD_MARGIN_TWIPS, buildStandardHeader, type StandardDocumentHeaderMeta } from '@/lib/docx-standard-format'
+import { STANDARD_MARGIN_TWIPS, buildStandardHeader, stripLeadingPublicationHeader, type StandardDocumentHeaderMeta } from '@/lib/docx-standard-format'
 import { BRAND_INFO, type DownloadTemplate } from './registry'
 import { templateBands } from './bands'
 
@@ -259,6 +259,10 @@ export function buildTemplatedDocx({ markdown, heading, template, meta, highligh
         ...(metaParas.length ? [new Paragraph({ text: '', spacing: { after: 120 } })] : []),
       ]
 
+  // When we render our own standardised header, strip any duplicate the
+  // content itself opens with (see stripLeadingPublicationHeader).
+  const bodyMarkdown = header ? stripLeadingPublicationHeader(markdown) : markdown
+
   const section: ISectionOptions = {
     properties: {
       page: {
@@ -277,7 +281,7 @@ export function buildTemplatedDocx({ markdown, heading, template, meta, highligh
     footers: { default: buildFooter(template) },
     children: [
       ...headBlock,
-      ...markdownToParagraphs(markdown, { highlightConfirm, paragraphSpacingAfter }),
+      ...markdownToParagraphs(bodyMarkdown, { highlightConfirm, paragraphSpacingAfter }),
     ],
   }
 

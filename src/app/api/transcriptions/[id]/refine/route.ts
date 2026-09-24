@@ -97,6 +97,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     `Use the brackets sparingly and never for anything that isn't a real confirmation item. ` +
     `Never use single brackets or any other marker for this.`
 
+  // The refining prompt asks for a title / byline / "For publication in
+  // <publication>" header built from the form fields below — that was the
+  // only place this information appeared before the app started rendering
+  // its own standardised document header (title / interviewee / "For
+  // publication in <media>") on top of every transcript download. Now the
+  // two duplicate. This override wins because it's placed last, same pattern
+  // as CONFIRM_MARKUP_INSTRUCTION above.
+  const NO_DOCUMENT_HEADER_INSTRUCTION =
+    `OUTPUT — NO TITLE OR HEADER BLOCK (IMPORTANT):\n` +
+    `Do NOT open the output with a title, headline, byline, or a "For publication in ..." line, even if the ` +
+    `refining instructions above ask for one — the app already renders that information (interviewee name, ` +
+    `title, organisation, and publication) as the document's own header, outside the text you produce here. ` +
+    `Start the output directly with the transcript's first line (e.g. "Speaker A: ...").`
+
   // The refining prompt refers to "form fields" for the interviewee header
   // (name / title / organisation / publication). Those values only exist on
   // the transcriptions row — if they aren't sent, the model has nothing to
@@ -113,6 +127,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     ...(refiningPrompt ? [{ type: 'text' as const, text: refiningPrompt, cache_control: CACHE_1H }] : []),
     { type: 'text' as const, text: FORM_METADATA_INSTRUCTION },
     { type: 'text' as const, text: CONFIRM_MARKUP_INSTRUCTION },
+    { type: 'text' as const, text: NO_DOCUMENT_HEADER_INSTRUCTION },
   ]
 
   // Order matters: form metadata, then supporting context (outline), then the

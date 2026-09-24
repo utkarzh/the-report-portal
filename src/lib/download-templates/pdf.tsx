@@ -141,6 +141,12 @@ interface InlineStyle {
 // highlight (mark.confirm-highlight) and the docx 'yellow' highlight.
 const CONFIRM_FILL = '#FDE68A'
 
+// The transcript refining prompt's standard "Disclaimer" blockquote renders
+// red instead of the default grey quote styling — same convention as the
+// docx download's blockquoteParagraphs() (docx-render.ts).
+const DISCLAIMER_RE = /^\*{0,3}disclaimer\s*:/i
+const QUOTE_RED = '#C00000'
+
 // Render a plain-text run, converting [[ … ]] confirmation spans into yellow
 // highlighted text (brackets stripped) when highlight is enabled. Without this
 // the raw "[[ … ]]" markers leak into the downloaded PDF.
@@ -298,12 +304,18 @@ function renderBlocks(tokens: Token[], highlight = false): React.ReactNode[] {
         )
         break
       case 'blockquote': {
-        const text = (tok.text ?? '').trim()
+        const bq = tok as Tokens.Blockquote
+        const isDisclaimer = DISCLAIMER_RE.test((bq.text ?? '').trim())
+        const color = isDisclaimer ? QUOTE_RED : '#555555'
         out.push(
-          <View key={key} style={styles.quote}>
-            {text.split('\n').filter(Boolean).map((l: string, li: number) => (
-              <Text key={li} style={styles.quoteLine}>{l.trim()}</Text>
-            ))}
+          <View key={key} style={{ ...styles.quote, borderLeftColor: isDisclaimer ? QUOTE_RED : RULE }}>
+            {(bq.tokens as Tokens.Generic[])
+              .filter((child) => child.type === 'paragraph')
+              .map((child, ci) => (
+                <Text key={ci} style={{ ...styles.quoteLine, color }}>
+                  {inlineNodes((child as Tokens.Paragraph).tokens, {}, `${key}-q${ci}`, highlight)}
+                </Text>
+              ))}
           </View>,
         )
         break
