@@ -20,6 +20,8 @@ interface Props {
   filenameBase?: string
   /** When set, the PDF option is disabled and shows this as its hint (e.g. a script the embedded PDF font can't render). Word is unaffected. */
   pdfDisabledReason?: string
+  /** Initial template selection (e.g. guessed from a project's media_partner) when nothing's saved in localStorage yet. Falls back to DEFAULT_TEMPLATE_ID. */
+  defaultTemplateId?: string
 }
 
 // Namespaced per document (baseUrl already includes the session/transcript
@@ -29,20 +31,21 @@ interface Props {
 // Newsweek pick anywhere leaked into all future downloads everywhere.
 const LS_KEY_PREFIX = 'download-template:'
 
-export default function DownloadTemplateModal({ open, onClose, baseUrl, extraParams, filenameBase, pdfDisabledReason }: Props) {
+export default function DownloadTemplateModal({ open, onClose, baseUrl, extraParams, filenameBase, pdfDisabledReason, defaultTemplateId }: Props) {
   const [step, setStep] = useState<'template' | 'format'>('template')
-  const [templateId, setTemplateId] = useState<string>(DEFAULT_TEMPLATE_ID)
+  const [templateId, setTemplateId] = useState<string>(defaultTemplateId ?? DEFAULT_TEMPLATE_ID)
   const lsKey = `${LS_KEY_PREFIX}${baseUrl}`
 
   useEffect(() => {
     if (!open) return
     setStep('template')
+    const fallback = defaultTemplateId ?? DEFAULT_TEMPLATE_ID
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem(lsKey)
-      setTemplateId(saved && TEMPLATES.some((t) => t.id === saved) ? saved : DEFAULT_TEMPLATE_ID)
+      setTemplateId(saved && TEMPLATES.some((t) => t.id === saved) ? saved : fallback)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, lsKey])
+  }, [open, lsKey, defaultTemplateId])
 
   useEffect(() => {
     if (open) document.body.style.overflow = 'hidden'

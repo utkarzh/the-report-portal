@@ -43,8 +43,8 @@ const A4_H = 16838
 const MARGIN_X = STANDARD_MARGIN_TWIPS.left
 const MARGIN_TOP = STANDARD_MARGIN_TWIPS.top
 const MARGIN_BOTTOM = STANDARD_MARGIN_TWIPS.bottom
-const HEADER_DIST = 560
-const FOOTER_DIST = 560
+export const HEADER_DIST = 560
+export const FOOTER_DIST = 560
 const CONTENT_W_TWIPS = A4_W - MARGIN_X * 2
 
 // Content width in px (96dpi) — docx ImageRun transformation is in pixels.
@@ -182,7 +182,11 @@ function composedFooter(template: DownloadTemplate): Footer {
 
 // ── Header / footer selection ───────────────────────────────────────────────
 
-function buildHeader(template: DownloadTemplate): Header {
+// Exported for reuse by interview-letter-docx.ts — the Interview Letter
+// module has no template picker of its own; it resolves a brand template
+// from the project's free-text media_partner (see registry.ts's
+// resolveTemplateForPartner) and needs the same branded band/footer logic.
+export function buildHeader(template: DownloadTemplate): Header {
   const bands = templateBands(template)
   if (bands) {
     return new Header({
@@ -196,7 +200,7 @@ function buildHeader(template: DownloadTemplate): Header {
   return composedHeader(template)
 }
 
-function buildFooter(template: DownloadTemplate): Footer {
+export function buildFooter(template: DownloadTemplate): Footer {
   const bands = templateBands(template)
   if (bands) {
     return new Footer({

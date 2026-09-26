@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Packer } from 'docx'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { buildInterviewLetterDocx } from '@/lib/interview-letter-docx'
+import { renderInterviewLetterPdf } from '@/lib/interview-letter-pdf'
+import { getTemplate, resolveTemplateForPartner } from '@/lib/download-templates/registry'
 import { getApiUser } from '@/lib/auth/api-user'
 
 // GET /api/interview-letters/[id]/export — US-059. Serves the approved
-// master letter as a real Word (.docx) file. Owner or admin only. Exporting
-// never changes approval state or triggers any AI call.
+// master letter as a real Word (.docx) or PDF file, with the same branded
+// letterhead (logo band, partner badge, footer address) as Topic Outline/
+// Transcript downloads. Owner or admin only. Exporting never changes
+// approval state or triggers any AI call.
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } },
 ) {
   const auth = await getApiUser()
@@ -35,15 +39,35 @@ export async function GET(
     return NextResponse.json({ error: 'Letter not available yet' }, { status: 404 })
   }
 
-  const doc = buildInterviewLetterDocx(project.master_letter, {
+  // `template` comes from DownloadTemplateModal when the user picked one;
+  // falling back to a media_partner match keeps direct/bookmarked links
+  // (no query params) branded correctly instead of defaulting blindly.
+  const templateId = request.nextUrl.searchParams.get('template')
+  const template = templateId ? getTemplate(templateId) : resolveTemplateForPartner(project.company, project.media_partner)
+  const format = request.nextUrl.searchParams.get('format') === 'pdf' ? 'pdf' : 'docx'
+
+  const meta = {
     company: project.company,
     project_country: project.project_country,
     media_partner: project.media_partner,
     created_at: project.created_at,
-  })
-
-  const buffer = await Packer.toBuffer(doc)
+  }
   const base = `${project.company} — ${project.media_partner}`.replace(/[^a-z0-9-_ ]/gi, '').trim() || 'interview-letter'
+
+  if (format === 'pdf') {
+    const buffer = await renderInterviewLetterPdf(project.master_letter, meta, template)
+    const filename = `${base} — Interview Letter.pdf`
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+
+  const doc = buildInterviewLetterDocx(project.master_letter, meta, template)
+  const buffer = await Packer.toBuffer(doc)
   const filename = `${base} — Interview Letter.docx`
 
   return new NextResponse(new Uint8Array(buffer), {

@@ -9,9 +9,11 @@ import Textarea from '@/components/ui/Textarea'
 import ParagraphCard from '@/components/interview-letters/ParagraphCard'
 import PersonalizeModal from '@/components/interview-letters/PersonalizeModal'
 import InterviewLetterLoader from '@/components/interview-letters/InterviewLetterLoader'
+import DownloadTemplateModal from '@/components/ui/DownloadTemplateModal'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { formatDayMonthYear } from '@/lib/date-format'
 import { wordCount, splitEmailSubject } from '@/lib/interview-letters'
+import { guessTemplateId } from '@/lib/download-templates/registry'
 import type { InterviewLetterProject, InterviewLetterPersonalization } from '@/types'
 
 interface Props {
@@ -171,6 +173,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
   const [hook, setHook] = useState(project.confirmed_hook || project.hook_input || project.hook_ai_suggestion || '')
   const [emailFeedback, setEmailFeedback] = useState('')
   const [personalizeOpen, setPersonalizeOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const [personalizations, setPersonalizations] = useState<InterviewLetterPersonalization[]>([])
   const [expandedPersonalizationId, setExpandedPersonalizationId] = useState<string | null>(null)
   const [personalizationView, setPersonalizationView] = useState<'email' | 'letter'>('email')
@@ -604,12 +607,13 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
         {project.stage === 'complete' && (
           <div className="flex flex-col gap-5">
             <div className="flex flex-wrap items-center gap-3">
-              <a
-                href={`/api/interview-letters/${project.id}/export`}
+              <button
+                type="button"
+                onClick={() => setExportOpen(true)}
                 className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
               >
-                <Download size={14} /> Export Letter (.docx)
-              </a>
+                <Download size={14} /> Export Letter
+              </button>
               <button
                 type="button"
                 onClick={() => setPersonalizeOpen(true)}
@@ -704,6 +708,14 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                 setPersonalizationView('email')
               }}
               projectId={project.id}
+            />
+
+            <DownloadTemplateModal
+              open={exportOpen}
+              onClose={() => setExportOpen(false)}
+              baseUrl={`/api/interview-letters/${project.id}/export`}
+              filenameBase={`${project.company} — ${project.media_partner} — Interview Letter`}
+              defaultTemplateId={guessTemplateId(project.company, project.media_partner)}
             />
           </div>
         )}

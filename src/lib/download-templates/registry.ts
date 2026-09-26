@@ -161,3 +161,36 @@ export const DEFAULT_TEMPLATE_ID = 'trc-usa-today'
 export function getTemplate(id: string | null | undefined): DownloadTemplate {
   return TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0]
 }
+
+// Interview Letters have no template picker of their own — media_partner is
+// free text the project owner typed (e.g. "Financial Times"), not one of
+// this registry's known partners. Match it against the registry by exact
+// (case-insensitive) partner name within the project's brand family.
+function findPartnerTemplate(brand: BrandFamily, mediaPartner: string): DownloadTemplate | undefined {
+  const norm = mediaPartner.trim().toLowerCase()
+  return norm ? TEMPLATES.find((t) => t.brand === brand && t.partner.toLowerCase() === norm) : undefined
+}
+
+// Server-side resolution for the export route when no `template` query param
+// is present (e.g. an old bookmarked download link). Falls back to a
+// composed template carrying the TYPED partner name so an unrecognised
+// publication never silently borrows another one's logo.
+export function resolveTemplateForPartner(brand: BrandFamily, mediaPartner: string): DownloadTemplate {
+  return (
+    findPartnerTemplate(brand, mediaPartner) ?? {
+      id: `composed-${brand.toLowerCase()}`,
+      label: `${brand} – ${mediaPartner.trim() || 'Partner'}`,
+      brand,
+      partner: mediaPartner.trim() || BRAND_INFO[brand].name,
+      kind: 'composed',
+      partnerSite: '',
+    }
+  )
+}
+
+// Client-side default for DownloadTemplateModal's initial selection — always
+// a real, pickable TEMPLATES id (never a synthetic composed one), so the
+// modal's grid can highlight it and step 2's subtitle has a label to show.
+export function guessTemplateId(brand: BrandFamily, mediaPartner: string): string {
+  return findPartnerTemplate(brand, mediaPartner)?.id ?? DEFAULT_TEMPLATE_ID
+}

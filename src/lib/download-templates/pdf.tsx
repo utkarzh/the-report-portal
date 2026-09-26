@@ -45,7 +45,7 @@ marked.use({ gfm: true, breaks: true })
 //
 // Font.register() is module-level and idempotent; @react-pdf caches by family so
 // repeated download requests in one warm lambda re-use the parsed font.
-const BODY_FONT = 'Tinos'
+export const BODY_FONT = 'Tinos'
 
 Font.register({
   family: BODY_FONT,
@@ -63,7 +63,7 @@ Font.register({
 Font.registerHyphenationCallback((word) => [word])
 
 // A4 points. Margins mirror the sample (~40pt horizontal).
-const MARGIN_X = 40
+export const MARGIN_X = 40
 const CONTENT_W = 595 - MARGIN_X * 2 // 515
 
 const NAVY = '#2B3A4A'
@@ -356,7 +356,9 @@ function itemFlatTokens(item: Tokens.ListItem): Token[] {
 
 // ── Header / footer ──────────────────────────────────────────────────────────
 
-function HeaderBand({ template }: { template: DownloadTemplate }) {
+// Exported for reuse by interview-letter-pdf.tsx (same reasoning as
+// docx.ts's buildHeader/buildFooter export — see that file's comment).
+export function HeaderBand({ template }: { template: DownloadTemplate }) {
   const bands = templateBands(template)
   if (bands) {
     return (
@@ -382,7 +384,7 @@ function HeaderBand({ template }: { template: DownloadTemplate }) {
   )
 }
 
-function FooterBand({ template }: { template: DownloadTemplate }) {
+export function FooterBand({ template }: { template: DownloadTemplate }) {
   const bands = templateBands(template)
   if (bands) {
     return (

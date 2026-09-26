@@ -1,12 +1,14 @@
 import {
-  Document, Paragraph, TextRun, Footer, PageNumber,
+  Document, Paragraph, TextRun,
   AlignmentType, type ISectionOptions,
 } from 'docx'
-import { LETTER_W, LETTER_H, GREY_FOOT, INK, SZ } from '@/lib/docx-template'
+import { LETTER_W, LETTER_H, INK } from '@/lib/docx-template'
 import {
   STANDARD_FONT, STANDARD_BODY_SIZE, STANDARD_LINE_SPACING, STANDARD_MARGIN_TWIPS,
   buildStandardHeader,
 } from '@/lib/docx-standard-format'
+import { buildHeader, buildFooter, HEADER_DIST, FOOTER_DIST } from '@/lib/download-templates/docx'
+import type { DownloadTemplate } from '@/lib/download-templates/registry'
 
 // Interview Request Letter .docx template — a short, single-page business
 // letter, not long-form markdown. Sibling builder to meeting-prep-docx.ts:
@@ -16,7 +18,11 @@ import {
 // "fully formatted" document standard (docx-standard-format.ts), not
 // docx-template.ts's own MARGIN/SZ.body/FONT — those stay symmetric-margin/
 // 10.5pt Calibri for Business Cases, Editorial Briefs, and Meeting Prep,
-// which this module deliberately doesn't touch.
+// which this module deliberately doesn't touch. The page header/footer
+// (logo band + partner badge, address + partner footer) reuse the same
+// branded template system as Topic Outline/Transcript downloads
+// (download-templates/docx.ts) — see registry.ts's resolveTemplateForPartner
+// for how a template is picked without a picker UI.
 export interface InterviewLetterDocMeta {
   company: string
   project_country: string
@@ -63,24 +69,17 @@ function letterBody(letterText: string): Paragraph[] {
     )
 }
 
-export function buildInterviewLetterDocx(letterText: string, meta: InterviewLetterDocMeta): Document {
-  const footer = () =>
-    new Footer({
-      children: [
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [
-            new TextRun({ text: `${meta.company} — Interview Request Letter · Page `, size: SZ.footer, color: GREY_FOOT, font: STANDARD_FONT }),
-            new TextRun({ children: [PageNumber.CURRENT], size: SZ.footer, color: GREY_FOOT, font: STANDARD_FONT }),
-          ],
-        }),
-      ],
-    })
-
+export function buildInterviewLetterDocx(letterText: string, meta: InterviewLetterDocMeta, template: DownloadTemplate): Document {
   const sections: ISectionOptions[] = [
     {
-      properties: { page: { size: { width: LETTER_W, height: LETTER_H }, margin: STANDARD_MARGIN_TWIPS } },
-      footers: { default: footer() },
+      properties: {
+        page: {
+          size: { width: LETTER_W, height: LETTER_H },
+          margin: { ...STANDARD_MARGIN_TWIPS, header: HEADER_DIST, footer: FOOTER_DIST },
+        },
+      },
+      headers: { default: buildHeader(template) },
+      footers: { default: buildFooter(template) },
       children: [...letterHeader(meta), ...letterBody(letterText)],
     },
   ]

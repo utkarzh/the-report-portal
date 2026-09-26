@@ -46,15 +46,17 @@ interface NavItem {
   label: string
   href: string
   icon: React.ElementType
+  beta?: boolean
 }
 
 function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: boolean; pathname: string }) {
   const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
   const Icon = item.icon
+  const label = item.beta ? `${item.label} (Beta)` : item.label
   return (
     <Link
       href={item.href}
-      title={collapsed ? item.label : undefined}
+      title={collapsed ? label : undefined}
       className={`flex items-center gap-3 px-3 py-2.5 rounded text-sm mb-0.5 transition-colors ${
         collapsed ? 'lg:justify-center' : ''
       } ${
@@ -64,7 +66,14 @@ function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: bool
       }`}
     >
       <Icon size={16} className="flex-shrink-0" />
-      <span className={collapsed ? 'lg:hidden' : ''}>{item.label}</span>
+      <span className={`flex items-center gap-1.5 min-w-0 ${collapsed ? 'lg:hidden' : ''}`}>
+        <span className="truncate">{item.label}</span>
+        {item.beta && (
+          <span className="flex-shrink-0 text-[9px] font-semibold uppercase tracking-wide text-amber-400/90 border border-amber-400/40 rounded px-1 py-px leading-none">
+            Beta
+          </span>
+        )}
+      </span>
     </Link>
   )
 }
@@ -81,8 +90,8 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
     ...(canAccessBusinessCases ? [{ label: 'Business Cases', href: '/business-cases', icon: Briefcase }] : []),
     ...(canAccessEditorialBriefs ? [{ label: 'Editorial Briefs', href: '/editorial-briefs', icon: FileText }] : []),
     ...(canAccessMeetingPreparation ? [{ label: 'Meeting Preparation', href: '/meeting-preparation', icon: CalendarClock }] : []),
-    ...(canAccessInterviewLetterGenerator ? [{ label: 'Interview Letters', href: '/interview-letters', icon: Mail }] : []),
-    ...(canAccessSalesNegotiationCoach ? [{ label: 'Sales Coach', href: '/sales-coach', icon: Handshake }] : []),
+    ...(canAccessInterviewLetterGenerator ? [{ label: 'Interview Letters', href: '/interview-letters', icon: Mail, beta: true }] : []),
+    ...(canAccessSalesNegotiationCoach ? [{ label: 'Sales Coach', href: '/sales-coach', icon: Handshake, beta: true }] : []),
   ]
 
   useEffect(() => {
@@ -162,7 +171,7 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
                 Finance
               </p>
             </div>
-            <NavLink item={{ label: 'Caja Tool', href: financeHref, icon: Wallet }} collapsed={collapsed} pathname={pathname} />
+            <NavLink item={{ label: 'Caja Tool', href: financeHref, icon: Wallet, beta: true }} collapsed={collapsed} pathname={pathname} />
           </>
         )}
 
