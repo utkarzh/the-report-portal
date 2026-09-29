@@ -82,11 +82,40 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   if (format === 'pdf') {
     // Highlight [[ … ]] client-confirmation spans yellow on the refined variant
     // (mirrors the docx path); otherwise the raw markers leak into the PDF.
-    body = new Uint8Array(await renderTemplatedPdf({ markdown: text, heading, template, highlightConfirm: variant === 'refined' })) as BodyInit
+    // `header` was previously omitted here — PDF transcript downloads never
+    // got the standardised title/byline/"For publication in" header the docx
+    // path renders, and fell back to a plain single-line heading instead.
+    // Transcript typography: 12pt body/pull-quotes, 11pt disclaimer, pull
+    // quotes bold+italic — scoped here so Topic Outline/Research PDFs (which
+    // share this same renderer) keep their existing 10.5pt look untouched.
+    body = new Uint8Array(
+      await renderTemplatedPdf({
+        markdown: text,
+        heading,
+        template,
+        highlightConfirm: variant === 'refined',
+        header,
+        bodyFontSize: 12,
+        disclaimerFontSize: 11,
+        boldItalicList: true,
+      }),
+    ) as BodyInit
     contentType = 'application/pdf'
   } else {
     // Highlight [[ … ]] client-confirmation spans yellow on the refined variant.
-    const doc = buildTemplatedDocx({ markdown: text, heading, template, highlightConfirm: variant === 'refined', header })
+    // justify: true — transcripts read as a justified block, not ragged-right.
+    // bodyFontSize is in half-points (docx convention) — 24 = 12pt, matching
+    // the PDF path's 12pt body/11pt disclaimer. The disclaimer keeps the
+    // document's existing 11pt default, so only body text needs the override.
+    const doc = buildTemplatedDocx({
+      markdown: text,
+      heading,
+      template,
+      highlightConfirm: variant === 'refined',
+      header,
+      justify: true,
+      bodyFontSize: 24,
+    })
     body = new Uint8Array(await Packer.toBuffer(doc)) as BodyInit
     contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   }

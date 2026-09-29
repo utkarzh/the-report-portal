@@ -239,9 +239,16 @@ export interface TemplatedDocxOptions {
    * questions" rule.
    */
   paragraphSpacingAfter?: number
+  /** Justify body paragraphs instead of the default left alignment (Transcript downloads). */
+  justify?: boolean
+  /**
+   * Explicit body font size in half-points (Transcript downloads: 24 = 12pt).
+   * Leaves the document default (11pt) untouched for the disclaimer block.
+   */
+  bodyFontSize?: number
 }
 
-export function buildTemplatedDocx({ markdown, heading, template, meta, highlightConfirm, header, paragraphSpacingAfter }: TemplatedDocxOptions): Document {
+export function buildTemplatedDocx({ markdown, heading, template, meta, highlightConfirm, header, paragraphSpacingAfter, justify, bodyFontSize }: TemplatedDocxOptions): Document {
   const metaParas = (meta ?? [])
     .filter(([, v]) => v)
     .map(
@@ -285,7 +292,7 @@ export function buildTemplatedDocx({ markdown, heading, template, meta, highligh
     footers: { default: buildFooter(template) },
     children: [
       ...headBlock,
-      ...markdownToParagraphs(bodyMarkdown, { highlightConfirm, paragraphSpacingAfter }),
+      ...markdownToParagraphs(bodyMarkdown, { highlightConfirm, paragraphSpacingAfter, justify, bodyFontSize }),
     ],
   }
 

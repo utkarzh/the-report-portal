@@ -11,6 +11,14 @@ import {
 } from '@react-pdf/renderer'
 import { marked, type Token, type Tokens } from 'marked'
 import { LETTERHEAD_LOGO_PNG_BASE64 } from '@/lib/letterhead-logo'
+import {
+  stripLeadingPublicationHeader,
+  normalizeDisclaimerBlockquote,
+  normalizePullQuotes,
+  DISCLAIMER_RE,
+  DISCLAIMER_LABEL_RE,
+  type StandardDocumentHeaderMeta,
+} from '@/lib/docx-standard-format'
 import { BRAND_INFO, type DownloadTemplate } from './registry'
 import { templateBands } from './bands'
 import {
@@ -94,12 +102,17 @@ const styles = StyleSheet.create({
   docHeading: { ...BOLD, fontSize: 18, color: NAVY, marginBottom: 8 },
   h1: { ...BOLD, fontSize: 14, color: NAVY, marginTop: 12, marginBottom: 5 },
   h3: { ...BOLD, fontSize: 12, color: BLUE, marginTop: 9, marginBottom: 4 },
+  // Standardised centred-bold header (title / name, designation, company /
+  // "For publication in media") — mirrors buildStandardHeader() in
+  // docx-standard-format.ts, used by Topic Outline and Transcript downloads.
+  stdHeaderLine: { ...BOLD, fontSize: 12, textAlign: 'center', marginBottom: 2 },
   para: { marginBottom: 7, textAlign: 'justify' },
   listItem: { flexDirection: 'row', marginBottom: 3 },
   bullet: { width: 14, textAlign: 'left' },
-  listBody: { flex: 1 },
-  quote: { marginBottom: 7, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: RULE, color: '#555555' },
-  quoteLine: { fontStyle: 'italic' },
+  listBody: { flex: 1, textAlign: 'justify' },
+  // No left border — a plain indented paragraph, per the reference document.
+  quote: { marginBottom: 7, paddingLeft: 12, color: '#555555' },
+  quoteLine: { fontStyle: 'italic', textAlign: 'justify' },
   meta: { fontSize: 9, marginBottom: 2 },
   metaKey: { ...BOLD },
   hr: { borderBottomWidth: 1, borderBottomColor: RULE, marginVertical: 8 },
@@ -144,7 +157,6 @@ const CONFIRM_FILL = '#FDE68A'
 // The transcript refining prompt's standard "Disclaimer" blockquote renders
 // red instead of the default grey quote styling — same convention as the
 // docx download's blockquoteParagraphs() (docx-render.ts).
-const DISCLAIMER_RE = /^\*{0,3}disclaimer\s*:/i
 const QUOTE_RED = '#C00000'
 
 // Render a plain-text run, converting [[ … ]] confirmation spans into yellow
@@ -264,8 +276,22 @@ function tableBlock(token: Tokens.Table, key: string, highlight = false): React.
   )
 }
 
-function renderBlocks(tokens: Token[], highlight = false): React.ReactNode[] {
+interface BlockStyleOpts {
+  /** Base body text size (Q&A paragraphs, pull quotes) — undefined keeps the 10.5 page default. */
+  bodyFontSize?: number
+  /** Disclaimer blockquote text size — undefined falls back to bodyFontSize/page default. */
+  disclaimerFontSize?: number
+  /** Bold+italic every bullet-list item (Transcript downloads: the Pull Quotes section). */
+  boldItalicList?: boolean
+}
+
+function renderBlocks(tokens: Token[], highlight = false, styleOpts: BlockStyleOpts = {}): React.ReactNode[] {
   const out: React.ReactNode[] = []
+  const bodySize = styleOpts.bodyFontSize ? { fontSize: styleOpts.bodyFontSize } : {}
+  const disclaimerSize = styleOpts.disclaimerFontSize
+    ? { fontSize: styleOpts.disclaimerFontSize }
+    : bodySize
+  const listStyle = styleOpts.boldItalicList ? { fontWeight: 700 as const, fontStyle: 'italic' as const } : {}
 
   const renderList = (list: Tokens.List, level: number, key: string) => {
     let n = typeof list.start === 'number' ? list.start : 1
@@ -274,8 +300,10 @@ function renderBlocks(tokens: Token[], highlight = false): React.ReactNode[] {
       const itemKey = `${key}-i${ii}`
       out.push(
         <View key={itemKey} style={{ ...styles.listItem, marginLeft: level * 14 }} wrap={false}>
-          <Text style={styles.bullet}>{marker}</Text>
-          <Text style={styles.listBody}>{inlineNodes(itemFlatTokens(item), {}, itemKey, highlight)}</Text>
+          <Text style={{ ...styles.bullet, ...listStyle }}>{marker}</Text>
+          <Text style={{ ...styles.listBody, ...bodySize, ...listStyle }}>
+            {inlineNodes(itemFlatTokens(item), {}, itemKey, highlight)}
+          </Text>
         </View>,
       )
       for (const sub of item.tokens as Tokens.Generic[]) {
@@ -298,24 +326,43 @@ function renderBlocks(tokens: Token[], highlight = false): React.ReactNode[] {
       }
       case 'paragraph':
         out.push(
-          <Text key={key} style={styles.para}>
+          <Text key={key} style={{ ...styles.para, ...bodySize }}>
             {inlineNodes((tok as Tokens.Paragraph).tokens, {}, key, highlight)}
           </Text>,
         )
         break
       case 'blockquote': {
         const bq = tok as Tokens.Blockquote
-        const isDisclaimer = DISCLAIMER_RE.test((bq.text ?? '').trim())
+        const paraChildren = (bq.tokens as Tokens.Generic[]).filter(
+          (child) => child.type === 'paragraph',
+        ) as Tokens.Paragraph[]
+        const firstRaw = (paraChildren[0]?.text ?? bq.text ?? '').trim()
+        const isDisclaimer = DISCLAIMER_RE.test(firstRaw)
         const color = isDisclaimer ? QUOTE_RED : '#555555'
+        const quoteSize = isDisclaimer ? disclaimerSize : bodySize
         out.push(
-          <View key={key} style={{ ...styles.quote, borderLeftColor: isDisclaimer ? QUOTE_RED : RULE }}>
-            {(bq.tokens as Tokens.Generic[])
-              .filter((child) => child.type === 'paragraph')
-              .map((child, ci) => (
-                <Text key={ci} style={{ ...styles.quoteLine, color }}>
-                  {inlineNodes((child as Tokens.Paragraph).tokens, {}, `${key}-q${ci}`, highlight)}
+          <View key={key} style={styles.quote}>
+            {paraChildren.map((child, ci) => {
+              // The "Disclaimer:" label always renders bold, guaranteed here
+              // rather than depending on the admin prompt wrapping it in **.
+              // Handled on raw text (not marked tokens) so textNodes() still
+              // resolves any [[…]] confirmation highlight in the remainder.
+              const labelMatch = isDisclaimer && ci === 0 ? DISCLAIMER_LABEL_RE.exec((child.text ?? '').trim()) : null
+              if (labelMatch) {
+                const raw = (child.text ?? '').trim()
+                return (
+                  <Text key={ci} style={{ ...styles.quoteLine, color, ...quoteSize }}>
+                    <Text style={{ fontWeight: 700 }}>{labelMatch[2]}</Text>
+                    {textNodes(raw.slice(labelMatch[0].length), `${key}-q${ci}`, highlight)}
+                  </Text>
+                )
+              }
+              return (
+                <Text key={ci} style={{ ...styles.quoteLine, color, ...quoteSize }}>
+                  {inlineNodes(child.tokens, {}, `${key}-q${ci}`, highlight)}
                 </Text>
-              ))}
+              )
+            })}
           </View>,
         )
         break
@@ -334,7 +381,9 @@ function renderBlocks(tokens: Token[], highlight = false): React.ReactNode[] {
         )
         break
       case 'hr':
-        out.push(<View key={key} style={styles.hr} />)
+        // A standalone "---" thematic break — Claude sometimes adds one
+        // between the disclaimer and the first question unprompted. Drop it
+        // rather than drawing a visible rule, matching the .docx path.
         break
       case 'space':
       default:
@@ -424,24 +473,70 @@ export interface TemplatedPdfOptions {
   meta?: [string, string | null | undefined][]
   /** Highlight [[ … ]] client-confirmation spans yellow (refined transcripts). */
   highlightConfirm?: boolean
+  /**
+   * When set, renders the standardised centred-bold three-line header
+   * (title / name, designation, company / "For publication in media") INSTEAD
+   * of `heading` + `meta` — mirrors buildTemplatedDocx()'s `header` option, so
+   * Topic Outline and Transcript PDF downloads match their .docx counterparts.
+   */
+  header?: StandardDocumentHeaderMeta
+  /**
+   * Transcript-specific typography: 12pt body text (incl. pull quotes),
+   * 11pt disclaimer, and bold+italic pull-quote bullets. Undefined keeps the
+   * long-standing 10.5pt default for every other document type sharing this
+   * renderer (Topic Outline, Background Research).
+   */
+  bodyFontSize?: number
+  disclaimerFontSize?: number
+  boldItalicList?: boolean
 }
 
-function PdfDoc({ markdown, heading, template, meta, highlightConfirm }: TemplatedPdfOptions) {
+function StandardHeaderPdf({ header }: { header: StandardDocumentHeaderMeta }) {
+  const identityLine = [header.name, header.designation, header.companyOrMinistry]
+    .map((s) => (s || '').trim())
+    .filter(Boolean)
+    .join(', ')
+  return (
+    <>
+      <Text style={styles.stdHeaderLine}>{header.title}</Text>
+      <Text style={styles.stdHeaderLine}>{identityLine}</Text>
+      <Text style={{ ...styles.stdHeaderLine, marginBottom: 10 }}>
+        For publication in <Text style={{ fontStyle: 'italic' }}>{header.mediaName || '[Media Name]'}</Text>
+      </Text>
+    </>
+  )
+}
+
+function PdfDoc({ markdown, heading, template, meta, highlightConfirm, header, bodyFontSize, disclaimerFontSize, boldItalicList }: TemplatedPdfOptions) {
   const metaRows = (meta ?? []).filter(([, v]) => v)
+  // When we render our own standardised header, strip any duplicate the
+  // content itself opens with (see stripLeadingPublicationHeader) — same
+  // defensive backstop buildTemplatedDocx() applies on the .docx path.
+  // normalizeDisclaimerBlockquote turns a plain-paragraph "Disclaimer: ..."
+  // run into a real "> " blockquote so it gets the red/italic/bold-label
+  // treatment below — real Claude output doesn't use blockquote markdown for
+  // it, even though the admin prompt's own instructions show it that way.
+  const bodyMarkdown = normalizePullQuotes(normalizeDisclaimerBlockquote(header ? stripLeadingPublicationHeader(markdown) : markdown))
   return (
     <Document>
       <Page size="A4" style={{ ...styles.page, paddingTop: 100, paddingBottom: 110 }}>
         <HeaderBand template={template} />
         <FooterBand template={template} />
-        <Text style={styles.docHeading}>{heading}</Text>
-        {metaRows.map(([k, v], i) => (
-          <Text key={i} style={styles.meta}>
-            <Text style={styles.metaKey}>{k}: </Text>
-            {String(v)}
-          </Text>
-        ))}
-        {metaRows.length ? <View style={{ height: 8 }} /> : null}
-        {renderBlocks(marked.lexer(markdown), Boolean(highlightConfirm))}
+        {header ? (
+          <StandardHeaderPdf header={header} />
+        ) : (
+          <>
+            <Text style={styles.docHeading}>{heading}</Text>
+            {metaRows.map(([k, v], i) => (
+              <Text key={i} style={styles.meta}>
+                <Text style={styles.metaKey}>{k}: </Text>
+                {String(v)}
+              </Text>
+            ))}
+            {metaRows.length ? <View style={{ height: 8 }} /> : null}
+          </>
+        )}
+        {renderBlocks(marked.lexer(bodyMarkdown), Boolean(highlightConfirm), { bodyFontSize, disclaimerFontSize, boldItalicList })}
       </Page>
     </Document>
   )

@@ -82,7 +82,9 @@ export async function GET(
   let body: BodyInit
   let contentType: string
   if (format === 'pdf') {
-    body = new Uint8Array(await renderTemplatedPdf({ markdown, heading, template, meta })) as BodyInit
+    // `header` was previously omitted here — Topic Outline PDF downloads
+    // never got the standardised header the .docx path renders below.
+    body = new Uint8Array(await renderTemplatedPdf({ markdown, heading, template, meta, header })) as BodyInit
     contentType = 'application/pdf'
   } else {
     const doc = buildTemplatedDocx({ markdown, heading, template, meta, header, paragraphSpacingAfter })

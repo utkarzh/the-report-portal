@@ -61,6 +61,94 @@ export function stripLeadingPublicationHeader(markdown: string): string {
   return rest.join('\n')
 }
 
+// The transcript refining prompt's standard "Disclaimer" note. Matches a line
+// starting with "Disclaimer:", optionally wrapped in markdown emphasis
+// markers (Claude sometimes bolds it itself). Shared by both renderers
+// (docx-render.ts, download-templates/pdf.tsx) so the definition can't drift.
+export const DISCLAIMER_RE = /^\*{0,3}disclaimer\s*:/i
+// Same match, but captures the emphasis markers and the label text
+// separately so the label can be re-rendered forced-bold on its own.
+export const DISCLAIMER_LABEL_RE = /^(\*{1,3})?(disclaimer\s*:)(\*{1,3})?/i
+// A standalone thematic-break line ("---", "___", "***") — GFM's horizontal
+// rule. Claude occasionally emits one between the disclaimer and the first
+// question even though nothing asks it to; neither renderer should print it
+// as literal dashes or draw a visible rule, so both treat it as a no-op.
+export const THEMATIC_BREAK_RE = /^(?:-{3,}|_{3,}|\*{3,})\s*$/
+
+// Claude reliably reproduces the disclaimer's WORDS (the admin prompt says
+// "use this exact wording") but not the literal "> " blockquote markdown the
+// prompt happens to wrap it in when showing that wording to a human editor —
+// real output arrives as plain paragraphs. Detect a plain-paragraph run
+// starting with "Disclaimer:" and inject "> " (including on the blank line
+// between its paragraphs, so it survives as ONE blockquote rather than
+// splitting into a red first paragraph and a plain grey second one) — this
+// makes both renderers' existing blockquote-based disclaimer styling
+// (red/italic/bold label) apply to real transcripts, not just hand-written
+// test markdown that already used "> " itself.
+export function normalizeDisclaimerBlockquote(markdown: string): string {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n')
+  const startIdx = lines.findIndex((l) => DISCLAIMER_RE.test(l.trim()))
+  if (startIdx === -1) return markdown
+
+  let endIdx = lines.length
+  for (let i = startIdx; i < lines.length; i++) {
+    const t = lines[i].trim()
+    if (i > startIdx && t.startsWith('**')) {
+      endIdx = i
+      break
+    }
+    if (THEMATIC_BREAK_RE.test(t)) {
+      endIdx = i
+      break
+    }
+  }
+
+  // Only merge blank lines that sit BETWEEN two disclaimer paragraphs (so the
+  // whole disclaimer survives as one blockquote instead of splitting into a
+  // red first paragraph and a plain grey second one). The blank line(s) that
+  // separate the disclaimer from whatever comes next must stay real blank
+  // lines — otherwise the simpler block-splitter used for the .docx path
+  // (unlike marked's CommonMark-aware one, which already knows a thematic
+  // break can interrupt a blockquote) glues the next block onto this one and
+  // "every line starts with '>'" fails, silently falling back to plain text.
+  let lastContentIdx = startIdx
+  for (let i = startIdx; i < endIdx; i++) {
+    if (lines[i].trim() !== '') lastContentIdx = i
+  }
+
+  const out = lines.slice()
+  for (let i = startIdx; i <= lastContentIdx; i++) {
+    const raw = out[i]
+    const t = raw.trim()
+    if (t.startsWith('>')) continue
+    out[i] = t === '' ? '>' : `> ${raw}`
+  }
+  return out.join('\n')
+}
+
+// Matches a "Pull Quotes:" section heading, optionally bolded.
+const PULL_QUOTES_HEADING_RE = /^\*{0,3}pull quotes\s*:?\s*\*{0,3}$/i
+
+// Same pattern as the disclaimer: the admin prompt asks for a "Pull Quotes:"
+// section but never specifies the markdown for the quotes themselves, so
+// Claude writes each one as a plain paragraph ("Some quote.") rather than a
+// markdown list or emphasised text. Wrap every paragraph after the heading in
+// "***…***" (bold+italic) so both renderers' existing emphasis parsing picks
+// it up — no renderer-side special-casing needed.
+export function normalizePullQuotes(markdown: string): string {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n')
+  const startIdx = lines.findIndex((l) => PULL_QUOTES_HEADING_RE.test(l.trim()))
+  if (startIdx === -1) return markdown
+
+  const out = lines.slice()
+  for (let i = startIdx + 1; i < out.length; i++) {
+    const t = out[i].trim()
+    if (t === '' || /^\*{3}[\s\S]*\*{3}$/.test(t)) continue
+    out[i] = `***${t}***`
+  }
+  return out.join('\n')
+}
+
 export interface StandardDocumentHeaderMeta {
   /** "Interview Outline" | "Interview Transcript" | "Interview Request" */
   title: string
