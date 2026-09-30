@@ -181,9 +181,17 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   })
 
   const hasStartedRef = useRef(false)
-  const [rawCollapsed, setRawCollapsed] = useState(false)
-  const [translatedCollapsed, setTranslatedCollapsed] = useState(false)
+  // Raw (and Translated) only matter for verifying the recording before a
+  // refined version exists — once it does, they're reference material, not
+  // the main event. Collapsed by default whenever a refined transcript is
+  // already on the record when this page loads.
+  const [rawCollapsed, setRawCollapsed] = useState(() => Boolean(transcription.refined_transcript))
+  const [translatedCollapsed, setTranslatedCollapsed] = useState(() => Boolean(transcription.refined_transcript))
   const [refinedCollapsed, setRefinedCollapsed] = useState(false)
+  // Which section leads the page. Starts true if a refined transcript already
+  // existed on load; flips true the moment one is freshly generated in this
+  // session (see startRefine) so the layout promotes it without a reload.
+  const [refinedIsPrimary, setRefinedIsPrimary] = useState(() => Boolean(transcription.refined_transcript))
   // Download picker — which transcript variant is being downloaded.
   const [downloadVariant, setDownloadVariant] = useState<'raw' | 'translated' | 'refined' | null>(null)
   const rawScroll = useStickToBottom<HTMLDivElement>(raw.length)
@@ -301,6 +309,11 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
         { source, instruction: instruction?.trim() || undefined },
       )
       router.refresh()
+      // A refined transcript now exists — promote it to the top of the page
+      // and tuck the raw/translated material away as reference-only.
+      setRefinedIsPrimary(true)
+      setRawCollapsed(true)
+      setTranslatedCollapsed(true)
     } catch (e) {
       setRefineError(e instanceof Error ? e.message : 'Refining failed. Please try again.')
     } finally {
@@ -404,6 +417,17 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
             ? `PDF can't render ${translatedLang} — use Word`
             : undefined
         }
+        // The last checkpoint before a file ships — this modal is shared and
+        // otherwise generic, so it needs to say out loud which variant is
+        // about to download.
+        variantLabel={
+          downloadVariant === 'refined'
+            ? 'Refined transcript'
+            : downloadVariant === 'translated'
+              ? 'Translated transcript'
+              : 'Raw transcript'
+        }
+        variantTone={downloadVariant === 'refined' ? 'final' : 'caution'}
       />
       {/* Header + audio */}
       <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
@@ -465,8 +489,10 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
         )}
       </div>
 
-      {/* Raw transcript */}
-      <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+      {/* Raw transcript — only the main event until a refined version exists;
+          demoted below it (via CSS order, not DOM position, so nothing
+          re-mounts) the moment one is. */}
+      <div className={`rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm ${refinedIsPrimary ? 'order-2' : 'order-1'}`}>
         <div className="flex items-center justify-between">
           <button
             onClick={() => setRawCollapsed((v) => !v)}
@@ -484,23 +510,25 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               </span>
             ) : raw ? (
               <>
-                <button
-                  onClick={openRefineModal}
-                  disabled={refining || translating}
-                  title="Refine — clean up the transcript for a polished final result"
-                  className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {refining ? <Loader2 size={13} className="animate-spin" /> : <WandSparkles size={13} />}
-                  <span>{refining ? 'Refining…' : hasRefined ? 'Refine again' : 'Refine'}</span>
-                </button>
+                {!hasRefined && (
+                  <button
+                    onClick={openRefineModal}
+                    disabled={refining || translating}
+                    title="Refine — clean up the transcript for a polished final result"
+                    className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {refining ? <Loader2 size={13} className="animate-spin" /> : <WandSparkles size={13} />}
+                    <span>{refining ? 'Refining…' : 'Refine'}</span>
+                  </button>
+                )}
                 <CopyButton text={raw} />
                 <button
                   onClick={handleRawDownloadClick}
-                  title="Download raw transcript"
+                  title="Download raw transcript — reference only, not for sending out"
                   className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                 >
                   <Download size={13} />
-                  <span>Download</span>
+                  <span>Download raw</span>
                 </button>
               </>
             ) : null}
@@ -509,12 +537,15 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
 
         {!rawCollapsed && (
           <>
-            <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
+            {/* Monospace on a cooler, flatter card — reads as an unprocessed
+                transcript dump, the opposite intent of the refined card's
+                serif "finished document" treatment below. */}
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50">
             <div
               ref={rawScroll.ref}
               onScroll={rawScroll.onScroll}
               onWheel={rawScroll.onWheel}
-              className="scroll-fade max-h-[440px] min-h-[160px] overflow-y-auto whitespace-pre-wrap px-5 py-4 text-sm leading-7 text-gray-700"
+              className="scroll-fade max-h-[440px] min-h-[160px] overflow-y-auto whitespace-pre-wrap px-5 py-4 font-mono text-[13px] leading-6 text-gray-600"
             >
               {raw ? (
                 <>
@@ -569,7 +600,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
 
       {/* Translated transcript */}
       {(translating || hasTranslation || translateError) && (
-        <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+        <div className={`rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm ${refinedIsPrimary ? 'order-3' : 'order-2'}`}>
           <div className="flex items-center justify-between">
             <button
               onClick={() => setTranslatedCollapsed((v) => !v)}
@@ -590,11 +621,11 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                   <CopyButton text={translated} />
                   <button
                     onClick={() => setDownloadVariant('translated')}
-                    title="Download translation"
+                    title="Download translation — reference only, not for sending out"
                     className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                   >
                     <Download size={13} />
-                    <span>Download</span>
+                    <span>Download translation</span>
                   </button>
                 </>
               ) : null}
@@ -602,12 +633,12 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
           </div>
 
           {!translatedCollapsed && (
-          <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
+          <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50">
           <div
             ref={translatedScroll.ref}
             onScroll={translatedScroll.onScroll}
               onWheel={translatedScroll.onWheel}
-            className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto whitespace-pre-wrap px-5 py-4 text-sm leading-7 text-gray-700"
+            className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto whitespace-pre-wrap px-5 py-4 font-mono text-[13px] leading-6 text-gray-600"
           >
             {translated ? (
               <>
@@ -638,9 +669,10 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
         </div>
       )}
 
-      {/* Refined transcript */}
+      {/* Refined transcript — promoted to lead the page (CSS order) once it
+          exists; see refinedIsPrimary. */}
       {(refining || hasRefined || refineError) && (
-        <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+        <div className={`rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm ${refinedIsPrimary ? 'order-1' : 'order-3'}`}>
           <div className="flex items-center justify-between">
             <button
               onClick={() => setRefinedCollapsed((v) => !v)}
@@ -669,11 +701,11 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                   <CopyButton text={refined} />
                   <button
                     onClick={() => setDownloadVariant('refined')}
-                    title="Download refined transcript"
-                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                    title="Download the final refined transcript — this is the one to submit"
+                    className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-800"
                   >
                     <Download size={13} />
-                    <span>Download</span>
+                    <span>Download final</span>
                   </button>
                 </>
               ) : null}
@@ -682,15 +714,17 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
 
 
           {!refinedCollapsed && (
-          <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7]">
+          <div className="mt-4 rounded-xl border border-[#e5e3df] bg-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
           <div
             ref={refinedScroll.ref}
             onScroll={refinedScroll.onScroll}
             onWheel={refinedScroll.onWheel}
-            className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto px-5 py-4 text-sm leading-7 text-gray-800"
+            className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto px-5 py-4 font-serif text-[15px] leading-7 text-gray-800"
           >
             {refined ? (
               <>
+                {/* font-serif here only — .prose-research is shared with
+                    Research/Meeting Prep/Document Output and stays untouched. */}
                 <div
                   className="prose-research"
                   dangerouslySetInnerHTML={{ __html: renderRefinedHtml(refined) }}

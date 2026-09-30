@@ -31,12 +31,12 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
   const [companyReps, setCompanyReps] = useState<SalesCoachParticipant[]>([{ name: '', role: '' }])
   const [trcMembers, setTrcMembers] = useState<SalesCoachParticipant[]>([{ name: '', role: '' }])
 
-  // Step 2 — upload (US-035)
+  // Step 3 — upload (US-035)
   const [inputMode, setInputMode] = useState<InputMode>('audio')
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [transcript, setTranscript] = useState('')
 
-  // Step 3 — declared outcome (US-036)
+  // Step 2 — declared outcome (US-036)
   const [outcome, setOutcome] = useState<SalesCoachOutcome | ''>('')
   const [details, setDetails] = useState<Record<string, string | boolean>>({})
 
@@ -184,40 +184,7 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
         </div>
       </section>
 
-      {/* ── Step 2: upload ──────────────────────────────────────────── */}
-      <section className="rounded-2xl border border-[#e5e3df] bg-white p-6">
-        <h2 className="text-sm font-semibold text-gray-900">Recording or transcript</h2>
-        <div className="mt-3 flex gap-2">
-          <TabButton active={inputMode === 'audio'} onClick={() => setInputMode('audio')} icon={<FileAudio size={14} />} label="Upload audio" />
-          <TabButton active={inputMode === 'transcript'} onClick={() => setInputMode('transcript')} icon={<FileText size={14} />} label="Paste transcript" />
-        </div>
-
-        {inputMode === 'audio' ? (
-          <div className="mt-4">
-            {audioFile ? (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-[#e5e3df] bg-[#fcfbf8] px-4 py-3">
-                <span className="flex min-w-0 items-center gap-2 text-sm text-gray-800"><FileAudio size={15} className="text-gray-500" /><span className="truncate">{audioFile.name}</span></span>
-                {!busy && <button type="button" onClick={() => { setAudioFile(null); if (audioRef.current) audioRef.current.value = '' }} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>}
-              </div>
-            ) : (
-              <button type="button" onClick={() => audioRef.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-[#d4d0c8] bg-[#fcfbf8] px-6 py-8 text-sm text-gray-600 hover:border-gray-400">
-                <Upload size={18} /> Drop or choose an audio file
-                <span className="text-xs text-gray-400">MP3, WAV, M4A, WEBM · long recordings supported</span>
-              </button>
-            )}
-            <input ref={audioRef} type="file" accept="audio/*" className="sr-only" onChange={(e) => pickAudio(e.target.files?.[0])} />
-            {(phase === 'transcoding' || phase === 'uploading') && (
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#efece7]"><div className="h-full rounded-full bg-black transition-all" style={{ width: phase === 'transcoding' ? `${Math.round(progress * 100)}%` : '100%' }} /></div>
-            )}
-          </div>
-        ) : (
-          <div className="mt-4">
-            <Textarea label="Transcript" rows={8} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Paste the existing transcript here…" />
-          </div>
-        )}
-      </section>
-
-      {/* ── Step 3: declared outcome ────────────────────────────────── */}
+      {/* ── Step 2: declared outcome ────────────────────────────────── */}
       <section className="rounded-2xl border border-[#e5e3df] bg-white p-6">
         <h2 className="text-sm font-semibold text-gray-900">What was the final outcome of this negotiation? *</h2>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -297,6 +264,39 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
 
         {outcome === 'uncertain' && (
           <p className="mt-4 text-sm text-gray-500">No additional details required — the coach will assess the recorded evidence.</p>
+        )}
+      </section>
+
+      {/* ── Step 3: upload ──────────────────────────────────────────── */}
+      <section className="rounded-2xl border border-[#e5e3df] bg-white p-6">
+        <h2 className="text-sm font-semibold text-gray-900">Recording or transcript</h2>
+        <div className="mt-3 flex gap-2">
+          <TabButton active={inputMode === 'audio'} onClick={() => setInputMode('audio')} icon={<FileAudio size={14} />} label="Upload audio" />
+          <TabButton active={inputMode === 'transcript'} onClick={() => setInputMode('transcript')} icon={<FileText size={14} />} label="Paste transcript" />
+        </div>
+
+        {inputMode === 'audio' ? (
+          <div className="mt-4">
+            {audioFile ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-[#e5e3df] bg-[#fcfbf8] px-4 py-3">
+                <span className="flex min-w-0 items-center gap-2 text-sm text-gray-800"><FileAudio size={15} className="text-gray-500" /><span className="truncate">{audioFile.name}</span></span>
+                {!busy && <button type="button" onClick={() => { setAudioFile(null); if (audioRef.current) audioRef.current.value = '' }} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>}
+              </div>
+            ) : (
+              <button type="button" onClick={() => audioRef.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-[#d4d0c8] bg-[#fcfbf8] px-6 py-8 text-sm text-gray-600 hover:border-gray-400">
+                <Upload size={18} /> Drop or choose an audio file
+                <span className="text-xs text-gray-400">MP3, WAV, M4A, WEBM · long recordings supported</span>
+              </button>
+            )}
+            <input ref={audioRef} type="file" accept="audio/*" className="sr-only" onChange={(e) => pickAudio(e.target.files?.[0])} />
+            {(phase === 'transcoding' || phase === 'uploading') && (
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#efece7]"><div className="h-full rounded-full bg-black transition-all" style={{ width: phase === 'transcoding' ? `${Math.round(progress * 100)}%` : '100%' }} /></div>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4">
+            <Textarea label="Transcript" rows={8} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Paste the existing transcript here…" />
+          </div>
         )}
       </section>
 

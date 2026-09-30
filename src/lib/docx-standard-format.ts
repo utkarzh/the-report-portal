@@ -132,9 +132,11 @@ const PULL_QUOTES_HEADING_RE = /^\*{0,3}pull quotes\s*:?\s*\*{0,3}$/i
 // Same pattern as the disclaimer: the admin prompt asks for a "Pull Quotes:"
 // section but never specifies the markdown for the quotes themselves, so
 // Claude writes each one as a plain paragraph ("Some quote.") rather than a
-// markdown list or emphasised text. Wrap every paragraph after the heading in
-// "***…***" (bold+italic) so both renderers' existing emphasis parsing picks
-// it up — no renderer-side special-casing needed.
+// markdown bullet list. Turn every line after the heading into a "- *…*"
+// bullet (italic, not bold) so both renderers' existing bullet-list and
+// emphasis parsing picks it up — no renderer-side special-casing needed.
+// Strips any emphasis markers Claude may have already added on its own
+// (e.g. bolding the quote itself) before re-wrapping consistently.
 export function normalizePullQuotes(markdown: string): string {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n')
   const startIdx = lines.findIndex((l) => PULL_QUOTES_HEADING_RE.test(l.trim()))
@@ -143,10 +145,30 @@ export function normalizePullQuotes(markdown: string): string {
   const out = lines.slice()
   for (let i = startIdx + 1; i < out.length; i++) {
     const t = out[i].trim()
-    if (t === '' || /^\*{3}[\s\S]*\*{3}$/.test(t)) continue
-    out[i] = `***${t}***`
+    if (t === '' || /^[-*]\s+\*/.test(t)) continue
+    const quote = t.replace(/^\*{1,3}([\s\S]*?)\*{1,3}$/, '$1').replace(/^[-*]\s+/, '')
+    out[i] = `- *${quote}*`
   }
   return out.join('\n')
+}
+
+// Joins 1-3 identity fields ("Name, Title, Company") for use in a DOWNLOAD
+// FILENAME as "A, B and C" (Oxford "and" before the last item, no third
+// comma) — distinct from buildStandardHeader()'s in-document identity line
+// above, which stays comma-only on purpose (that's the printed convention,
+// this is the filename convention — the two were specified separately).
+export function joinIdentityForFilename(parts: (string | null | undefined)[]): string {
+  const clean = parts.map((s) => (s || '').trim()).filter(Boolean)
+  if (clean.length === 0) return ''
+  if (clean.length === 1) return clean[0]
+  return `${clean.slice(0, -1).join(', ')} and ${clean[clean.length - 1]}`
+}
+
+// Strips characters invalid in file names on Windows/macOS but keeps
+// everything else (commas, "&", accents, …) — shared by every download route
+// building a "Name, Title and Company" style filename.
+export function sanitizeFilename(s: string): string {
+  return s.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 150)
 }
 
 export interface StandardDocumentHeaderMeta {

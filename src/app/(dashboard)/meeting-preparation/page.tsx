@@ -80,7 +80,7 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
           </div>
           <div>
             <h1 className="text-base font-semibold text-gray-900">Meeting Preparation</h1>
-            <p className="text-sm text-gray-500 mt-1">Review past meeting preparations and start a new one from here.</p>
+            <p className="text-sm text-gray-500 mt-1">This function helps you prepare for sales meetings by analysing the company and identifying the strongest presentation points, opportunities, and recommended planteo, including a suggested page size based on the company&apos;s past advertising record.</p>
           </div>
         </div>
 

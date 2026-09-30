@@ -110,8 +110,9 @@ const styles = StyleSheet.create({
   listItem: { flexDirection: 'row', marginBottom: 3 },
   bullet: { width: 14, textAlign: 'left' },
   listBody: { flex: 1, textAlign: 'justify' },
-  // No left border — a plain indented paragraph, per the reference document.
-  quote: { marginBottom: 7, paddingLeft: 12, color: '#555555' },
+  // No left border, no left indent — flush with the rest of the justified
+  // transcript body, not offset into its own block.
+  quote: { marginBottom: 7, color: '#555555' },
   quoteLine: { fontStyle: 'italic', textAlign: 'justify' },
   meta: { fontSize: 9, marginBottom: 2 },
   metaKey: { ...BOLD },
@@ -281,8 +282,6 @@ interface BlockStyleOpts {
   bodyFontSize?: number
   /** Disclaimer blockquote text size — undefined falls back to bodyFontSize/page default. */
   disclaimerFontSize?: number
-  /** Bold+italic every bullet-list item (Transcript downloads: the Pull Quotes section). */
-  boldItalicList?: boolean
 }
 
 function renderBlocks(tokens: Token[], highlight = false, styleOpts: BlockStyleOpts = {}): React.ReactNode[] {
@@ -291,7 +290,6 @@ function renderBlocks(tokens: Token[], highlight = false, styleOpts: BlockStyleO
   const disclaimerSize = styleOpts.disclaimerFontSize
     ? { fontSize: styleOpts.disclaimerFontSize }
     : bodySize
-  const listStyle = styleOpts.boldItalicList ? { fontWeight: 700 as const, fontStyle: 'italic' as const } : {}
 
   const renderList = (list: Tokens.List, level: number, key: string) => {
     let n = typeof list.start === 'number' ? list.start : 1
@@ -300,8 +298,8 @@ function renderBlocks(tokens: Token[], highlight = false, styleOpts: BlockStyleO
       const itemKey = `${key}-i${ii}`
       out.push(
         <View key={itemKey} style={{ ...styles.listItem, marginLeft: level * 14 }} wrap={false}>
-          <Text style={{ ...styles.bullet, ...listStyle }}>{marker}</Text>
-          <Text style={{ ...styles.listBody, ...bodySize, ...listStyle }}>
+          <Text style={styles.bullet}>{marker}</Text>
+          <Text style={{ ...styles.listBody, ...bodySize }}>
             {inlineNodes(itemFlatTokens(item), {}, itemKey, highlight)}
           </Text>
         </View>,
@@ -481,14 +479,13 @@ export interface TemplatedPdfOptions {
    */
   header?: StandardDocumentHeaderMeta
   /**
-   * Transcript-specific typography: 12pt body text (incl. pull quotes),
-   * 11pt disclaimer, and bold+italic pull-quote bullets. Undefined keeps the
-   * long-standing 10.5pt default for every other document type sharing this
-   * renderer (Topic Outline, Background Research).
+   * Transcript-specific typography: 12pt body text (incl. pull quotes) and
+   * 11pt disclaimer. Undefined keeps the long-standing 10.5pt default for
+   * every other document type sharing this renderer (Topic Outline,
+   * Background Research).
    */
   bodyFontSize?: number
   disclaimerFontSize?: number
-  boldItalicList?: boolean
 }
 
 function StandardHeaderPdf({ header }: { header: StandardDocumentHeaderMeta }) {
@@ -507,7 +504,7 @@ function StandardHeaderPdf({ header }: { header: StandardDocumentHeaderMeta }) {
   )
 }
 
-function PdfDoc({ markdown, heading, template, meta, highlightConfirm, header, bodyFontSize, disclaimerFontSize, boldItalicList }: TemplatedPdfOptions) {
+function PdfDoc({ markdown, heading, template, meta, highlightConfirm, header, bodyFontSize, disclaimerFontSize }: TemplatedPdfOptions) {
   const metaRows = (meta ?? []).filter(([, v]) => v)
   // When we render our own standardised header, strip any duplicate the
   // content itself opens with (see stripLeadingPublicationHeader) — same
@@ -536,7 +533,7 @@ function PdfDoc({ markdown, heading, template, meta, highlightConfirm, header, b
             {metaRows.length ? <View style={{ height: 8 }} /> : null}
           </>
         )}
-        {renderBlocks(marked.lexer(bodyMarkdown), Boolean(highlightConfirm), { bodyFontSize, disclaimerFontSize, boldItalicList })}
+        {renderBlocks(marked.lexer(bodyMarkdown), Boolean(highlightConfirm), { bodyFontSize, disclaimerFontSize })}
       </Page>
     </Document>
   )

@@ -5,6 +5,7 @@ import { buildInterviewLetterDocx } from '@/lib/interview-letter-docx'
 import { renderInterviewLetterPdf } from '@/lib/interview-letter-pdf'
 import { getTemplate, resolveTemplateForPartner } from '@/lib/download-templates/registry'
 import { getApiUser } from '@/lib/auth/api-user'
+import { joinIdentityForFilename, sanitizeFilename } from '@/lib/docx-standard-format'
 
 // GET /api/interview-letters/[id]/export — US-059. Serves the approved
 // master letter as a real Word (.docx) or PDF file, with the same branded
@@ -52,11 +53,15 @@ export async function GET(
     media_partner: project.media_partner,
     created_at: project.created_at,
   }
-  const base = `${project.company} — ${project.media_partner}`.replace(/[^a-z0-9-_ ]/gi, '').trim() || 'interview-letter'
+  // The master letter has no recipient (personalization happens after this
+  // export), so "Interview Request Letter – Name, Title and Company" falls
+  // back to the project's own company/media-partner identity instead.
+  const identity = joinIdentityForFilename([project.company, project.media_partner])
+  const base = sanitizeFilename(`Interview Request Letter – ${identity || 'interview-letter'}`)
 
   if (format === 'pdf') {
     const buffer = await renderInterviewLetterPdf(project.master_letter, meta, template)
-    const filename = `${base} — Interview Letter.pdf`
+    const filename = `${base}.pdf`
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/pdf',
@@ -68,7 +73,7 @@ export async function GET(
 
   const doc = buildInterviewLetterDocx(project.master_letter, meta, template)
   const buffer = await Packer.toBuffer(doc)
-  const filename = `${base} — Interview Letter.docx`
+  const filename = `${base}.docx`
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

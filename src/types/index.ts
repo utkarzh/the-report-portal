@@ -900,3 +900,22 @@ export interface SalesCoachCoachingPrompt {
   label: string
   prompt: string
 }
+
+// App-wide feedback widget (reviews + bug reports) — see
+// FeedbackWidget.tsx / /admin/feedback. Not gated by a can_access_* flag;
+// every signed-in user can submit.
+export type FeedbackType = 'review' | 'bug'
+export type FeedbackStatus = 'new' | 'reviewed'
+
+export interface AppFeedback {
+  id: string
+  user_id: string | null
+  user_email: string
+  user_name: string | null
+  type: FeedbackType
+  rating: number | null
+  message: string
+  page_url: string | null
+  status: FeedbackStatus
+  created_at: string
+}

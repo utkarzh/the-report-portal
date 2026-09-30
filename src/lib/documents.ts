@@ -42,6 +42,8 @@ export interface DocTypeConfig {
   tokenReserve: number
   /** Reinforces the target length in the generation prompt */
   lengthGuidance: string
+  /** One-line module description shown under the h1 on the module's list page */
+  description: string
 }
 
 export const DOC_TYPES: Record<DocType, DocTypeConfig> = {
@@ -57,6 +59,8 @@ export const DOC_TYPES: Record<DocType, DocTypeConfig> = {
     tokenReserve: 150_000,
     lengthGuidance:
       'Target roughly 8-10 pages. Prioritise strictly recent, well-sourced data.',
+    description:
+      'This function provides a snapshot of a country and its economy to help assess whether it is a worthwhile market to pursue. It highlights economic performance, investment potential, key sectors, and relevant opportunities.',
   },
   editorial_brief: {
     type: 'editorial_brief',
@@ -70,6 +74,8 @@ export const DOC_TYPES: Record<DocType, DocTypeConfig> = {
     tokenReserve: 300_000,
     lengthGuidance:
       'Target a detailed document of roughly 15-20 pages, with real depth in every section.',
+    description:
+      'This function helps define the editorial direction of a country report. It identifies the key sectors to focus on and develops the central narrative that the final report should follow.',
   },
 }
 

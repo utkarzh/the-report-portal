@@ -81,7 +81,7 @@ export default async function DocumentListView({
           </div>
           <div>
             <h1 className="text-base font-semibold text-gray-900">{config.labelPlural}</h1>
-            <p className="text-sm text-gray-500 mt-1">Review past {config.labelPlural.toLowerCase()} and create a new one from here.</p>
+            <p className="text-sm text-gray-500 mt-1">{config.description}</p>
           </div>
         </div>
 

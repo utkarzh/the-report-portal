@@ -80,7 +80,7 @@ export default async function InterviewLettersPage({ searchParams }: { searchPar
           </div>
           <div>
             <h1 className="text-base font-semibold text-gray-900">Interview Letters</h1>
-            <p className="text-sm text-gray-500 mt-1">Review past letter &amp; email projects and start a new one from here.</p>
+            <p className="text-sm text-gray-500 mt-1">This function creates personalised interview request letters and accompanying emails based on the recipient, organisation, project, and publication.</p>
           </div>
         </div>
 

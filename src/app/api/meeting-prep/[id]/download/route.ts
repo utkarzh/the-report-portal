@@ -3,6 +3,7 @@ import { Packer } from 'docx'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { buildMeetingPrepDocx } from '@/lib/meeting-prep-docx'
+import { joinIdentityForFilename, sanitizeFilename } from '@/lib/docx-standard-format'
 
 // GET /api/meeting-prep/[id]/download — serves the final meeting preparation
 // document as a real Word (.docx) file. Owner or admin only.
@@ -44,8 +45,10 @@ export async function GET(
   })
 
   const buffer = await Packer.toBuffer(doc)
-  const base = (session.interviewee_name || 'Meeting Preparation').replace(/[^a-z0-9-_ ]/gi, '').trim() || 'meeting-preparation'
-  const filename = `${base} — Meeting Prep.docx`
+  // "Name, Title and Company" — no "Meeting Prep" suffix, per the
+  // naming convention shared with Interview Outline/Transcript/Letter.
+  const identity = joinIdentityForFilename([session.interviewee_name, session.interviewee_title, session.company_org])
+  const filename = `${sanitizeFilename(identity || session.interviewee_name || 'Meeting Preparation')}.docx`
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

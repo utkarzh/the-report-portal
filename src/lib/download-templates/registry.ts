@@ -158,6 +158,12 @@ export const TEMPLATES: DownloadTemplate[] = [
 
 export const DEFAULT_TEMPLATE_ID = 'trc-usa-today'
 
+// Deduped partner names in registry order (USA Today appears under both TRC and
+// GFDI) — the hardcoded options list for any "Publication" picker in the app
+// (e.g. the Transcription upload form) that wants the same known-media list
+// used by the download template picker, without wiring up a real lookup.
+export const PARTNER_NAMES: string[] = Array.from(new Set(TEMPLATES.map((t) => t.partner)))
+
 export function getTemplate(id: string | null | undefined): DownloadTemplate {
   return TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0]
 }

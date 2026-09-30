@@ -37,7 +37,7 @@ export default function FinanceAdminOverviewPage() {
       <div className="flex justify-between items-start flex-wrap gap-3 mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Overview</h1>
-          <p className="text-sm text-gray-500 mt-1">All active projects and what&apos;s waiting on you.</p>
+          <p className="text-sm text-gray-500 mt-1">This function helps organise and manage financial information, supporting the review and tracking of project-related expenses and payments.</p>
         </div>
         <Button size="sm" onClick={() => setModalOpen(true)}>New project</Button>
       </div>

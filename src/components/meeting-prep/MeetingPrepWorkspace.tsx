@@ -12,6 +12,7 @@ import Textarea from '@/components/ui/Textarea'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DeleteMeetingPrepButton from '@/components/meeting-prep/DeleteMeetingPrepButton'
 import MeetingPrepLoader from '@/components/meeting-prep/MeetingPrepLoader'
+import AudioPlayer from '@/components/transcriptions/AudioPlayer'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { splitPlanteoOutput, SPOKEN_PLANTEO_MARKER } from '@/lib/meeting-prep'
 import type { MeetingPrepSession, MeetingPrepResearchSections, MeetingPrepStage } from '@/types'
@@ -53,9 +54,10 @@ interface Props {
   session: MeetingPrepSession
   isGenerating: boolean
   isAdmin: boolean
+  sampleAudioUrl?: string | null
 }
 
-export default function MeetingPrepWorkspace({ session: initialSession, isGenerating, isAdmin }: Props) {
+export default function MeetingPrepWorkspace({ session: initialSession, isGenerating, isAdmin, sampleAudioUrl }: Props) {
   const router = useRouter()
   const [session, setSession] = useState(initialSession)
   const [stage, setStage] = useState<MeetingPrepStage>(initialSession.stage)
@@ -792,6 +794,16 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
 
           {activeTab === 'planteo' && (
             <>
+              {sampleAudioUrl && (
+                <div className="mb-5">
+                  <p className="text-xs font-semibold text-gray-900">Sample planteo delivery</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
+                    A reference recording of how a planteo should sound when delivered — listen before you present.
+                  </p>
+                  <AudioPlayer src={sampleAudioUrl} />
+                </div>
+              )}
+
               {!stalled && stage === 'planteo_generating' && (
                 <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} variant="planteo" />
               )}

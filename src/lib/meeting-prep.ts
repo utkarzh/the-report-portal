@@ -1,5 +1,10 @@
 import type { InterviewType, MeetingPrepPromptKey, MeetingPrepResearchSections } from '@/types'
 
+// One admin-uploaded reference recording — not an admin-manageable library,
+// just a fixed object path (see migration 030).
+export const MEETING_PREP_SAMPLE_AUDIO_BUCKET = 'meeting-prep-samples'
+export const MEETING_PREP_SAMPLE_AUDIO_PATH = 'planteo-example.mp3'
+
 export const INTERVIEW_TYPES: { value: InterviewType; label: string }[] = [
   { value: 'company_ceo', label: 'Company Executive' },
   { value: 'government_official', label: 'Government Official' },

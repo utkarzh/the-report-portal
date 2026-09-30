@@ -86,7 +86,7 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
           <div>
             <h1 className="text-base font-semibold text-gray-900">Transcriptions</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Review past transcripts and start a new one from here.
+              This function allows you to turn interview recordings into clear, structured transcripts. You can refine raw transcripts and translate interviews conducted in other languages.
             </p>
           </div>
         </div>

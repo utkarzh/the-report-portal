@@ -5,6 +5,7 @@ import { getApiUser } from '@/lib/auth/api-user'
 import { getTemplate } from '@/lib/download-templates/registry'
 import { buildTemplatedDocx } from '@/lib/download-templates/docx'
 import { renderTemplatedPdf } from '@/lib/download-templates/pdf'
+import { joinIdentityForFilename, sanitizeFilename } from '@/lib/docx-standard-format'
 
 // Node runtime — @react-pdf/renderer + docx need Node APIs.
 export const runtime = 'nodejs'
@@ -51,7 +52,14 @@ export async function GET(
 
   const heading = type === 'questions' ? 'Interview Questions' : 'Background Research'
   const subjectSafe = (session.full_name || 'Interview Subject').replace(/[^a-z0-9-_ ]/gi, '').trim() || 'subject'
-  const filename = `${subjectSafe} — ${heading}.${format}`
+  // Interview Outline (the "questions" export, matched to the standardised
+  // header below) uses the "Topics for Name, Title and Company" naming
+  // convention. Background Research isn't one of the three formatted-document
+  // tools, so its filename keeps the old "Subject — Background Research" form.
+  const identity = joinIdentityForFilename([session.full_name, session.title_position, session.company_org])
+  const filename = type === 'questions'
+    ? `${sanitizeFilename(`Topics for ${identity || session.full_name || 'Interview Subject'}`)}.${format}`
+    : `${subjectSafe} — ${heading}.${format}`
 
   const meta: [string, string | null][] = [
     ['Subject', session.full_name],

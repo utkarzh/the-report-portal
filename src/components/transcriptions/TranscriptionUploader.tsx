@@ -5,8 +5,12 @@ import { useRouter } from 'next/navigation'
 import { Upload, FileAudio, X, Loader2, ChevronUp, ChevronDown, FileText } from 'lucide-react'
 import { getSupabaseBrowserClient, ensureFreshSession } from '@/lib/supabase/client'
 import Input from '@/components/ui/Input'
+import Select from '@/components/ui/Select'
 import { TRANSCRIPTION_AUDIO_BUCKET, TRANSCRIPTION_PROVIDER } from '@/lib/transcriptions'
 import { OUTLINE_ACCEPT, OUTLINE_EXT_RE, extractOutlineText } from '@/lib/outline-extract'
+import { PARTNER_NAMES } from '@/lib/download-templates/registry'
+
+const PUBLICATION_OPTIONS = PARTNER_NAMES.map((name) => ({ value: name, label: name }))
 
 type Phase = 'idle' | 'preparing' | 'transcoding' | 'uploading' | 'creating' | 'error'
 
@@ -289,11 +293,13 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
           onChange={(e) => setInterviewee((p) => ({ ...p, companyOrg: e.target.value }))}
           disabled={busy}
         />
-        <Input
+        <Select
           label="Publication *"
           value={interviewee.publication}
           onChange={(e) => setInterviewee((p) => ({ ...p, publication: e.target.value }))}
           disabled={busy}
+          options={PUBLICATION_OPTIONS}
+          placeholder="Select publication…"
         />
       </div>
 

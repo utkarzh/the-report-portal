@@ -6,6 +6,7 @@ import { getTemplate } from '@/lib/download-templates/registry'
 import { buildTemplatedDocx } from '@/lib/download-templates/docx'
 import { renderTemplatedPdf } from '@/lib/download-templates/pdf'
 import { TRANSLATION_LANGUAGES_WITHOUT_PDF, type TranslationLanguage } from '@/lib/transcriptions'
+import { joinIdentityForFilename, sanitizeFilename } from '@/lib/docx-standard-format'
 
 export const runtime = 'nodejs'
 
@@ -85,9 +86,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     // `header` was previously omitted here — PDF transcript downloads never
     // got the standardised title/byline/"For publication in" header the docx
     // path renders, and fell back to a plain single-line heading instead.
-    // Transcript typography: 12pt body/pull-quotes, 11pt disclaimer, pull
-    // quotes bold+italic — scoped here so Topic Outline/Research PDFs (which
-    // share this same renderer) keep their existing 10.5pt look untouched.
+    // Transcript typography: 12pt body/pull-quotes, 11pt disclaimer — scoped
+    // here so Topic Outline/Research PDFs (which share this same renderer)
+    // keep their existing 10.5pt look untouched.
     body = new Uint8Array(
       await renderTemplatedPdf({
         markdown: text,
@@ -97,7 +98,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         header,
         bodyFontSize: 12,
         disclaimerFontSize: 11,
-        boldItalicList: true,
       }),
     ) as BodyInit
     contentType = 'application/pdf'
@@ -120,17 +120,19 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   }
 
-  const filename = `${slugify(title)}-${variant}.${format}`
+  // "Transcript – Name, Title and Company" — same identity fields as the
+  // standardised header, joined with the naming convention's "and" rather
+  // than the header's comma-only style. Falls back to the transcription's
+  // own title when the interviewee metadata is missing (rows created before
+  // migration 024).
+  const identity = joinIdentityForFilename([row.full_name, row.title_position, row.company_org])
+  const filename = `${sanitizeFilename(`Transcript – ${identity || title}`)}.${format}`
 
   return new NextResponse(body, {
     headers: {
       'Content-Type': contentType,
-      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
       'Cache-Control': 'no-store',
     },
   })
-}
-
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'transcript'
 }

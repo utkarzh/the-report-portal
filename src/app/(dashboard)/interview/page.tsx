@@ -77,7 +77,7 @@ export default async function InterviewToolPage({ searchParams }: { searchParams
           <div>
             <h1 className="text-base font-semibold text-gray-900">Interview Tool</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Review past interviews and launch a new one from here.
+              This function allows you to create topic outlines by entering relevant information about the interviewee and company. The system then generates background research and tailored interview questions.
             </p>
           </div>
         </div>

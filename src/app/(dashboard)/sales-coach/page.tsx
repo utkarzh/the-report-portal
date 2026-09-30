@@ -82,9 +82,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
           <div>
             <h1 className="text-base font-semibold text-gray-900">Sales Coach</h1>
             <p className="mt-1 text-sm text-gray-500">
-              {isAdmin
-                ? 'Every negotiation submitted across the team, with its Report Card and coaching.'
-                : 'Submit a negotiation to get a Report Card and coaching. Only you see your own submissions.'}
+              This function analyses sales meeting recordings and provides a score, detailed feedback, and practical recommendations to help improve future meetings.
             </p>
           </div>
         </div>

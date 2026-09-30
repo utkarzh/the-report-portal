@@ -22,6 +22,16 @@ interface Props {
   pdfDisabledReason?: string
   /** Initial template selection (e.g. guessed from a project's media_partner) when nothing's saved in localStorage yet. Falls back to DEFAULT_TEMPLATE_ID. */
   defaultTemplateId?: string
+  /**
+   * Pinned to the modal header on both steps so it's unmistakable which
+   * variant is about to be downloaded (e.g. Transcriptions: raw vs refined —
+   * both live on the same page with identically-styled "Download" buttons,
+   * so this confirmation is the last checkpoint before the wrong file ships).
+   * Omitted where a document has only one downloadable variant.
+   */
+  variantLabel?: string
+  /** Visual tone for `variantLabel` — 'caution' for a reference-only/not-final variant, 'final' for the one that's ready to share. */
+  variantTone?: 'caution' | 'final' | 'default'
 }
 
 // Namespaced per document (baseUrl already includes the session/transcript
@@ -31,7 +41,7 @@ interface Props {
 // Newsweek pick anywhere leaked into all future downloads everywhere.
 const LS_KEY_PREFIX = 'download-template:'
 
-export default function DownloadTemplateModal({ open, onClose, baseUrl, extraParams, filenameBase, pdfDisabledReason, defaultTemplateId }: Props) {
+export default function DownloadTemplateModal({ open, onClose, baseUrl, extraParams, filenameBase, pdfDisabledReason, defaultTemplateId, variantLabel, variantTone = 'default' }: Props) {
   const [step, setStep] = useState<'template' | 'format'>('template')
   const [templateId, setTemplateId] = useState<string>(defaultTemplateId ?? DEFAULT_TEMPLATE_ID)
   const lsKey = `${LS_KEY_PREFIX}${baseUrl}`
@@ -103,9 +113,24 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
                   </button>
                 )}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">
-                    {step === 'template' ? 'Choose a template' : 'Choose a format'}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      {step === 'template' ? 'Choose a template' : 'Choose a format'}
+                    </h3>
+                    {variantLabel && (
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                          variantTone === 'final'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : variantTone === 'caution'
+                              ? 'border-amber-200 bg-amber-50 text-amber-700'
+                              : 'border-gray-200 bg-gray-50 text-gray-600'
+                        }`}
+                      >
+                        {variantLabel}
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-0.5 text-[11px] text-gray-400">
                     {step === 'template'
                       ? 'The header and footer are styled to the publication.'

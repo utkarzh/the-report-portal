@@ -120,10 +120,10 @@ function inlineRuns(text: string, highlightConfirm: boolean, opts: RunStyleOpts 
 // ">" blocks — the transcript refining prompt's standard "Disclaimer" note —
 // render italic, same convention as the PDF download's blockquote styling.
 // Red specifically when the quote opens with "Disclaimer:"; plain grey for
-// any other blockquote content. No left border — a plain indented paragraph,
-// per the reference document (a paragraph border is also a plausible culprit
-// behind Apple Pages importing this content as unstyled plain text; dropping
-// it removes that risk in both directions).
+// any other blockquote content. No left border (a paragraph border is also a
+// plausible culprit behind Apple Pages importing this content as unstyled
+// plain text) and no left indent — flush with the rest of the justified
+// transcript body, not offset into its own block.
 const QUOTE_GREY = '595959'
 const QUOTE_RED = 'C00000'
 
@@ -150,7 +150,6 @@ function blockquoteParagraphs(blockLines: string[], highlight: boolean, spacingA
 
     return new Paragraph({
       children,
-      indent: { left: 240 },
       spacing: { after: spacingAfter, line: LINE_SPACING },
       alignment,
     })
