@@ -1,11 +1,11 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import Image from 'next/image'
-import { usePathname } from 'next/navigation'
-import { useState, useEffect } from 'react'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import Link from "next/link";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import {
   MessagesSquare,
   AudioLines,
@@ -22,52 +22,65 @@ import {
   Wallet,
   Mail,
   Handshake,
-} from 'lucide-react'
-import type { UserRole } from '@/types'
+  PenLine,
+} from "lucide-react";
+import type { UserRole } from "@/types";
 
 interface SidebarProps {
-  role: UserRole
-  tokenUsed: number
-  tokenLimit: number
-  userName: string | null
-  canAccessInterview: boolean
-  canAccessTranscriptions: boolean
-  canAccessBusinessCases: boolean
-  canAccessEditorialBriefs: boolean
-  canAccessMeetingPreparation: boolean
-  canAccessInterviewLetterGenerator: boolean
-  canAccessSalesNegotiationCoach: boolean
-  canAccessFinance?: boolean
-  financeHref?: string
-  mobileOpen?: boolean
-  onMobileClose?: () => void
+  role: UserRole;
+  tokenUsed: number;
+  tokenLimit: number;
+  userName: string | null;
+  canAccessInterview: boolean;
+  canAccessTranscriptions: boolean;
+  canAccessBusinessCases: boolean;
+  canAccessEditorialBriefs: boolean;
+  canAccessMeetingPreparation: boolean;
+  canAccessInterviewLetterGenerator: boolean;
+  canAccessSalesNegotiationCoach: boolean;
+  canAccessCopywritingTool: boolean;
+  canAccessFinance?: boolean;
+  financeHref?: string;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 interface NavItem {
-  label: string
-  href: string
-  icon: React.ElementType
-  beta?: boolean
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  beta?: boolean;
 }
 
-function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: boolean; pathname: string }) {
-  const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-  const Icon = item.icon
-  const label = item.beta ? `${item.label} (Beta)` : item.label
+function NavLink({
+  item,
+  collapsed,
+  pathname,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  pathname: string;
+}) {
+  const isActive =
+    pathname === item.href || pathname.startsWith(item.href + "/");
+  const Icon = item.icon;
+  const label = item.beta ? `${item.label} (Beta)` : item.label;
   return (
     <Link
       href={item.href}
       title={collapsed ? label : undefined}
       className={`flex items-center gap-3 px-3 py-2.5 rounded text-sm mb-0.5 transition-colors ${
-        collapsed ? 'lg:justify-center' : ''
+        collapsed ? "lg:justify-center" : ""
       } ${
         isActive
-          ? 'bg-white/10 text-white font-medium'
-          : 'text-gray-400 hover:bg-white/5 hover:text-white'
+          ? "bg-white/10 text-white font-medium"
+          : "text-gray-400 hover:bg-white/5 hover:text-white"
       }`}
     >
       <Icon size={16} className="flex-shrink-0" />
-      <span className={`flex items-center gap-1.5 min-w-0 ${collapsed ? 'lg:hidden' : ''}`}>
+      <span
+        className={`flex items-center gap-1.5 min-w-0 ${collapsed ? "lg:hidden" : ""}`}
+      >
         <span className="truncate">{item.label}</span>
         {item.beta && (
           <span className="flex-shrink-0 text-[9px] font-semibold uppercase tracking-wide text-amber-400/90 border border-amber-400/40 rounded px-1 py-px leading-none">
@@ -76,63 +89,131 @@ function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: bool
         )}
       </span>
     </Link>
-  )
+  );
 }
 
-export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessInterviewLetterGenerator, canAccessSalesNegotiationCoach, canAccessFinance = false, financeHref = '/finance', mobileOpen = false }: SidebarProps) {
-  const pathname = usePathname()
-  const router = useRouter()
-  const [collapsed, setCollapsed] = useState(false)
+export default function Sidebar({
+  role,
+  tokenUsed,
+  tokenLimit,
+  userName,
+  canAccessInterview,
+  canAccessTranscriptions,
+  canAccessBusinessCases,
+  canAccessEditorialBriefs,
+  canAccessMeetingPreparation,
+  canAccessInterviewLetterGenerator,
+  canAccessSalesNegotiationCoach,
+  canAccessCopywritingTool,
+  canAccessFinance = false,
+  financeHref = "/finance",
+  mobileOpen = false,
+}: SidebarProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [collapsed, setCollapsed] = useState(false);
 
   // Only show modules this user can access (admins have all).
   const toolNavItems: NavItem[] = [
-    ...(canAccessInterview ? [{ label: 'Interview Tool', href: '/interview', icon: MessagesSquare }] : []),
-    ...(canAccessTranscriptions ? [{ label: 'Transcriptions', href: '/transcriptions', icon: AudioLines }] : []),
-    ...(canAccessBusinessCases ? [{ label: 'Business Cases', href: '/business-cases', icon: Briefcase }] : []),
-    ...(canAccessEditorialBriefs ? [{ label: 'Editorial Briefs', href: '/editorial-briefs', icon: FileText }] : []),
-    ...(canAccessMeetingPreparation ? [{ label: 'Meeting Preparation', href: '/meeting-preparation', icon: CalendarClock }] : []),
-    ...(canAccessInterviewLetterGenerator ? [{ label: 'Interview Letters', href: '/interview-letters', icon: Mail, beta: true }] : []),
-    ...(canAccessSalesNegotiationCoach ? [{ label: 'Sales Coach', href: '/sales-coach', icon: Handshake, beta: true }] : []),
-  ]
+    ...(canAccessInterview
+      ? [{ label: "Interview Tool", href: "/interview", icon: MessagesSquare }]
+      : []),
+    ...(canAccessTranscriptions
+      ? [{ label: "Transcriptions", href: "/transcriptions", icon: AudioLines }]
+      : []),
+    ...(canAccessBusinessCases
+      ? [{ label: "Business Cases", href: "/business-cases", icon: Briefcase }]
+      : []),
+    ...(canAccessEditorialBriefs
+      ? [
+          {
+            label: "Editorial Briefs",
+            href: "/editorial-briefs",
+            icon: FileText,
+          },
+        ]
+      : []),
+    ...(canAccessMeetingPreparation
+      ? [
+          {
+            label: "Meeting Preparation",
+            href: "/meeting-preparation",
+            icon: CalendarClock,
+          },
+        ]
+      : []),
+    ...(canAccessInterviewLetterGenerator
+      ? [
+          {
+            label: "Interview Letters",
+            href: "/interview-letters",
+            icon: Mail,
+            beta: true,
+          },
+        ]
+      : []),
+    ...(canAccessSalesNegotiationCoach
+      ? [
+          {
+            label: "Sales Coach",
+            href: "/sales-coach",
+            icon: Handshake,
+            beta: true,
+          },
+        ]
+      : []),
+    ...(canAccessCopywritingTool
+      ? [
+          {
+            label: "Copywriting Tool",
+            href: "/copywriting",
+            icon: PenLine,
+            beta: true,
+          },
+        ]
+      : []),
+  ];
 
   useEffect(() => {
-    const stored = localStorage.getItem('sidebar-collapsed')
-    if (stored !== null) setCollapsed(stored === 'true')
-  }, [])
+    const stored = localStorage.getItem("sidebar-collapsed");
+    if (stored !== null) setCollapsed(stored === "true");
+  }, []);
 
   function toggleCollapsed() {
-    setCollapsed(prev => {
-      localStorage.setItem('sidebar-collapsed', String(!prev))
-      return !prev
-    })
+    setCollapsed((prev) => {
+      localStorage.setItem("sidebar-collapsed", String(!prev));
+      return !prev;
+    });
   }
 
   async function handleSignOut() {
-    const supabase = getSupabaseBrowserClient()
-    await supabase.auth.signOut()
-    router.push('/login')
+    const supabase = getSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    router.push("/login");
   }
 
-  const usagePercent = Math.min((tokenUsed / tokenLimit) * 100, 100)
-  const isNearLimit = usagePercent >= 80
-  const isAtLimit = usagePercent >= 100
+  const usagePercent = Math.min((tokenUsed / tokenLimit) * 100, 100);
+  const isNearLimit = usagePercent >= 80;
+  const isAtLimit = usagePercent >= 100;
 
   return (
     <aside
       className={[
         // Always
-        'bg-black border-r border-gray-800 flex flex-col flex-shrink-0 h-full',
-        'transition-transform duration-300 ease-in-out',
+        "bg-black border-r border-gray-800 flex flex-col flex-shrink-0 h-full",
+        "transition-transform duration-300 ease-in-out",
         // Mobile: fixed full-height drawer, slides in/out
-        'fixed inset-y-0 left-0 z-50 w-64',
-        mobileOpen ? 'translate-x-0' : '-translate-x-full',
+        "fixed inset-y-0 left-0 z-50 w-64",
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
         // Desktop: back in normal flow, width driven by collapsed state
-        'lg:relative lg:translate-x-0 lg:z-auto',
-        collapsed ? 'lg:w-16' : 'lg:w-64',
-      ].join(' ')}
+        "lg:relative lg:translate-x-0 lg:z-auto",
+        collapsed ? "lg:w-16" : "lg:w-64",
+      ].join(" ")}
     >
       {/* Logo + collapse toggle */}
-      <div className={`flex items-center h-16 border-b border-gray-800 ${collapsed ? 'lg:justify-center lg:px-2' : 'justify-between pl-4 pr-2'}`}>
+      <div
+        className={`flex items-center h-16 border-b border-gray-800 ${collapsed ? "lg:justify-center lg:px-2" : "justify-between pl-4 pr-2"}`}
+      >
         {!collapsed && (
           <Image
             src="/logo.png"
@@ -146,7 +227,7 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
         )}
         <button
           onClick={toggleCollapsed}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="hidden lg:block p-1.5 rounded text-gray-600 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -156,11 +237,18 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
       <nav className="flex-1 px-3 overflow-y-auto">
         {toolNavItems.length > 0 && (
           <>
-            <p className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 ${collapsed ? 'lg:hidden' : ''}`}>
+            <p
+              className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 ${collapsed ? "lg:hidden" : ""}`}
+            >
               Editorial
             </p>
             {toolNavItems.map((item) => (
-              <NavLink key={item.href} item={item} collapsed={collapsed} pathname={pathname} />
+              <NavLink
+                key={item.href}
+                item={item}
+                collapsed={collapsed}
+                pathname={pathname}
+              />
             ))}
           </>
         )}
@@ -168,18 +256,31 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
         {canAccessFinance && (
           <>
             <div className="mt-4 pt-4 border-t border-gray-800 mb-2">
-              <p className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 ${collapsed ? 'lg:hidden' : ''}`}>
+              <p
+                className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 ${collapsed ? "lg:hidden" : ""}`}
+              >
                 Finance
               </p>
             </div>
-            <NavLink item={{ label: 'Caja Tool', href: financeHref, icon: Wallet, beta: true }} collapsed={collapsed} pathname={pathname} />
+            <NavLink
+              item={{
+                label: "Caja Tool",
+                href: financeHref,
+                icon: Wallet,
+                beta: true,
+              }}
+              collapsed={collapsed}
+              pathname={pathname}
+            />
           </>
         )}
 
-        {role === 'admin' && (
+        {role === "admin" && (
           <>
             <div className="mt-4 pt-4 border-t border-gray-800 mb-2">
-              <p className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 ${collapsed ? 'lg:hidden' : ''}`}>
+              <p
+                className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 ${collapsed ? "lg:hidden" : ""}`}
+              >
                 Admin
               </p>
             </div>
@@ -191,19 +292,27 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
         )}
       </nav>
 
-      <div className={`pb-5 border-t border-gray-800 pt-4 px-5 ${collapsed ? 'lg:px-3' : ''}`}>
-        {role === 'user' && (
-          <div className={`mb-4 ${collapsed ? 'lg:hidden' : ''}`}>
+      <div
+        className={`pb-5 border-t border-gray-800 pt-4 px-5 ${collapsed ? "lg:px-3" : ""}`}
+      >
+        {role === "user" && (
+          <div className={`mb-4 ${collapsed ? "lg:hidden" : ""}`}>
             <div className="flex justify-between text-xs text-gray-400 mb-1.5">
               <span>Token usage</span>
-              <span className={isNearLimit ? 'text-orange-400 font-medium' : ''}>
+              <span
+                className={isNearLimit ? "text-orange-400 font-medium" : ""}
+              >
                 {formatTokens(tokenUsed)} / {formatTokens(tokenLimit)}
               </span>
             </div>
             <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${
-                  isAtLimit ? 'bg-red-500' : isNearLimit ? 'bg-orange-400' : 'bg-white'
+                  isAtLimit
+                    ? "bg-red-500"
+                    : isNearLimit
+                      ? "bg-orange-400"
+                      : "bg-white"
                 }`}
                 style={{ width: `${usagePercent}%` }}
               />
@@ -218,10 +327,10 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
         {collapsed ? (
           <div className="hidden lg:flex flex-col items-center gap-3">
             <div
-              title={userName || 'User'}
+              title={userName || "User"}
               className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-semibold text-gray-200 flex-shrink-0"
             >
-              {(userName || 'U')[0].toUpperCase()}
+              {(userName || "U")[0].toUpperCase()}
             </div>
             <button
               onClick={handleSignOut}
@@ -234,11 +343,11 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
         ) : null}
 
         {/* Full user row — always on mobile, only when expanded on desktop */}
-        <div className={collapsed ? 'lg:hidden' : ''}>
+        <div className={collapsed ? "lg:hidden" : ""}>
           <div className="flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-xs font-medium text-white truncate">
-                {userName || 'User'}
+                {userName || "User"}
               </p>
               <p className="text-[10px] text-gray-500 uppercase tracking-wide">
                 {role}
@@ -255,11 +364,11 @@ export default function Sidebar({ role, tokenUsed, tokenLimit, userName, canAcce
         </div>
       </div>
     </aside>
-  )
+  );
 }
 
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toString()
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
 }

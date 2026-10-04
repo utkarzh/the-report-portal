@@ -2,11 +2,11 @@
 // standard multipliers off the input price: 5-min write = 1.25x, 1h write = 2x,
 // cache read = 0.1x.
 export interface ModelPricing {
-  input: number
-  output: number
-  cacheWrite5m: number
-  cacheWrite1h: number
-  cacheRead: number
+  input: number;
+  output: number;
+  cacheWrite5m: number;
+  cacheWrite1h: number;
+  cacheRead: number;
 }
 
 // claude-sonnet-4-6 — used for research + question generation.
@@ -15,8 +15,8 @@ export const SONNET_PRICING: ModelPricing = {
   output: 15.0,
   cacheWrite5m: 3.75,
   cacheWrite1h: 6.0,
-  cacheRead: 0.30,
-}
+  cacheRead: 0.3,
+};
 
 // claude-haiku-4-5 — used for transcript refine + translate (cheaper: $1/$5).
 export const HAIKU_PRICING: ModelPricing = {
@@ -24,8 +24,8 @@ export const HAIKU_PRICING: ModelPricing = {
   output: 5.0,
   cacheWrite5m: 1.25,
   cacheWrite1h: 2.0,
-  cacheRead: 0.10,
-}
+  cacheRead: 0.1,
+};
 
 // claude-opus-5 — used for finance receipt extraction, where reading messy
 // handwritten/low-quality field photos accurately matters more than cost.
@@ -35,18 +35,18 @@ export const OPUS_PRICING: ModelPricing = {
   output: 75.0,
   cacheWrite5m: 18.75,
   cacheWrite1h: 30.0,
-  cacheRead: 1.50,
-}
+  cacheRead: 1.5,
+};
 
 // Back-compat exports (Sonnet). The analytics cost-breakdown derivation uses
 // the output price; it's a Sonnet-based approximation for the in/out/search
 // split and doesn't affect the accurate per-event cost stored in the ledger.
-export const PRICE_INPUT_PER_MILLION = SONNET_PRICING.input
-export const PRICE_OUTPUT_PER_MILLION = SONNET_PRICING.output
+export const PRICE_INPUT_PER_MILLION = SONNET_PRICING.input;
+export const PRICE_OUTPUT_PER_MILLION = SONNET_PRICING.output;
 
 // Anthropic web search tool — billed separately, NOT included in token usage.
 // Source: https://docs.anthropic.com/en/docs/build-with-claude/tool-use/web-search-tool
-export const WEB_SEARCH_PRICE_PER_REQUEST = 0.01  // $10 per 1,000 searches
+export const WEB_SEARCH_PRICE_PER_REQUEST = 0.01; // $10 per 1,000 searches
 
 // Headroom reserve for the pre-flight token-limit gate. A single research run
 // (with up to 7 web searches, each injecting its results back into context)
@@ -54,21 +54,21 @@ export const WEB_SEARCH_PRICE_PER_REQUEST = 0.01  // $10 per 1,000 searches
 // a new generation unless the user has at least this much budget remaining, so
 // they can't slip under the wire at 1 token left and then blow ~150k past it.
 // Tune this if typical generation size changes.
-export const GENERATION_TOKEN_RESERVE = 150_000
+export const GENERATION_TOKEN_RESERVE = 150_000;
 
 // Follow-up question generation does no web search and reuses the (mostly
 // cached) research context, so it costs far less than a full research run.
-export const QUESTIONS_TOKEN_RESERVE = 60_000
+export const QUESTIONS_TOKEN_RESERVE = 60_000;
 
 // Commercial Meeting Preparation module — 4 sequential stages, each gated
 // independently right before its own Claude call (never after). Research
 // does web search plus up to one internal reframe retry, so it's sized like
 // GENERATION_TOKEN_RESERVE; the later stages reuse mostly-cached context and
 // produce far shorter output.
-export const MEETING_PREP_RESEARCH_RESERVE = 150_000
-export const MEETING_PREP_POINTS_RESERVE = 20_000
-export const MEETING_PREP_PLANTEO_RESERVE = 20_000
-export const MEETING_PREP_FINAL_DOC_RESERVE = 40_000
+export const MEETING_PREP_RESEARCH_RESERVE = 150_000;
+export const MEETING_PREP_POINTS_RESERVE = 20_000;
+export const MEETING_PREP_PLANTEO_RESERVE = 20_000;
+export const MEETING_PREP_FINAL_DOC_RESERVE = 40_000;
 
 // Interview Request Letter & Email Generator module — research is scoped to
 // letter-relevant facts only (not a full company/country dossier like
@@ -77,31 +77,41 @@ export const MEETING_PREP_FINAL_DOC_RESERVE = 40_000
 // variable paragraph at once (marker-delimited, short per-paragraph word
 // budgets); email and personalize reuse already-approved text as context and
 // produce short output.
-export const INTERVIEW_LETTER_RESEARCH_RESERVE = 60_000
-export const INTERVIEW_LETTER_LETTER_RESERVE = 30_000
-export const INTERVIEW_LETTER_EMAIL_RESERVE = 15_000
-export const INTERVIEW_LETTER_PERSONALIZE_RESERVE = 20_000
-export const INTERVIEW_LETTER_TEMPLATE_GENERATE_RESERVE = 20_000
+export const INTERVIEW_LETTER_RESEARCH_RESERVE = 60_000;
+export const INTERVIEW_LETTER_LETTER_RESERVE = 30_000;
+export const INTERVIEW_LETTER_EMAIL_RESERVE = 15_000;
+export const INTERVIEW_LETTER_PERSONALIZE_RESERVE = 20_000;
+export const INTERVIEW_LETTER_TEMPLATE_GENERATE_RESERVE = 20_000;
 
 // Sales Negotiation Coach — the coaching conversation (US-043) is a multi-turn
 // chat grounded in the transcript, Report Card, and four knowledge docs. Each
 // turn is short spoken output, but the grounding context (transcript + docs) is
 // large and re-sent each turn, so the reserve covers one turn's prompt + reply.
-export const SALES_COACH_COACH_RESERVE = 40_000
+export const SALES_COACH_COACH_RESERVE = 40_000;
 // The Report Card analysis (US-039) is ONE call that reads the four knowledge
 // docs (~30k tokens), the negotiation context and the whole transcript (often
 // 10-30k tokens for an hour-long meeting) and writes a ~4-8k token structured
 // card. Reserve covers the prompt + output of one pass plus the single
 // corrective re-prompt the route may run.
-export const SALES_COACH_ANALYZE_RESERVE = 100_000
+export const SALES_COACH_ANALYZE_RESERVE = 100_000;
+
+// AI Copywriting Tool — five Claude stages per article. Analysis reads every
+// uploaded source plus TRC guides/examples/publication guide (can be large);
+// planning and drafting are the most output-heavy (a full article draft);
+// check/revision reuse mostly the same context with shorter output.
+export const COPYWRITING_ANALYZE_RESERVE = 150_000;
+export const COPYWRITING_PLAN_RESERVE = 60_000;
+export const COPYWRITING_DRAFT_RESERVE = 100_000;
+export const COPYWRITING_CHECK_RESERVE = 40_000;
+export const COPYWRITING_REVISION_RESERVE = 60_000;
 
 export interface UsageBreakdown {
-  inputTokens: number                // uncached input (billed at full input price)
-  outputTokens: number
-  cacheCreation5mTokens?: number     // tokens written to 5-min cache
-  cacheCreation1hTokens?: number     // tokens written to 1-hour cache
-  cacheReadTokens?: number           // tokens served from any cache
-  webSearches?: number               // count of server-side web_search invocations
+  inputTokens: number; // uncached input (billed at full input price)
+  outputTokens: number;
+  cacheCreation5mTokens?: number; // tokens written to 5-min cache
+  cacheCreation1hTokens?: number; // tokens written to 1-hour cache
+  cacheReadTokens?: number; // tokens served from any cache
+  webSearches?: number; // count of server-side web_search invocations
 }
 
 // Normalises Anthropic's `finalMessage().usage` response into our UsageBreakdown.
@@ -111,17 +121,18 @@ export function parseUsage(
   rawUsage: unknown,
   webSearches: number,
 ): UsageBreakdown {
-  const u = (rawUsage ?? {}) as Record<string, unknown>
-  const breakdown = (u.cache_creation ?? {}) as Record<string, unknown>
-  const ephem5m = breakdown.ephemeral_5m_input_tokens as number | undefined
-  const ephem1h = breakdown.ephemeral_1h_input_tokens as number | undefined
-  const legacyTotal = (u.cache_creation_input_tokens as number | undefined) ?? 0
+  const u = (rawUsage ?? {}) as Record<string, unknown>;
+  const breakdown = (u.cache_creation ?? {}) as Record<string, unknown>;
+  const ephem5m = breakdown.ephemeral_5m_input_tokens as number | undefined;
+  const ephem1h = breakdown.ephemeral_1h_input_tokens as number | undefined;
+  const legacyTotal =
+    (u.cache_creation_input_tokens as number | undefined) ?? 0;
 
-  const hasBreakdown = ephem5m !== undefined || ephem1h !== undefined
+  const hasBreakdown = ephem5m !== undefined || ephem1h !== undefined;
   // If the breakdown is missing, attribute the legacy total to 1h since that's
   // the TTL we explicitly request on every cache_control block.
-  const cacheCreation5mTokens = hasBreakdown ? (ephem5m ?? 0) : 0
-  const cacheCreation1hTokens = hasBreakdown ? (ephem1h ?? 0) : legacyTotal
+  const cacheCreation5mTokens = hasBreakdown ? (ephem5m ?? 0) : 0;
+  const cacheCreation1hTokens = hasBreakdown ? (ephem1h ?? 0) : legacyTotal;
 
   return {
     inputTokens: (u.input_tokens as number | undefined) ?? 0,
@@ -130,7 +141,7 @@ export function parseUsage(
     cacheCreation1hTokens,
     cacheReadTokens: (u.cache_read_input_tokens as number | undefined) ?? 0,
     webSearches,
-  }
+  };
 }
 
 export function totalPromptTokens(usage: UsageBreakdown): number {
@@ -139,12 +150,15 @@ export function totalPromptTokens(usage: UsageBreakdown): number {
     (usage.cacheCreation5mTokens ?? 0) +
     (usage.cacheCreation1hTokens ?? 0) +
     (usage.cacheReadTokens ?? 0)
-  )
+  );
 }
 
 // Defaults to Sonnet pricing (research/questions). Pass HAIKU_PRICING for the
 // transcript refine/translate routes so the ledger records their real cost.
-export function calculateCost(usage: UsageBreakdown, pricing: ModelPricing = SONNET_PRICING): number {
+export function calculateCost(
+  usage: UsageBreakdown,
+  pricing: ModelPricing = SONNET_PRICING,
+): number {
   return (
     (usage.inputTokens / 1_000_000) * pricing.input +
     (usage.outputTokens / 1_000_000) * pricing.output +
@@ -152,16 +166,16 @@ export function calculateCost(usage: UsageBreakdown, pricing: ModelPricing = SON
     ((usage.cacheCreation1hTokens ?? 0) / 1_000_000) * pricing.cacheWrite1h +
     ((usage.cacheReadTokens ?? 0) / 1_000_000) * pricing.cacheRead +
     (usage.webSearches ?? 0) * WEB_SEARCH_PRICE_PER_REQUEST
-  )
+  );
 }
 
 export function formatCost(usd: number): string {
-  if (usd < 0.01) return `$${(usd * 100).toFixed(3)}¢`
-  return `$${usd.toFixed(4)}`
+  if (usd < 0.01) return `$${(usd * 100).toFixed(3)}¢`;
+  return `$${usd.toFixed(4)}`;
 }
 
 export function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toString()
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
 }

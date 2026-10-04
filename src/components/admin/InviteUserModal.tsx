@@ -1,7 +1,7 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   UserPlus,
@@ -15,34 +15,68 @@ import {
   Mail,
   Handshake,
   Wallet,
-} from 'lucide-react'
-import Input from '@/components/ui/Input'
-import Select from '@/components/ui/Select'
-import Button from '@/components/ui/Button'
-import ModuleCheckbox from '@/components/admin/ModuleCheckbox'
+  PenLine,
+} from "lucide-react";
+import Input from "@/components/ui/Input";
+import Select from "@/components/ui/Select";
+import Button from "@/components/ui/Button";
+import ModuleCheckbox from "@/components/admin/ModuleCheckbox";
 
 interface Props {
-  open: boolean
-  onClose: () => void
+  open: boolean;
+  onClose: () => void;
 }
 
 // Same icon per module as the Sidebar nav and the Edit User form, so a
 // module reads as the same thing everywhere it appears.
 const EDITORIAL_MODULE_FIELDS = [
-  { key: 'canAccessInterview' as const, label: 'Interview Tool', icon: MessagesSquare },
-  { key: 'canAccessTranscriptions' as const, label: 'Transcriptions', icon: AudioLines },
-  { key: 'canAccessBusinessCases' as const, label: 'Business Cases', icon: Briefcase },
-  { key: 'canAccessEditorialBriefs' as const, label: 'Editorial Briefs', icon: FileText },
-  { key: 'canAccessMeetingPreparation' as const, label: 'Meeting Preparation', icon: CalendarClock },
-  { key: 'canAccessInterviewLetterGenerator' as const, label: 'Interview Letters', icon: Mail },
-  { key: 'canAccessSalesNegotiationCoach' as const, label: 'Sales Coach', icon: Handshake },
-]
+  {
+    key: "canAccessInterview" as const,
+    label: "Interview Tool",
+    icon: MessagesSquare,
+  },
+  {
+    key: "canAccessTranscriptions" as const,
+    label: "Transcriptions",
+    icon: AudioLines,
+  },
+  {
+    key: "canAccessBusinessCases" as const,
+    label: "Business Cases",
+    icon: Briefcase,
+  },
+  {
+    key: "canAccessEditorialBriefs" as const,
+    label: "Editorial Briefs",
+    icon: FileText,
+  },
+  {
+    key: "canAccessMeetingPreparation" as const,
+    label: "Meeting Preparation",
+    icon: CalendarClock,
+  },
+  {
+    key: "canAccessInterviewLetterGenerator" as const,
+    label: "Interview Letters",
+    icon: Mail,
+  },
+  {
+    key: "canAccessSalesNegotiationCoach" as const,
+    label: "Sales Coach",
+    icon: Handshake,
+  },
+  {
+    key: "canAccessCopywritingTool" as const,
+    label: "Copywriting Tool",
+    icon: PenLine,
+  },
+];
 
 const defaultForm = {
-  email: '',
-  fullName: '',
-  role: 'user',
-  tokenLimit: '2000000',
+  email: "",
+  fullName: "",
+  role: "user",
+  tokenLimit: "2000000",
   canAccessInterview: true,
   canAccessTranscriptions: false,
   canAccessBusinessCases: false,
@@ -50,108 +84,111 @@ const defaultForm = {
   canAccessMeetingPreparation: false,
   canAccessInterviewLetterGenerator: false,
   canAccessSalesNegotiationCoach: false,
-  financeRole: '' as '' | 'finance_admin' | 'field',
-}
+  canAccessCopywritingTool: false,
+  financeRole: "" as "" | "finance_admin" | "field",
+};
 
 // Admins get an invite link (they set a password on signup). Normal users have
 // their account created immediately and sign in with a one-time code.
 type Result =
-  | { type: 'invite'; url: string; email: string }
-  | { type: 'created'; email: string }
+  | { type: "invite"; url: string; email: string }
+  | { type: "created"; email: string };
 
 export default function InviteUserModal({ open, onClose }: Props) {
-  const router = useRouter()
-  const [form, setForm] = useState(defaultForm)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<Result | null>(null)
-  const [copied, setCopied] = useState(false)
-  const firstInputRef = useRef<HTMLInputElement>(null)
+  const router = useRouter();
+  const [form, setForm] = useState(defaultForm);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
+  const [copied, setCopied] = useState(false);
+  const firstInputRef = useRef<HTMLInputElement>(null);
 
   // Focus first input when modal opens; reset when it closes
   useEffect(() => {
     if (open) {
-      setTimeout(() => firstInputRef.current?.focus(), 50)
+      setTimeout(() => firstInputRef.current?.focus(), 50);
     } else {
-      setForm(defaultForm)
-      setError(null)
-      setResult(null)
-      setCopied(false)
+      setForm(defaultForm);
+      setError(null);
+      setResult(null);
+      setCopied(false);
     }
-  }, [open])
+  }, [open]);
 
   // Close on Escape
   useEffect(() => {
-    if (!open) return
+    if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === "Escape") onClose();
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
 
-    const res = await fetch('/api/invite', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch("/api/invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: form.email,
         fullName: form.fullName,
         role: form.role,
         // Admins have no token limit or per-module gating; only send these for
         // normal users.
-        ...(form.role !== 'admin' && {
+        ...(form.role !== "admin" && {
           tokenLimit: parseInt(form.tokenLimit),
           canAccessInterview: form.canAccessInterview,
           canAccessTranscriptions: form.canAccessTranscriptions,
           canAccessBusinessCases: form.canAccessBusinessCases,
           canAccessEditorialBriefs: form.canAccessEditorialBriefs,
           canAccessMeetingPreparation: form.canAccessMeetingPreparation,
-          canAccessInterviewLetterGenerator: form.canAccessInterviewLetterGenerator,
+          canAccessInterviewLetterGenerator:
+            form.canAccessInterviewLetterGenerator,
           canAccessSalesNegotiationCoach: form.canAccessSalesNegotiationCoach,
+          canAccessCopywritingTool: form.canAccessCopywritingTool,
           financeRole: form.financeRole || null,
         }),
       }),
-    })
+    });
 
-    const data = await res.json()
+    const data = await res.json();
 
     if (!res.ok) {
-      setError(data.error || 'Failed to add user.')
-      setLoading(false)
-      return
+      setError(data.error || "Failed to add user.");
+      setLoading(false);
+      return;
     }
 
-    if (data.method === 'invite') {
-      setResult({ type: 'invite', url: data.inviteUrl, email: form.email })
+    if (data.method === "invite") {
+      setResult({ type: "invite", url: data.inviteUrl, email: form.email });
     } else {
-      setResult({ type: 'created', email: form.email })
+      setResult({ type: "created", email: form.email });
     }
     // Re-fetch the users table behind the modal so the new user shows up
     // immediately, without a manual reload.
-    router.refresh()
-    setLoading(false)
+    router.refresh();
+    setLoading(false);
   }
 
   async function copyLink() {
-    if (result?.type !== 'invite') return
-    await navigator.clipboard.writeText(result.url)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    if (result?.type !== "invite") return;
+    await navigator.clipboard.writeText(result.url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   function handleAnother() {
-    setResult(null)
-    setForm(defaultForm)
-    setError(null)
-    setTimeout(() => firstInputRef.current?.focus(), 50)
+    setResult(null);
+    setForm(defaultForm);
+    setError(null);
+    setTimeout(() => firstInputRef.current?.focus(), 50);
   }
 
-  if (!open) return null
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -176,7 +213,10 @@ export default function InviteUserModal({ open, onClose }: Props) {
               <UserPlus size={15} className="text-white" />
             </div>
             <div>
-              <h2 id="invite-modal-title" className="text-sm font-semibold text-gray-900">
+              <h2
+                id="invite-modal-title"
+                className="text-sm font-semibold text-gray-900"
+              >
                 Add User
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
@@ -195,14 +235,18 @@ export default function InviteUserModal({ open, onClose }: Props) {
 
         {/* Body */}
         <div className="px-6 py-6">
-          {result?.type === 'invite' ? (
+          {result?.type === "invite" ? (
             /* Admin success state — share the signup link */
             <div className="flex flex-col gap-5">
               <div className="p-4 bg-emerald-50 border border-emerald-200">
-                <p className="text-sm font-medium text-emerald-800 mb-1">Admin invite created</p>
+                <p className="text-sm font-medium text-emerald-800 mb-1">
+                  Admin invite created
+                </p>
                 <p className="text-xs text-emerald-700 leading-relaxed">
-                  Copy the link below and send it to <span className="font-medium">{result.email}</span>.
-                  They&apos;ll set a password on signup. The link expires in 7 days and can only be used once.
+                  Copy the link below and send it to{" "}
+                  <span className="font-medium">{result.email}</span>.
+                  They&apos;ll set a password on signup. The link expires in 7
+                  days and can only be used once.
                 </p>
               </div>
 
@@ -220,10 +264,15 @@ export default function InviteUserModal({ open, onClose }: Props) {
                     onClick={copyLink}
                     className="flex items-center gap-1.5 px-3 py-2.5 bg-black text-white text-xs font-medium hover:bg-gray-900 transition-colors flex-shrink-0"
                   >
-                    {copied
-                      ? <><Check size={13} /> Copied</>
-                      : <><Copy size={13} /> Copy</>
-                    }
+                    {copied ? (
+                      <>
+                        <Check size={13} /> Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} /> Copy
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -243,13 +292,17 @@ export default function InviteUserModal({ open, onClose }: Props) {
                 </button>
               </div>
             </div>
-          ) : result?.type === 'created' ? (
+          ) : result?.type === "created" ? (
             /* Normal-user success state — account ready, no link needed */
             <div className="flex flex-col gap-5">
               <div className="p-4 bg-emerald-50 border border-emerald-200">
-                <p className="text-sm font-medium text-emerald-800 mb-1">User added</p>
+                <p className="text-sm font-medium text-emerald-800 mb-1">
+                  User added
+                </p>
                 <p className="text-xs text-emerald-700 leading-relaxed">
-                  <span className="font-medium">{result.email}</span> is added to the platform — they can now enter their email and a one-time code is sent to their mail to log in.
+                  <span className="font-medium">{result.email}</span> is added
+                  to the platform — they can now enter their email and a
+                  one-time code is sent to their mail to log in.
                 </p>
               </div>
 
@@ -283,7 +336,9 @@ export default function InviteUserModal({ open, onClose }: Props) {
                 type="email"
                 placeholder="user@example.com"
                 value={form.email}
-                onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, email: e.target.value }))
+                }
                 required
               />
 
@@ -292,27 +347,32 @@ export default function InviteUserModal({ open, onClose }: Props) {
                 type="text"
                 placeholder="e.g. Jane Doe"
                 value={form.fullName}
-                onChange={(e) => setForm(p => ({ ...p, fullName: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, fullName: e.target.value }))
+                }
               />
 
               <Select
                 label="Role *"
                 options={[
-                  { value: 'user', label: 'Normal User' },
-                  { value: 'admin', label: 'Admin' },
+                  { value: "user", label: "Normal User" },
+                  { value: "admin", label: "Admin" },
                 ]}
                 value={form.role}
-                onChange={(e) => setForm(p => ({ ...p, role: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, role: e.target.value }))
+                }
                 placeholder=""
               />
 
-              {form.role === 'admin' ? (
+              {form.role === "admin" ? (
                 <div>
                   <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1.5">
                     Monthly Token Limit
                   </label>
                   <p className="text-xs text-gray-500 bg-gray-50 border border-[#e5e3df] px-3 py-2.5">
-                    Admins have no token limit, and are automatically Finance Admins with full Cash Box access — no separate flag needed.
+                    Admins have no token limit, and are automatically Finance
+                    Admins with full Cash Box access — no separate flag needed.
                   </p>
                 </div>
               ) : (
@@ -321,16 +381,20 @@ export default function InviteUserModal({ open, onClose }: Props) {
                   type="number"
                   placeholder="2000000"
                   value={form.tokenLimit}
-                  onChange={(e) => setForm(p => ({ ...p, tokenLimit: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, tokenLimit: e.target.value }))
+                  }
                   min="1000"
                   required
                 />
               )}
 
-              {form.role !== 'admin' && (
+              {form.role !== "admin" && (
                 <div className="flex flex-col gap-3">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Module Access</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+                      Module Access
+                    </p>
                     <p className="text-[10px] text-gray-400 mt-1">Editorial</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -340,7 +404,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
                         label={label}
                         icon={icon}
                         checked={form[key]}
-                        onChange={(v) => setForm(p => ({ ...p, [key]: v }))}
+                        onChange={(v) => setForm((p) => ({ ...p, [key]: v }))}
                       />
                     ))}
                   </div>
@@ -349,8 +413,10 @@ export default function InviteUserModal({ open, onClose }: Props) {
                   <ModuleCheckbox
                     label="Cash Box — Field"
                     icon={Wallet}
-                    checked={form.financeRole === 'field'}
-                    onChange={(v) => setForm(p => ({ ...p, financeRole: v ? 'field' : '' }))}
+                    checked={form.financeRole === "field"}
+                    onChange={(v) =>
+                      setForm((p) => ({ ...p, financeRole: v ? "field" : "" }))
+                    }
                   />
                 </div>
               )}
@@ -372,5 +438,5 @@ export default function InviteUserModal({ open, onClose }: Props) {
         </div>
       </div>
     </div>
-  )
+  );
 }

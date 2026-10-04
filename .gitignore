@@ -36,3 +36,6 @@ next-env.d.ts
 
 # ffmpeg.wasm core — regenerated on install by scripts/copy-ffmpeg-core.mjs
 /public/ffmpeg/
+
+# Supabase CLI local scratch (version cache, project link) — never commit
+supabase/.temp/

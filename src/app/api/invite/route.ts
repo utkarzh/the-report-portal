@@ -1,103 +1,147 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getApiUser } from '@/lib/auth/api-user'
-import { getBaseUrl } from '@/lib/url'
+import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getApiUser } from "@/lib/auth/api-user";
+import { getBaseUrl } from "@/lib/url";
 
 // GET /api/invite?token=xxx — public, used by invite page
 export async function GET(request: NextRequest) {
-  const token = request.nextUrl.searchParams.get('token')
-  if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
+  const token = request.nextUrl.searchParams.get("token");
+  if (!token)
+    return NextResponse.json({ error: "Missing token" }, { status: 400 });
 
   const { data, error } = await supabaseAdmin
-    .from('invitations')
-    .select('email, role, status, expires_at')
-    .eq('token', token)
-    .single()
+    .from("invitations")
+    .select("email, role, status, expires_at")
+    .eq("token", token)
+    .single();
 
-  if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (error || !data)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  if (data.status !== 'pending') {
-    return NextResponse.json({ error: 'This invite link has expired or has already been used.' }, { status: 410 })
+  if (data.status !== "pending") {
+    return NextResponse.json(
+      { error: "This invite link has expired or has already been used." },
+      { status: 410 },
+    );
   }
 
   if (new Date(data.expires_at) < new Date()) {
-    await supabaseAdmin.from('invitations').update({ status: 'expired' }).eq('token', token)
-    return NextResponse.json({ error: 'This invite link has expired.' }, { status: 410 })
+    await supabaseAdmin
+      .from("invitations")
+      .update({ status: "expired" })
+      .eq("token", token);
+    return NextResponse.json(
+      { error: "This invite link has expired." },
+      { status: 410 },
+    );
   }
 
-  return NextResponse.json({ email: data.email, role: data.role })
+  return NextResponse.json({ email: data.email, role: data.role });
 }
 
 // POST /api/invite — admin only, creates invite
 export async function POST(request: NextRequest) {
-  const auth = await getApiUser()
-  if (!auth.user) return auth.response
-  const user = auth.user
+  const auth = await getApiUser();
+  if (!auth.user) return auth.response;
+  const user = auth.user;
 
   const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
 
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!profile || profile.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json()
-  const { email, role, tokenLimit, fullName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessInterviewLetterGenerator, canAccessSalesNegotiationCoach, financeRole } = body
+  const body = await request.json();
+  const {
+    email,
+    role,
+    tokenLimit,
+    fullName,
+    canAccessInterview,
+    canAccessTranscriptions,
+    canAccessBusinessCases,
+    canAccessEditorialBriefs,
+    canAccessMeetingPreparation,
+    canAccessInterviewLetterGenerator,
+    canAccessSalesNegotiationCoach,
+    canAccessCopywritingTool,
+    financeRole,
+  } = body;
 
   if (!email || !role) {
-    return NextResponse.json({ error: 'email and role are required' }, { status: 400 })
+    return NextResponse.json(
+      { error: "email and role are required" },
+      { status: 400 },
+    );
   }
 
   // Check for existing pending invite
   const { data: existing } = await supabaseAdmin
-    .from('invitations')
-    .select('id')
-    .eq('email', email)
-    .eq('status', 'pending')
-    .single()
+    .from("invitations")
+    .select("id")
+    .eq("email", email)
+    .eq("status", "pending")
+    .single();
 
   if (existing) {
-    return NextResponse.json({ error: 'A pending invite already exists for this email.' }, { status: 409 })
+    return NextResponse.json(
+      { error: "A pending invite already exists for this email." },
+      { status: 409 },
+    );
   }
 
   const { data: invite, error: insertError } = await supabaseAdmin
-    .from('invitations')
+    .from("invitations")
     .insert({
       email,
       role,
       // Admins are never token-limited — store NULL ("no limit"). Normal users
       // fall back to the 2M default when no limit is supplied.
-      token_limit: role === 'admin' ? null : (tokenLimit || 2000000),
+      token_limit: role === "admin" ? null : tokenLimit || 2000000,
       // Admins always have full module access; normal users get exactly what
       // the admin selected (interview defaults on, transcriptions off).
-      can_access_interview: role === 'admin' ? true : canAccessInterview !== false,
-      can_access_transcriptions: role === 'admin' ? true : canAccessTranscriptions === true,
-      can_access_business_cases: role === 'admin' ? true : canAccessBusinessCases === true,
-      can_access_editorial_briefs: role === 'admin' ? true : canAccessEditorialBriefs === true,
-      can_access_meeting_preparation: role === 'admin' ? true : canAccessMeetingPreparation === true,
-      can_access_interview_letter_generator: role === 'admin' ? true : canAccessInterviewLetterGenerator === true,
-      can_access_sales_negotiation_coach: role === 'admin' ? true : canAccessSalesNegotiationCoach === true,
+      can_access_interview:
+        role === "admin" ? true : canAccessInterview !== false,
+      can_access_transcriptions:
+        role === "admin" ? true : canAccessTranscriptions === true,
+      can_access_business_cases:
+        role === "admin" ? true : canAccessBusinessCases === true,
+      can_access_editorial_briefs:
+        role === "admin" ? true : canAccessEditorialBriefs === true,
+      can_access_meeting_preparation:
+        role === "admin" ? true : canAccessMeetingPreparation === true,
+      can_access_interview_letter_generator:
+        role === "admin" ? true : canAccessInterviewLetterGenerator === true,
+      can_access_sales_negotiation_coach:
+        role === "admin" ? true : canAccessSalesNegotiationCoach === true,
+      can_access_copywriting_tool:
+        role === "admin" ? true : canAccessCopywritingTool === true,
       // Platform admins reach finance through role === 'admin' — never store a
       // finance_role for them (see canAccessFinance/isFinanceAdmin). Finance
       // Admin is only ever granted to Admin accounts, so a normal-user invite
       // can only carry 'field', regardless of what the client sends.
-      finance_role: role === 'admin' ? null : (financeRole === 'field' ? 'field' : null),
+      finance_role:
+        role === "admin" ? null : financeRole === "field" ? "field" : null,
       invited_by: user.id,
     })
-    .select('id, token')
-    .single()
+    .select("id, token")
+    .single();
 
   if (insertError || !invite) {
-    return NextResponse.json({ error: 'Failed to create invitation' }, { status: 500 })
+    return NextResponse.json(
+      { error: "Failed to create invitation" },
+      { status: 500 },
+    );
   }
 
   // Admins set a password, so they go through the invite-link → signup flow.
-  if (role === 'admin') {
-    const inviteUrl = `${getBaseUrl(request)}/invite/${invite.token}`
-    return NextResponse.json({ method: 'invite', inviteUrl }, { status: 201 })
+  if (role === "admin") {
+    const inviteUrl = `${getBaseUrl(request)}/invite/${invite.token}`;
+    return NextResponse.json({ method: "invite", inviteUrl }, { status: 201 });
   }
 
   // Normal users never sign up or set a password — they log in with a one-time
@@ -107,18 +151,22 @@ export async function POST(request: NextRequest) {
   const { error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     email_confirm: true,
-    user_metadata: { full_name: (fullName || '').trim() },
-  })
+    user_metadata: { full_name: (fullName || "").trim() },
+  });
 
   if (createError) {
     // Roll back the invitation so a failed create doesn't leave a dangling row.
-    await supabaseAdmin.from('invitations').delete().eq('id', invite.id)
-    const exists = /already|registered|exists/i.test(createError.message)
+    await supabaseAdmin.from("invitations").delete().eq("id", invite.id);
+    const exists = /already|registered|exists/i.test(createError.message);
     return NextResponse.json(
-      { error: exists ? 'An account with this email already exists.' : 'Failed to create the user account.' },
+      {
+        error: exists
+          ? "An account with this email already exists."
+          : "Failed to create the user account.",
+      },
       { status: exists ? 409 : 500 },
-    )
+    );
   }
 
-  return NextResponse.json({ method: 'created', email }, { status: 201 })
+  return NextResponse.json({ method: "created", email }, { status: 201 });
 }

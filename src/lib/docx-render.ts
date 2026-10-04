@@ -164,9 +164,24 @@ const LINE_SPACING = 276
 
 export function markdownToParagraphs(
   text: string,
-  opts: { highlightConfirm?: boolean; paragraphSpacingAfter?: number; justify?: boolean; bodyFontSize?: number } = {},
+  opts: {
+    highlightConfirm?: boolean
+    paragraphSpacingAfter?: number
+    justify?: boolean
+    bodyFontSize?: number
+    lineSpacing?: number
+    bodyStyle?: string
+  } = {},
 ): Paragraph[] {
   const highlight = Boolean(opts.highlightConfirm)
+  // Body line spacing in 240ths of a line (276 = 1.15, the default). Headings
+  // always keep the 1.15 standard.
+  const bodyLine = opts.lineSpacing ?? LINE_SPACING
+  // Optional explicit paragraph style for body text. Without one, body
+  // paragraphs rely on the reader's default paragraph style, which varies
+  // (Times in Apple's viewer, bold in some Word setups) when the document
+  // doesn't define a default Normal style.
+  const bodyStyle = opts.bodyStyle
   // Default 120 twips between paragraphs; callers needing a more generous,
   // blank-line-like gap (e.g. between interview questions) can override it.
   const spacingAfter = opts.paragraphSpacingAfter ?? 120
@@ -220,7 +235,7 @@ export function markdownToParagraphs(
 
       const li = /^[-*]\s+(.*)$/.exec(line)
       if (li) {
-        paras.push(new Paragraph({ children: inlineRuns(li[1], highlight, bodyRunOpts), bullet: { level: 0 }, spacing: { after: spacingAfter, line: LINE_SPACING }, alignment }))
+        paras.push(new Paragraph({ children: inlineRuns(li[1], highlight, bodyRunOpts), bullet: { level: 0 }, spacing: { after: spacingAfter, line: bodyLine }, alignment }))
         continue
       }
 
@@ -229,14 +244,15 @@ export function markdownToParagraphs(
         paras.push(
           new Paragraph({
             children: [new TextRun({ text: `${sp[1]} `, bold: true, size: opts.bodyFontSize }), ...inlineRuns(sp[2], highlight, bodyRunOpts)],
-            spacing: { after: 160, line: LINE_SPACING },
+            style: bodyStyle,
+            spacing: { after: 160, line: bodyLine },
             alignment,
           }),
         )
         continue
       }
 
-      paras.push(new Paragraph({ children: inlineRuns(line, highlight, bodyRunOpts), spacing: { after: spacingAfter, line: LINE_SPACING }, alignment }))
+      paras.push(new Paragraph({ children: inlineRuns(line, highlight, bodyRunOpts), style: bodyStyle, spacing: { after: spacingAfter, line: bodyLine }, alignment }))
     }
   }
 

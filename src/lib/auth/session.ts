@@ -1,77 +1,86 @@
-import { cache } from 'react'
-import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
-import type { Profile, UserRole } from '@/types'
+import { cache } from "react";
+import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { Profile, UserRole } from "@/types";
 
 export const getServerUser = cache(async () => {
-  const supabase = createSupabaseServerClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return null
-  return user
-})
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+  if (error || !user) return null;
+  return user;
+});
 
 export const getServerProfile = cache(async (): Promise<Profile | null> => {
-  const user = await getServerUser()
-  if (!user) return null
+  const user = await getServerUser();
+  if (!user) return null;
 
-  const supabase = createSupabaseServerClient()
+  const supabase = createSupabaseServerClient();
   const { data } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
 
-  return data as Profile | null
-})
+  return data as Profile | null;
+});
 
 export async function requireAdmin(): Promise<Profile> {
-  const profile = await getServerProfile()
-  if (!profile) redirect('/login')
-  if (profile.role !== 'admin') redirect('/dashboard')
-  return profile
+  const profile = await getServerProfile();
+  if (!profile) redirect("/login");
+  if (profile.role !== "admin") redirect("/dashboard");
+  return profile;
 }
 
 // Reads the middleware-injected profile from request headers.
 // Zero Supabase calls — middleware already validated and set these.
 export function getProfileFromHeaders() {
-  const h = headers()
-  const role = h.get('x-user-role') as UserRole | null
-  if (!role) return null
+  const h = headers();
+  const role = h.get("x-user-role") as UserRole | null;
+  if (!role) return null;
   return {
-    id: h.get('x-user-id') ?? '',
-    full_name: h.get('x-user-name') || null,
+    id: h.get("x-user-id") ?? "",
+    full_name: h.get("x-user-name") || null,
     role,
-    status: 'active' as const,
-    tokens_used: Number(h.get('x-user-tokens-used') ?? '0'),
-    token_limit: Number(h.get('x-user-token-limit') ?? '0'),
+    status: "active" as const,
+    tokens_used: Number(h.get("x-user-tokens-used") ?? "0"),
+    token_limit: Number(h.get("x-user-token-limit") ?? "0"),
     // Effective module access (admins are always true). Set by middleware.
-    can_access_interview: h.get('x-user-can-interview') === 'true',
-    can_access_transcriptions: h.get('x-user-can-transcriptions') === 'true',
-    can_access_business_cases: h.get('x-user-can-business-cases') === 'true',
-    can_access_editorial_briefs: h.get('x-user-can-editorial-briefs') === 'true',
-    can_access_meeting_preparation: h.get('x-user-can-meeting-preparation') === 'true',
-    can_access_interview_letter_generator: h.get('x-user-can-interview-letters') === 'true',
-    can_access_sales_negotiation_coach: h.get('x-user-can-sales-coach') === 'true',
-    finance_role: (h.get('x-user-finance-role') || null) as Profile['finance_role'],
-  }
+    can_access_interview: h.get("x-user-can-interview") === "true",
+    can_access_transcriptions: h.get("x-user-can-transcriptions") === "true",
+    can_access_business_cases: h.get("x-user-can-business-cases") === "true",
+    can_access_editorial_briefs:
+      h.get("x-user-can-editorial-briefs") === "true",
+    can_access_meeting_preparation:
+      h.get("x-user-can-meeting-preparation") === "true",
+    can_access_interview_letter_generator:
+      h.get("x-user-can-interview-letters") === "true",
+    can_access_sales_negotiation_coach:
+      h.get("x-user-can-sales-coach") === "true",
+    can_access_copywriting_tool: h.get("x-user-can-copywriting") === "true",
+    finance_role: (h.get("x-user-finance-role") ||
+      null) as Profile["finance_role"],
+  };
 }
 
 // Synchronous admin guard using the middleware-injected role header.
 // Throws a redirect if the user isn't an admin — no DB call needed.
 export function requireAdminHeader(): void {
-  const h = headers()
-  const role = h.get('x-user-role')
-  if (!role) redirect('/login')
-  if (role !== 'admin') redirect('/dashboard')
+  const h = headers();
+  const role = h.get("x-user-role");
+  if (!role) redirect("/login");
+  if (role !== "admin") redirect("/dashboard");
 }
 
 // Synchronous finance-admin guard (platform admins pass too — see
 // isFinanceAdmin). Used by the /finance/admin route group layout.
 export function requireFinanceAdminHeader(): void {
-  const h = headers()
-  const role = h.get('x-user-role')
-  if (!role) redirect('/login')
-  const financeRole = h.get('x-user-finance-role')
-  if (role !== 'admin' && financeRole !== 'finance_admin') redirect('/finance')
+  const h = headers();
+  const role = h.get("x-user-role");
+  if (!role) redirect("/login");
+  const financeRole = h.get("x-user-finance-role");
+  if (role !== "admin" && financeRole !== "finance_admin") redirect("/finance");
 }

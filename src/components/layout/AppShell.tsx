@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
@@ -8,30 +8,47 @@ import FeedbackWidget from '@/components/feedback/FeedbackWidget'
 import type { UserRole } from '@/types'
 
 interface Props {
-  children: React.ReactNode
-  role: UserRole
-  tokenUsed: number
-  tokenLimit: number
-  userName: string | null
-  canAccessInterview: boolean
-  canAccessTranscriptions: boolean
-  canAccessBusinessCases: boolean
-  canAccessEditorialBriefs: boolean
-  canAccessMeetingPreparation: boolean
-  canAccessInterviewLetterGenerator: boolean
-  canAccessSalesNegotiationCoach: boolean
-  canAccessFinance?: boolean
-  financeHref?: string
+  children: React.ReactNode;
+  role: UserRole;
+  tokenUsed: number;
+  tokenLimit: number;
+  userName: string | null;
+  canAccessInterview: boolean;
+  canAccessTranscriptions: boolean;
+  canAccessBusinessCases: boolean;
+  canAccessEditorialBriefs: boolean;
+  canAccessMeetingPreparation: boolean;
+  canAccessInterviewLetterGenerator: boolean;
+  canAccessSalesNegotiationCoach: boolean;
+  canAccessCopywritingTool: boolean;
+  canAccessFinance?: boolean;
+  financeHref?: string;
 }
 
-export default function AppShell({ children, role, tokenUsed, tokenLimit, userName, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessInterviewLetterGenerator, canAccessSalesNegotiationCoach, canAccessFinance, financeHref }: Props) {
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const pathname = usePathname()
+export default function AppShell({
+  children,
+  role,
+  tokenUsed,
+  tokenLimit,
+  userName,
+  canAccessInterview,
+  canAccessTranscriptions,
+  canAccessBusinessCases,
+  canAccessEditorialBriefs,
+  canAccessMeetingPreparation,
+  canAccessInterviewLetterGenerator,
+  canAccessSalesNegotiationCoach,
+  canAccessCopywritingTool,
+  canAccessFinance,
+  financeHref,
+}: Props) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
 
   // Close drawer whenever the user navigates
   useEffect(() => {
-    setMobileOpen(false)
-  }, [pathname])
+    setMobileOpen(false);
+  }, [pathname]);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -64,6 +81,7 @@ export default function AppShell({ children, role, tokenUsed, tokenLimit, userNa
         canAccessMeetingPreparation={canAccessMeetingPreparation}
         canAccessInterviewLetterGenerator={canAccessInterviewLetterGenerator}
         canAccessSalesNegotiationCoach={canAccessSalesNegotiationCoach}
+        canAccessCopywritingTool={canAccessCopywritingTool}
         canAccessFinance={canAccessFinance}
         financeHref={financeHref}
         mobileOpen={mobileOpen}
@@ -76,5 +94,5 @@ export default function AppShell({ children, role, tokenUsed, tokenLimit, userNa
 
       <FeedbackWidget />
     </div>
-  )
+  );
 }

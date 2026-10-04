@@ -16,10 +16,15 @@ export interface ExtractedSample {
   charCount: number
 }
 
+// `maxChars` caps the stored text (default MAX_SAMPLE_CHARS, 60k); pass null
+// for no cap — the Copywriting Tool does, so long interview transcripts are
+// read in full (it guards the project's TOTAL size instead).
 export async function extractSampleText(
   filename: string,
   buffer: Buffer,
+  opts: { maxChars?: number | null } = {},
 ): Promise<ExtractedSample> {
+  const maxChars = opts.maxChars === undefined ? MAX_SAMPLE_CHARS : opts.maxChars
   const name = filename.toLowerCase()
   let text = ''
 
@@ -58,7 +63,7 @@ export async function extractSampleText(
   text = text.trim()
   if (!text) throw new Error('That document appears to be empty or has no extractable text.')
 
-  const truncated = text.length > MAX_SAMPLE_CHARS
-  if (truncated) text = text.slice(0, MAX_SAMPLE_CHARS)
+  const truncated = maxChars !== null && text.length > maxChars
+  if (truncated) text = text.slice(0, maxChars)
   return { text, truncated, charCount: text.length }
 }

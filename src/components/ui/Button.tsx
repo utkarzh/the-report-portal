@@ -5,10 +5,14 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: 'sm' | 'md'
   loading?: boolean
   arrow?: boolean
+  // Shown as a hover tooltip while the button is disabled, explaining what's
+  // needed to enable it. A disabled <button> doesn't reliably receive hover
+  // events across browsers, so the tooltip lives on a wrapper span instead.
+  disabledReason?: string
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'primary', size = 'md', loading, arrow, children, className = '', disabled, ...props }, ref) => {
+  ({ variant = 'primary', size = 'md', loading, arrow, disabledReason, children, className = '', disabled, ...props }, ref) => {
     const base = 'inline-flex items-center justify-between font-medium tracking-wider uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
 
     const variants = {
@@ -23,10 +27,12 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       md: 'px-5 py-3 text-xs w-full',
     }
 
-    return (
+    const explainDisabled = !!disabled && !loading && !!disabledReason
+
+    const button = (
       <button
         ref={ref}
-        className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+        className={`${base} ${variants[variant]} ${sizes[size]} ${className}${explainDisabled ? ' pointer-events-none' : ''}`}
         disabled={disabled || loading}
         {...props}
       >
@@ -37,6 +43,13 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           </svg>
         )}
       </button>
+    )
+
+    if (!explainDisabled) return button
+    return (
+      <span title={disabledReason} className={`inline-flex cursor-not-allowed ${size === 'md' ? 'w-full' : ''}`}>
+        {button}
+      </span>
     )
   }
 )

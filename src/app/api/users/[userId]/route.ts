@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { supabaseAdmin } from '@/lib/supabase/admin'
+import { NextRequest, NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 interface Params {
-  params: { userId: string }
+  params: { userId: string };
 }
 
 // Use getSession() (cookie-based, no network) + DB role check (service role, authoritative).
@@ -11,109 +11,160 @@ interface Params {
 // when tokens are near expiry. The DB role check is the real security gate here.
 async function getAdminUser() {
   try {
-    const supabase = createSupabaseServerClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session?.user) return null
+    const supabase = createSupabaseServerClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.user) return null;
 
     const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('role')
-      .eq('id', session.user.id)
-      .single()
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .single();
 
-    if (!profile || profile.role !== 'admin') return null
-    return session.user
+    if (!profile || profile.role !== "admin") return null;
+    return session.user;
   } catch {
-    return null
+    return null;
   }
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const user = await getAdminUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getAdminUser();
+    if (!user)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await request.json()
-    const { fullName, role, tokenLimit, status, canAccessInterview, canAccessTranscriptions, canAccessBusinessCases, canAccessEditorialBriefs, canAccessMeetingPreparation, canAccessInterviewLetterGenerator, canAccessSalesNegotiationCoach, financeRole } = body
+    const body = await request.json();
+    const {
+      fullName,
+      role,
+      tokenLimit,
+      status,
+      canAccessInterview,
+      canAccessTranscriptions,
+      canAccessBusinessCases,
+      canAccessEditorialBriefs,
+      canAccessMeetingPreparation,
+      canAccessInterviewLetterGenerator,
+      canAccessSalesNegotiationCoach,
+      canAccessCopywritingTool,
+      financeRole,
+    } = body;
 
-    if (user.id === params.userId && (role !== undefined || status !== undefined)) {
-      return NextResponse.json({ error: 'You cannot change your own role or status.' }, { status: 403 })
+    if (
+      user.id === params.userId &&
+      (role !== undefined || status !== undefined)
+    ) {
+      return NextResponse.json(
+        { error: "You cannot change your own role or status." },
+        { status: 403 },
+      );
     }
 
-    const updates: Record<string, unknown> = {}
-    if (fullName !== undefined) updates.full_name = fullName
-    if (role !== undefined) updates.role = role
-    if (status !== undefined) updates.status = status
+    const updates: Record<string, unknown> = {};
+    if (fullName !== undefined) updates.full_name = fullName;
+    if (role !== undefined) updates.role = role;
+    if (status !== undefined) updates.status = status;
     // Admins are never token-limited (NULL = no limit). For normal users, apply
     // the supplied limit. A bare tokenLimit with no role change updates the limit.
-    if (role === 'admin') {
-      updates.token_limit = null
+    if (role === "admin") {
+      updates.token_limit = null;
     } else if (tokenLimit !== undefined && !Number.isNaN(tokenLimit)) {
-      updates.token_limit = tokenLimit
+      updates.token_limit = tokenLimit;
     }
     // Module access. Admins always have full access; normal users get exactly
     // what was submitted. Only touch these columns when values were provided.
-    if (role === 'admin') {
-      updates.can_access_interview = true
-      updates.can_access_transcriptions = true
-      updates.can_access_business_cases = true
-      updates.can_access_editorial_briefs = true
-      updates.can_access_meeting_preparation = true
-      updates.can_access_interview_letter_generator = true
-      updates.can_access_sales_negotiation_coach = true
+    if (role === "admin") {
+      updates.can_access_interview = true;
+      updates.can_access_transcriptions = true;
+      updates.can_access_business_cases = true;
+      updates.can_access_editorial_briefs = true;
+      updates.can_access_meeting_preparation = true;
+      updates.can_access_interview_letter_generator = true;
+      updates.can_access_sales_negotiation_coach = true;
+      updates.can_access_copywriting_tool = true;
       // Platform admins reach finance through role === 'admin', not this column.
-      updates.finance_role = null
+      updates.finance_role = null;
     } else {
-      if (canAccessInterview !== undefined) updates.can_access_interview = canAccessInterview === true
-      if (canAccessTranscriptions !== undefined) updates.can_access_transcriptions = canAccessTranscriptions === true
-      if (canAccessBusinessCases !== undefined) updates.can_access_business_cases = canAccessBusinessCases === true
-      if (canAccessEditorialBriefs !== undefined) updates.can_access_editorial_briefs = canAccessEditorialBriefs === true
-      if (canAccessMeetingPreparation !== undefined) updates.can_access_meeting_preparation = canAccessMeetingPreparation === true
-      if (canAccessInterviewLetterGenerator !== undefined) updates.can_access_interview_letter_generator = canAccessInterviewLetterGenerator === true
-      if (canAccessSalesNegotiationCoach !== undefined) updates.can_access_sales_negotiation_coach = canAccessSalesNegotiationCoach === true
+      if (canAccessInterview !== undefined)
+        updates.can_access_interview = canAccessInterview === true;
+      if (canAccessTranscriptions !== undefined)
+        updates.can_access_transcriptions = canAccessTranscriptions === true;
+      if (canAccessBusinessCases !== undefined)
+        updates.can_access_business_cases = canAccessBusinessCases === true;
+      if (canAccessEditorialBriefs !== undefined)
+        updates.can_access_editorial_briefs = canAccessEditorialBriefs === true;
+      if (canAccessMeetingPreparation !== undefined)
+        updates.can_access_meeting_preparation =
+          canAccessMeetingPreparation === true;
+      if (canAccessInterviewLetterGenerator !== undefined)
+        updates.can_access_interview_letter_generator =
+          canAccessInterviewLetterGenerator === true;
+      if (canAccessSalesNegotiationCoach !== undefined)
+        updates.can_access_sales_negotiation_coach =
+          canAccessSalesNegotiationCoach === true;
+      if (canAccessCopywritingTool !== undefined)
+        updates.can_access_copywriting_tool = canAccessCopywritingTool === true;
       // Finance Admin is only ever granted to Admin accounts — a normal user
       // can be a Field director/rep, never a Finance Admin, regardless of
       // what the client sends (the UI already only offers 'field', this is
       // the server-side enforcement of the same rule).
-      if (financeRole !== undefined) updates.finance_role = financeRole === 'field' ? 'field' : null
+      if (financeRole !== undefined)
+        updates.finance_role = financeRole === "field" ? "field" : null;
     }
 
     const { error } = await supabaseAdmin
-      .from('profiles')
+      .from("profiles")
       .update(updates)
-      .eq('id', params.userId)
+      .eq("id", params.userId);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error)
+      return NextResponse.json({ error: error.message }, { status: 500 });
 
-    if (status === 'inactive') {
-      const { error: signOutError } = await supabaseAdmin.auth.admin.signOut(params.userId)
+    if (status === "inactive") {
+      const { error: signOutError } = await supabaseAdmin.auth.admin.signOut(
+        params.userId,
+      );
       if (signOutError) {
-        console.error('Failed to revoke sessions:', signOutError.message)
+        console.error("Failed to revoke sessions:", signOutError.message);
       }
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('PATCH /api/users/[userId] error:', err)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error("PATCH /api/users/[userId] error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const user = await getAdminUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getAdminUser();
+    if (!user)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     if (user.id === params.userId) {
-      return NextResponse.json({ error: 'You cannot delete your own account.' }, { status: 403 })
+      return NextResponse.json(
+        { error: "You cannot delete your own account." },
+        { status: 403 },
+      );
     }
 
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(params.userId)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(params.userId);
+    if (error)
+      return NextResponse.json({ error: error.message }, { status: 500 });
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('DELETE /api/users/[userId] error:', err)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error("DELETE /api/users/[userId] error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
