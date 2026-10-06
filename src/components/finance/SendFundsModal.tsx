@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
+import type { FinanceFunding } from '@/types'
 
 interface Props {
   open: boolean
@@ -15,11 +16,17 @@ interface Props {
   // The project's local currency, offered as a "sent in" option alongside
   // the settlement currency and the usual majors.
   localCurrency?: string | null
+  // Present → editing an already-recorded funding (admin-only correction,
+  // client request Oct 2026) instead of recording a new one. Prefills every
+  // field and PATCHes /api/finance/fundings/[id] on submit. A Director never
+  // reaches this prop — the admin project page is the only caller that sets it.
+  editingFunding?: FinanceFunding | null
 }
 
 const CONCEPT_SUGGESTIONS = ['Initial project funds', 'Additional funds', 'Travel budget', 'PR expenses']
 
-export default function SendFundsModal({ open, onClose, onSent, projectId, settlementCurrency, localCurrency }: Props) {
+export default function SendFundsModal({ open, onClose, onSent, projectId, settlementCurrency, localCurrency, editingFunding }: Props) {
+  const isEditing = Boolean(editingFunding)
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState(settlementCurrency)
   const [exchangeRate, setExchangeRate] = useState('')
@@ -28,6 +35,24 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Prefill from the funding being edited each time the modal opens for it.
+  useEffect(() => {
+    if (!open) return
+    if (editingFunding) {
+      setAmount(String(editingFunding.sent_amount ?? editingFunding.amount))
+      setCurrency(editingFunding.sent_currency || settlementCurrency)
+      setExchangeRate(editingFunding.exchange_rate != null && editingFunding.exchange_rate !== 1 ? String(editingFunding.exchange_rate) : '')
+      setDateSent(editingFunding.date_sent)
+      setConcept(editingFunding.concept || '')
+    } else {
+      setAmount(''); setCurrency(settlementCurrency); setExchangeRate('')
+      setDateSent(new Date().toISOString().slice(0, 10)); setConcept('')
+    }
+    setFile(null)
+    setError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editingFunding?.id])
 
   const currencyOptions = Array.from(new Set(
     [settlementCurrency, localCurrency, 'USD', 'EUR', 'GBP'].filter((c): c is string => !!c).map(c => c.toUpperCase()),
@@ -39,11 +64,6 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
     ? Math.round(amountNum * rateNum * 100) / 100
     : null
 
-  function reset() {
-    setAmount(''); setCurrency(settlementCurrency); setExchangeRate('')
-    setConcept(''); setFile(null); setError(null)
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -54,7 +74,9 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
     setLoading(true)
 
     try {
-      let proofImagePath: string | null = null
+      // `undefined` tells the PATCH route "leave the existing evidence alone"
+      // — only set when editing AND no new file was chosen this time.
+      let proofImagePath: string | null | undefined = isEditing ? undefined : null
       if (file) {
         const supabase = getSupabaseBrowserClient()
         const ext = file.name.split('.').pop() || 'jpg'
@@ -64,24 +86,26 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
         proofImagePath = path
       }
 
-      const res = await fetch(`/api/finance/projects/${projectId}/funding`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount,
-          currency,
-          exchangeRate: crossCurrency ? exchangeRate : undefined,
-          dateSent,
-          concept: concept.trim() || null,
-          proofImagePath,
-        }),
-      })
+      const res = await fetch(
+        isEditing ? `/api/finance/fundings/${editingFunding!.id}` : `/api/finance/projects/${projectId}/funding`,
+        {
+          method: isEditing ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount,
+            currency,
+            exchangeRate: crossCurrency ? exchangeRate : undefined,
+            dateSent,
+            concept: concept.trim() || null,
+            proofImagePath,
+          }),
+        },
+      )
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to record the transfer.')
+        throw new Error(data.error || `Failed to ${isEditing ? 'save the changes' : 'record the transfer'}.`)
       }
 
-      reset()
       onSent()
       onClose()
     } catch (err) {
@@ -98,7 +122,7 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white w-full max-w-md shadow-2xl flex flex-col rounded-xl overflow-hidden max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-5 border-b border-[#e5e3df]">
-          <h2 className="text-sm font-semibold text-gray-900">Send funds to director</h2>
+          <h2 className="text-sm font-semibold text-gray-900">{isEditing ? 'Edit funding' : 'Send funds to director'}</h2>
           <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
             <X size={18} />
           </button>
@@ -188,14 +212,21 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
               onChange={e => setFile(e.target.files?.[0] ?? null)}
               className="text-sm w-full border border-[#e5e3df] rounded-lg px-3 py-2.5"
             />
+            {isEditing && !file && (
+              <p className="text-xs text-gray-400 mt-1.5">
+                {editingFunding?.proof_image_path ? 'Leave empty to keep the existing file.' : 'No evidence on file — choose one to attach it.'}
+              </p>
+            )}
           </div>
 
           <p className="text-xs text-gray-500">
-            This adds to the project&apos;s received funds and appears in the balance ledger. Only Finance can record funding.
+            {isEditing
+              ? 'Only Finance can edit a recorded transfer.'
+              : 'This adds to the project’s received funds and appears in the balance ledger. Only Finance can record funding.'}
           </p>
 
           <div className="flex items-center gap-3 pt-1">
-            <Button type="submit" loading={loading} arrow>Record transfer</Button>
+            <Button type="submit" loading={loading} arrow>{isEditing ? 'Save changes' : 'Record transfer'}</Button>
             <button type="button" onClick={onClose} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
           </div>
         </form>

@@ -42,7 +42,7 @@ interface Detail {
 }
 
 type LedgerRow =
-  | { kind: 'funding'; date: string; uploadedAt: string; label: string; detail: string | null; amountIn: number }
+  | { kind: 'funding'; date: string; uploadedAt: string; label: string; detail: string | null; amountIn: number; funding: FundingRow }
   | { kind: 'transfer_in'; date: string; uploadedAt: string; label: string; detail: string | null; amountIn: number }
   | { kind: 'transfer_out'; date: string; uploadedAt: string; label: string; detail: string | null; amountOut: number }
   | { kind: 'expense'; date: string; uploadedAt: string; expense: ExpenseRow; amountOut: number }
@@ -65,6 +65,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [fundsModalOpen, setFundsModalOpen] = useState(false)
+  const [editFunding, setEditFunding] = useState<FundingRow | null>(null)
   const [memberModalOpen, setMemberModalOpen] = useState(false)
   const [directorModalOpen, setDirectorModalOpen] = useState(false)
   const [exportModalOpen, setExportModalOpen] = useState(false)
@@ -232,6 +233,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         fundingConversionNote(f, project.settlement_currency),
       ].filter(Boolean).join(' · ') || null,
       amountIn: Number(f.amount),
+      funding: f,
     })),
     ...transfersIn.map(t => ({
       kind: 'transfer_in' as const,
@@ -616,7 +618,18 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                       <td className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap font-medium">
                         {'amountIn' in row ? <span className="text-emerald-700">+{symbol}{row.amountIn.toFixed(2)}</span> : <span className="text-gray-900">−{symbol}{row.amountOut.toFixed(2)}</span>}
                       </td>
-                      <td className="px-4 py-3.5 text-gray-300">—</td>
+                      <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
+                        {row.kind === 'funding' ? (
+                          <button
+                            onClick={() => setEditFunding(row.funding)}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-gray-900 transition-colors"
+                          >
+                            <Pencil size={11} /> Edit
+                          </button>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
                     </>
                   )}
                 </tr>
@@ -627,12 +640,13 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
       )}
 
       <SendFundsModal
-        open={fundsModalOpen}
-        onClose={() => setFundsModalOpen(false)}
+        open={fundsModalOpen || Boolean(editFunding)}
+        onClose={() => { setFundsModalOpen(false); setEditFunding(null) }}
         onSent={load}
         projectId={project.id}
         settlementCurrency={project.settlement_currency}
         localCurrency={project.local_currency}
+        editingFunding={editFunding}
       />
       <AddMemberModal
         open={memberModalOpen}
