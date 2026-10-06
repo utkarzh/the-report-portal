@@ -1,14 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { X, Sparkles, Car, BedDouble, Phone, Layers, Printer, Landmark, ShieldCheck, Receipt as ReceiptIcon, Pencil } from 'lucide-react'
+import { X, Sparkles, Car, BedDouble, Phone, Layers, Printer, Landmark, ShieldCheck, Receipt as ReceiptIcon, Pencil, Trash2, ImageUp } from 'lucide-react'
 import Select from '@/components/ui/Select'
 import ReceiptLightbox, { isPreviewableReceiptUrl } from '@/components/finance/ReceiptLightbox'
 import { SUB_LINES_BY_CATEGORY, defaultSubLine } from '@/lib/finance-categories'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceExpense, FinanceExpenseCategory, FinanceExpenseFlag } from '@/types'
 import { formatDayMonthYearTime } from '@/lib/date-format'
+import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 
 // Same icon set as SpendByCategoryModal (admin/projects/[id]/page.tsx and
 // FieldExpensesSection.tsx) — kept in sync so a category means the same
@@ -54,6 +55,12 @@ interface Props {
   // this — field users still only get the separate "fix & resubmit while
   // rejected" flow.
   canEdit?: boolean
+  // Field view: the Director's own not-yet-verified expense. Unlocks the
+  // same Edit / Replace photo / Remove actions for just this one entry —
+  // other entries split from the same photo are untouched.
+  canManageOwn?: boolean
+  // How many logged entries share this expense's receipt photo.
+  siblingCount?: number
   onUpdated?: () => void
 }
 
@@ -62,7 +69,7 @@ interface Props {
 // full AI note, every flag). This is the single place that lays out every
 // saved field for one expense — shared by the admin ledger and the field
 // expense list so "click a row" means the same thing everywhere.
-export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchangeRateProofUrl, canEdit, onUpdated }: Props) {
+export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchangeRateProofUrl, canEdit, canManageOwn, siblingCount = 1, onUpdated }: Props) {
   const Icon = CATEGORY_ICONS[e.category] ?? Layers
   const unresolvedFlags = (e.finance_expense_flags ?? []).filter(f => !f.resolved)
   const resolvedFlags = (e.finance_expense_flags ?? []).filter(f => f.resolved)
@@ -71,6 +78,12 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [busy, setBusy] = useState<'delete' | 'replace' | null>(null)
+  const replaceInputRef = useRef<HTMLInputElement>(null)
+  const canModify = !!canEdit || !!canManageOwn
+  const canRemove = canModify && e.status !== 'verified'
   const [form, setForm] = useState<EditForm>(() => ({
     concept: e.concept,
     category: e.category,
@@ -108,7 +121,7 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        adminEdit: true,
+        adminEdit: canEdit ? true : undefined,
         concept: form.concept.trim(),
         category: form.category,
         subLine: form.subLine || null,
@@ -130,6 +143,47 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
     }
     onUpdated?.()
     onClose()
+  }
+
+  async function handleDelete() {
+    setBusy('delete')
+    setActionError(null)
+    const res = await fetch(`/api/finance/expenses/${e.id}`, { method: 'DELETE' })
+    setBusy(null)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setActionError(data.error || 'Failed to remove this expense.')
+      setConfirmingDelete(false)
+      return
+    }
+    onUpdated?.()
+    onClose()
+  }
+
+  async function handleReplaceReceipt(file: File) {
+    setBusy('replace')
+    setActionError(null)
+    try {
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `${e.project_id}/${crypto.randomUUID()}.${ext}`
+      const { error: uploadError } = await getSupabaseBrowserClient().storage.from('finance-receipts').upload(path, file)
+      if (uploadError) throw new Error(uploadError.message)
+      const res = await fetch(`/api/finance/expenses/${e.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replaceReceiptPath: path }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to replace the receipt.')
+      }
+      onUpdated?.()
+      onClose()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to replace the receipt.')
+    } finally {
+      setBusy(null)
+    }
   }
 
   return (
@@ -155,7 +209,7 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
           </div>
           <div className="flex items-center gap-2.5 flex-shrink-0">
             <StatusBadge status={e.status} />
-            {canEdit && !editing && (
+            {canModify && !editing && (
               <button onClick={() => setEditing(true)} className="text-gray-400 hover:text-gray-900 transition-colors" title="Edit expense">
                 <Pencil size={14} />
               </button>
@@ -191,6 +245,9 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
 
             {editing ? (
               <div className="flex flex-col gap-3">
+                {canManageOwn && !canEdit && e.status === 'rejected' && (
+                  <div className="text-xs text-gray-500">Saving sends this expense back to Finance for review.</div>
+                )}
                 {saveError && <div className="p-2.5 bg-red-50 border border-red-200 text-xs text-red-700 rounded-lg">{saveError}</div>}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
@@ -244,7 +301,7 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
                 </div>
                 <div className="flex items-center gap-3 pt-1">
                   <button onClick={handleSave} disabled={saving} className="text-xs font-medium bg-black text-white rounded-lg px-4 py-2 hover:bg-gray-800 disabled:opacity-50 transition-colors">
-                    Save changes
+                    {canManageOwn && !canEdit && e.status === 'rejected' ? 'Save & resubmit' : 'Save changes'}
                   </button>
                   <button onClick={() => { setEditing(false); setSaveError(null) }} className="text-xs text-gray-500 hover:text-gray-700 transition-colors">Cancel</button>
                 </div>
@@ -320,6 +377,58 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
             <div>
               <div className="text-[10.5px] font-semibold uppercase tracking-wide text-red-500 mb-1.5">Rejection reason</div>
               <div className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5">{e.rejection_reason}</div>
+            </div>
+          )}
+
+          {canModify && !editing && (
+            <div className="flex flex-col gap-2.5 pt-1">
+              {siblingCount > 1 && (
+                <div className="text-xs text-gray-500">
+                  One of {siblingCount} entries read from the same photo — changes here only affect this entry.
+                </div>
+              )}
+              {actionError && <div className="p-2.5 bg-red-50 border border-red-200 text-xs text-red-700 rounded-lg">{actionError}</div>}
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  ref={replaceInputRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="sr-only"
+                  onChange={ev => {
+                    const file = ev.target.files?.[0]
+                    ev.target.value = ''
+                    if (file) handleReplaceReceipt(file)
+                  }}
+                />
+                <button
+                  onClick={() => replaceInputRef.current?.click()}
+                  disabled={busy !== null}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-3 py-2 hover:border-gray-300 disabled:opacity-50 transition-colors"
+                >
+                  <ImageUp size={13} /> {busy === 'replace' ? 'Uploading…' : 'Replace photo'}
+                </button>
+                {canRemove && (confirmingDelete ? (
+                  <div className="inline-flex items-center gap-2 text-xs">
+                    <span className="text-gray-600">Remove this expense?</span>
+                    <button
+                      onClick={handleDelete}
+                      disabled={busy !== null}
+                      className="font-medium bg-red-600 text-white rounded-lg px-3 py-2 hover:bg-red-700 disabled:opacity-50 transition-colors"
+                    >
+                      {busy === 'delete' ? 'Removing…' : 'Yes, remove'}
+                    </button>
+                    <button onClick={() => setConfirmingDelete(false)} className="text-gray-500 hover:text-gray-800">Cancel</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingDelete(true)}
+                    disabled={busy !== null}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 border border-red-200 bg-white rounded-lg px-3 py-2 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                  >
+                    <Trash2 size={13} /> Remove expense
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

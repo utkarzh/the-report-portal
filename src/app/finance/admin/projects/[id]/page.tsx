@@ -18,7 +18,9 @@ import ExportWeekModal from '@/components/finance/ExportWeekModal'
 import ExpenseDetailModal from '@/components/finance/ExpenseDetailModal'
 import AiReviewDisclosure from '@/components/finance/AiReviewDisclosure'
 import ReceiptLightbox, { isPreviewableReceiptUrl } from '@/components/finance/ReceiptLightbox'
-import WeekNavigator from '@/components/finance/WeekNavigator'
+import WeekNavigator, { ALL_WEEKS } from '@/components/finance/WeekNavigator'
+import { LEDGER_SORT_OPTIONS, compareLedgerRows, fundingConversionNote, type LedgerSort } from '@/lib/finance-ledger'
+import { formatDayMonth } from '@/lib/date-format'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceExpense, FinanceExpenseCategory, FinanceExpenseFlag, FinanceFunding, FinanceProject, FinanceProjectMember, FinanceTransfer } from '@/types'
 
@@ -40,10 +42,10 @@ interface Detail {
 }
 
 type LedgerRow =
-  | { kind: 'funding'; date: string; label: string; amountIn: number; sortKey: number }
-  | { kind: 'transfer_in'; date: string; label: string; amountIn: number; sortKey: number }
-  | { kind: 'transfer_out'; date: string; label: string; amountOut: number; sortKey: number }
-  | { kind: 'expense'; date: string; expense: ExpenseRow; amountOut: number; sortKey: number }
+  | { kind: 'funding'; date: string; uploadedAt: string; label: string; detail: string | null; amountIn: number }
+  | { kind: 'transfer_in'; date: string; uploadedAt: string; label: string; detail: string | null; amountIn: number }
+  | { kind: 'transfer_out'; date: string; uploadedAt: string; label: string; detail: string | null; amountOut: number }
+  | { kind: 'expense'; date: string; uploadedAt: string; expense: ExpenseRow; amountOut: number }
 
 type StatusFilter = 'all' | 'pending' | 'verified' | 'rejected'
 type TypeFilter = 'all' | 'expense' | 'funding' | 'transfer'
@@ -88,6 +90,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
   // null = not yet chosen by the user — defaults to the project's current
   // week once `detail` has loaded (see effectiveWeek below).
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
+  const [sort, setSort] = useState<LedgerSort>('date_desc')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -218,36 +221,48 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
     .map(([key, label]) => ({ key, label, amount: categorySpend[key] || 0 }))
     .sort((a, b) => b.amount - a.amount)[0]
 
-  const ledgerRows: LedgerRow[] = [
+  const ledgerRows: LedgerRow[] = ([
     ...fundings.map(f => ({
       kind: 'funding' as const,
       date: f.date_sent,
-      label: `Transfer → ${directorName || 'director'}${f.profiles ? ` · sent by ${f.profiles.full_name || f.profiles.email}` : ''}`,
+      uploadedAt: f.created_at,
+      label: `Transfer → ${directorName || 'director'}${f.concept ? ` — ${f.concept}` : ''}`,
+      detail: [
+        f.profiles ? `sent by ${f.profiles.full_name || f.profiles.email}` : null,
+        fundingConversionNote(f, project.settlement_currency),
+      ].filter(Boolean).join(' · ') || null,
       amountIn: Number(f.amount),
-      sortKey: new Date(f.date_sent).getTime(),
     })),
     ...transfersIn.map(t => ({
       kind: 'transfer_in' as const,
       date: t.created_at.slice(0, 10),
+      uploadedAt: t.created_at,
       label: `Transfer in${t.reason ? ` — ${t.reason}` : ''}`,
+      detail: null,
       amountIn: Number(t.to_amount ?? t.amount),
-      sortKey: new Date(t.created_at).getTime(),
     })),
     ...transfersOut.map(t => ({
       kind: 'transfer_out' as const,
       date: t.created_at.slice(0, 10),
+      uploadedAt: t.created_at,
       label: `Transfer out${t.reason ? ` — ${t.reason}` : ''}`,
+      detail: null,
       amountOut: Number(t.amount),
-      sortKey: new Date(t.created_at).getTime(),
     })),
     ...expenses.map(e => ({
       kind: 'expense' as const,
       date: e.expense_date,
+      uploadedAt: e.created_at,
       expense: e,
       amountOut: Number(e.settlement_amount),
-      sortKey: new Date(e.expense_date).getTime(),
     })),
-  ].sort((a, b) => b.sortKey - a.sortKey)
+  ] as LedgerRow[]).sort((a, b) => compareLedgerRows(a, b, sort))
+
+  const receiptSiblingCounts: Record<string, number> = {}
+  for (const e of expenses) {
+    const key = e.receipt_id || e.receipt_file_path
+    if (key) receiptSiblingCounts[key] = (receiptSiblingCounts[key] || 0) + 1
+  }
 
   const filteredLedger = ledgerRows.filter(row => {
     if (typeFilter === 'expense' && row.kind !== 'expense') return false
@@ -276,7 +291,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
     acc[wn] = (acc[wn] || 0) + 1
     return acc
   }, {})
-  const weekLedger = filteredLedger.filter(row => weekNumberOf(row.date) === effectiveWeek)
+  const weekLedger = effectiveWeek === ALL_WEEKS ? filteredLedger : filteredLedger.filter(row => weekNumberOf(row.date) === effectiveWeek)
 
   const visiblePendingExpenseIds = weekLedger
     .filter((r): r is Extract<LedgerRow, { kind: 'expense' }> => r.kind === 'expense' && r.expense.status === 'pending')
@@ -427,6 +442,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
           selectedWeek={effectiveWeek}
           onChange={setSelectedWeek}
           counts={weekCounts}
+          allowAll
         />
       </div>
 
@@ -461,6 +477,14 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
             <option key={key} value={key}>{label}</option>
           ))}
         </select>
+        <select
+          value={sort}
+          onChange={e => setSort(e.target.value as LedgerSort)}
+          aria-label="Sort transactions"
+          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 hover:border-gray-300 transition-colors"
+        >
+          {LEDGER_SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
         {filtersActive && (
           <button
             onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setCategoryFilter('all') }}
@@ -473,7 +497,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
 
       {weekLedger.length === 0 ? (
         <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-8 text-sm text-gray-500 mb-10 text-center">
-          {ledgerRows.length === 0 ? 'No transactions yet.' : (weekCounts[effectiveWeek] ?? 0) === 0 ? 'No transactions this week.' : 'No transactions match these filters.'}
+          {ledgerRows.length === 0 ? 'No transactions yet.' : effectiveWeek !== ALL_WEEKS && (weekCounts[effectiveWeek] ?? 0) === 0 ? 'No transactions this week.' : 'No transactions match these filters.'}
         </div>
       ) : (
         <div className="bg-white border border-[#e5e3df] rounded-xl overflow-hidden overflow-x-auto shadow-sm mb-10">
@@ -515,7 +539,12 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                       />
                     )}
                   </td>
-                  <td className="px-4 py-3.5 tabular-nums whitespace-nowrap text-gray-500">{row.date}</td>
+                  <td className="px-4 py-3.5 tabular-nums whitespace-nowrap text-gray-500">
+                    {row.date}
+                    {row.uploadedAt.slice(0, 10) !== row.date && (
+                      <div className="text-[10.5px] text-gray-400 mt-0.5">uploaded {formatDayMonth(row.uploadedAt)}</div>
+                    )}
+                  </td>
                   {row.kind === 'expense' ? (
                     <>
                       <td className="px-4 py-3.5">
@@ -578,7 +607,10 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                           <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${row.kind === 'transfer_out' ? 'bg-gray-100 text-gray-500' : 'bg-emerald-50 text-emerald-600'}`}>
                             {row.kind === 'transfer_out' ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}
                           </div>
-                          <span className="font-medium text-gray-900">{row.label}</span>
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-900">{row.label}</div>
+                            {row.detail && <div className="text-xs text-gray-500 mt-0.5">{row.detail}</div>}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap font-medium">
@@ -600,6 +632,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         onSent={load}
         projectId={project.id}
         settlementCurrency={project.settlement_currency}
+        localCurrency={project.local_currency}
       />
       <AddMemberModal
         open={memberModalOpen}
@@ -632,6 +665,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
           onClose={() => setDetailExpense(null)}
           exchangeRateProofUrl={detailExpense.exchangeRateProofUrl}
           canEdit
+          siblingCount={receiptSiblingCounts[detailExpense.receipt_id || detailExpense.receipt_file_path || ''] ?? 1}
           onUpdated={load}
         />
       )}

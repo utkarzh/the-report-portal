@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import JSZip from 'jszip'
-import { X, Upload, AlertTriangle, FileText, FileArchive } from 'lucide-react'
+import { X, Upload, AlertTriangle, FileText, FileArchive, Trash2, ImageUp } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
@@ -53,6 +53,9 @@ interface ReceiptGroup {
   fileName: string
   receiptId: string | null
   receiptFilePath: string
+  // Local object URL of the uploaded photo, so each split entry can be
+  // checked against the image it came from before anything is logged.
+  previewUrl: string | null
   note: string | null
   entries: EditableEntry[]
   couldNotRead: boolean
@@ -111,6 +114,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
   const [globalError, setGlobalError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [replacingKey, setReplacingKey] = useState<string | null>(null)
 
   const previewUrls = useMemo(
     () => pendingFiles.map(f => (f.type.startsWith('image/') ? URL.createObjectURL(f) : null)),
@@ -119,6 +123,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
   useEffect(() => () => { previewUrls.forEach(u => u && URL.revokeObjectURL(u)) }, [previewUrls])
 
   function reset() {
+    groups.forEach(g => g.previewUrl && URL.revokeObjectURL(g.previewUrl))
     setStep('select'); setPendingFiles([]); setExpandingZip(false); setReadProgress(null)
     setGroups([]); setGlobalError(null); setLoading(false)
   }
@@ -168,95 +173,99 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
     setGlobalError(null)
     setStep('reading')
 
-    const supabase = getSupabaseBrowserClient()
     const nextGroups: ReceiptGroup[] = []
-
     for (let i = 0; i < pendingFiles.length; i++) {
       const file = pendingFiles[i]
       setReadProgress({ index: i + 1, total: pendingFiles.length, fileName: file.name })
-
-      try {
-        const ext = file.name.split('.').pop() || 'jpg'
-        const path = `${projectId}/${crypto.randomUUID()}.${ext}`
-        const { error: uploadError } = await supabase.storage.from('finance-receipts').upload(path, file)
-        if (uploadError) throw new Error(uploadError.message)
-
-        const mimeType = file.type || extToMimeType(ext) || 'application/octet-stream'
-        const canAutoRead = mimeType.startsWith('image/') || mimeType === 'application/pdf'
-
-        if (!canAutoRead) {
-          nextGroups.push({
-            key: path, fileName: file.name, receiptId: null, receiptFilePath: path,
-            note: null, entries: [blankEntry(defaultExchangeRate)], couldNotRead: true, submitError: null,
-          })
-          continue
-        }
-
-        const res = await fetch(`/api/finance/projects/${projectId}/receipts/extract`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storagePath: path, mimeType }),
-        })
-        const data = await res.json()
-
-        if (!res.ok || data.couldNotRead || data.entries.length === 0) {
-          nextGroups.push({
-            key: path, fileName: file.name, receiptId: data.receiptId ?? null, receiptFilePath: path,
-            note: null, entries: [blankEntry(data.exchangeRate ?? defaultExchangeRate)], couldNotRead: true, submitError: null,
-          })
-          continue
-        }
-
-        // The extract route's "exchangeRate" is just the project's configured
-        // rate, echoed back as a suggestion — used here only to seed each
-        // entry's own editable field, per brief: rates aren't fixed, and a
-        // multi-trip receipt's entries may each need a different one.
-        const seedRate = data.exchangeRate ?? defaultExchangeRate
-        nextGroups.push({
-          key: path,
-          fileName: file.name,
-          receiptId: data.receiptId,
-          receiptFilePath: path,
-          note: data.note || null,
-          couldNotRead: false,
-          submitError: null,
-          entries: data.entries.map((e: {
-            concept: string; category: FinanceExpenseCategory; subLine: string | null; date: string | null; reference: string | null
-            vendor: string | null; localAmount: number | null; localCurrency: string | null
-            settlementAmount: number | null; nights: number | null; lowConfidenceFields: string[]
-            suspiciousPersonal: boolean; aiComment: string; ruleViolation: string | null
-          }) => ({
-            concept: e.concept || '',
-            category: e.category,
-            subLine: e.subLine || defaultSubLine(e.category),
-            date: e.date || new Date().toISOString().slice(0, 10),
-            reference: e.reference || '',
-            vendor: e.vendor || '',
-            localAmount: e.localAmount != null ? String(e.localAmount) : '',
-            localCurrency: e.localCurrency || '',
-            settlementAmount: e.settlementAmount,
-            exchangeRate: String(seedRate),
-            exchangeRateProofFile: null,
-            nights: e.nights != null ? String(e.nights) : '',
-            lowConfidenceFields: e.lowConfidenceFields ?? [],
-            suspiciousPersonal: e.suspiciousPersonal,
-            aiComment: e.aiComment || '',
-            ruleViolation: e.ruleViolation || null,
-          })),
-        })
-      } catch (err) {
-        nextGroups.push({
-          key: `${file.name}-${i}`, fileName: file.name, receiptId: null, receiptFilePath: '',
-          note: null, entries: [],
-          couldNotRead: true,
-          submitError: err instanceof Error ? err.message : 'Upload failed.',
-        })
-      }
+      nextGroups.push(await readReceiptFile(file, `${file.name}-${i}`))
     }
 
     setGroups(nextGroups)
     setReadProgress(null)
     setStep('confirm')
+  }
+
+  // Uploads one file and has the AI read it into one or more entries. Never
+  // throws — an upload or read failure comes back as a group to fix by hand.
+  async function readReceiptFile(file: File, fallbackKey: string): Promise<ReceiptGroup> {
+    const supabase = getSupabaseBrowserClient()
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+    try {
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `${projectId}/${crypto.randomUUID()}.${ext}`
+      const { error: uploadError } = await supabase.storage.from('finance-receipts').upload(path, file)
+      if (uploadError) throw new Error(uploadError.message)
+
+      const mimeType = file.type || extToMimeType(ext) || 'application/octet-stream'
+      const canAutoRead = mimeType.startsWith('image/') || mimeType === 'application/pdf'
+
+      if (!canAutoRead) {
+        return {
+          key: path, fileName: file.name, receiptId: null, receiptFilePath: path, previewUrl,
+          note: null, entries: [blankEntry(defaultExchangeRate)], couldNotRead: true, submitError: null,
+        }
+      }
+
+      const res = await fetch(`/api/finance/projects/${projectId}/receipts/extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storagePath: path, mimeType }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || data.couldNotRead || data.entries.length === 0) {
+        return {
+          key: path, fileName: file.name, receiptId: data.receiptId ?? null, receiptFilePath: path, previewUrl,
+          note: null, entries: [blankEntry(data.exchangeRate ?? defaultExchangeRate)], couldNotRead: true, submitError: null,
+        }
+      }
+
+      // The extract route's "exchangeRate" is just the project's configured
+      // rate, echoed back as a suggestion — used here only to seed each
+      // entry's own editable field, per brief: rates aren't fixed, and a
+      // multi-trip receipt's entries may each need a different one.
+      const seedRate = data.exchangeRate ?? defaultExchangeRate
+      return {
+        key: path,
+        fileName: file.name,
+        receiptId: data.receiptId,
+        receiptFilePath: path,
+        previewUrl,
+        note: data.note || null,
+        couldNotRead: false,
+        submitError: null,
+        entries: data.entries.map((e: {
+          concept: string; category: FinanceExpenseCategory; subLine: string | null; date: string | null; reference: string | null
+          vendor: string | null; localAmount: number | null; localCurrency: string | null
+          settlementAmount: number | null; nights: number | null; lowConfidenceFields: string[]
+          suspiciousPersonal: boolean; aiComment: string; ruleViolation: string | null
+        }) => ({
+          concept: e.concept || '',
+          category: e.category,
+          subLine: e.subLine || defaultSubLine(e.category),
+          date: e.date || new Date().toISOString().slice(0, 10),
+          reference: e.reference || '',
+          vendor: e.vendor || '',
+          localAmount: e.localAmount != null ? String(e.localAmount) : '',
+          localCurrency: e.localCurrency || '',
+          settlementAmount: e.settlementAmount,
+          exchangeRate: String(seedRate),
+          exchangeRateProofFile: null,
+          nights: e.nights != null ? String(e.nights) : '',
+          lowConfidenceFields: e.lowConfidenceFields ?? [],
+          suspiciousPersonal: e.suspiciousPersonal,
+          aiComment: e.aiComment || '',
+          ruleViolation: e.ruleViolation || null,
+        })),
+      }
+    } catch (err) {
+      return {
+        key: fallbackKey, fileName: file.name, receiptId: null, receiptFilePath: '', previewUrl,
+        note: null, entries: [],
+        couldNotRead: true,
+        submitError: err instanceof Error ? err.message : 'Upload failed.',
+      }
+    }
   }
 
   function updateEntry(groupKey: string, entryIndex: number, patch: Partial<EditableEntry>) {
@@ -279,6 +288,41 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
 
   function removeGroup(groupKey: string) {
     setGroups(prev => prev.filter(g => g.key !== groupKey))
+  }
+
+  // Drops ONE entry the AI split out of a photo (e.g. one receipt in a
+  // six-receipt shot that shouldn't be logged) — the rest still log
+  // normally against the same photo.
+  function removeEntry(groupKey: string, entryIndex: number) {
+    setGroups(prev => prev.flatMap(g => {
+      if (g.key !== groupKey) return [g]
+      const entries = g.entries.filter((_, idx) => idx !== entryIndex)
+      return entries.length > 0 ? [{ ...g, entries }] : []
+    }))
+  }
+
+  // Swaps the photo behind ONE entry: the new file is uploaded and read on
+  // its own, becoming its own receipt (placed right after the original),
+  // while the other entries keep the original photo.
+  async function replaceEntryPhoto(groupKey: string, entryIndex: number, file: File) {
+    const replaceKey = `${groupKey}#${entryIndex}`
+    setReplacingKey(replaceKey)
+    setGlobalError(null)
+    const replacement = await readReceiptFile(file, `${file.name}-${crypto.randomUUID()}`)
+    setReplacingKey(null)
+    if (replacement.submitError) {
+      setGlobalError(`Couldn't upload "${file.name}": ${replacement.submitError}`)
+      return
+    }
+    setGroups(prev => prev.flatMap(g => {
+      if (g.key !== groupKey) return [g]
+      const old = g.entries[entryIndex]
+      // A photo the AI couldn't read keeps what was already typed in for
+      // this entry rather than starting from a blank form.
+      const swapped = replacement.couldNotRead && old ? { ...replacement, entries: [old] } : replacement
+      const remaining = g.entries.filter((_, idx) => idx !== entryIndex)
+      return remaining.length > 0 ? [{ ...g, entries: remaining }, swapped] : [swapped]
+    }))
   }
 
   async function handleLogAll() {
@@ -468,12 +512,19 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                 <div key={group.key} className="border border-[#e5e3df] rounded-xl overflow-hidden">
                   <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-[#faf9f6] border-b border-[#e5e3df]">
                     <div className="flex items-center gap-2 min-w-0 text-xs font-semibold text-gray-600">
-                      <FileArchive size={13} className="flex-shrink-0 text-[#c8973f]" />
+                      {group.previewUrl ? (
+                        <a href={group.previewUrl} target="_blank" rel="noreferrer" className="flex-shrink-0" title="Open photo">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={group.previewUrl} alt="" className="h-8 w-8 rounded object-cover border border-[#e5e3df]" />
+                        </a>
+                      ) : (
+                        <FileArchive size={13} className="flex-shrink-0 text-[#c8973f]" />
+                      )}
                       <span className="truncate">{group.fileName}</span>
                       {group.entries.length > 1 && <span className="text-gray-400 font-normal">· {group.entries.length} entries</span>}
                     </div>
                     <button onClick={() => removeGroup(group.key)} className="text-xs text-gray-400 hover:text-red-600 flex-shrink-0">
-                      Remove
+                      {group.entries.length > 1 ? 'Remove whole photo' : 'Remove'}
                     </button>
                   </div>
 
@@ -492,9 +543,42 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                       <div className="p-3 bg-blue-50 border border-blue-200 text-sm text-blue-800 rounded">✨ {group.note}</div>
                     )}
 
+                    {group.entries.length > 1 && (
+                      <div className="text-xs text-gray-500">
+                        The AI found {group.entries.length} separate entries in this photo. Check each one — remove any that shouldn&apos;t be logged, or replace its photo if it needs its own.
+                      </div>
+                    )}
                     {group.entries.map((entry, i) => (
                       <div key={i} className="border border-[#e5e3df] rounded-xl p-4">
-                        {group.entries.length > 1 && <div className="text-xs font-semibold text-gray-500 mb-2">Trip {i + 1}</div>}
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="text-xs font-semibold text-gray-500">
+                            {group.entries.length > 1 ? `Entry ${i + 1} of ${group.entries.length}` : 'Entry'}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <label className={`inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 cursor-pointer ${replacingKey ? 'pointer-events-none opacity-50' : ''}`}>
+                              <ImageUp size={12} />
+                              {replacingKey === `${group.key}#${i}` ? 'Reading…' : 'Replace photo'}
+                              <input
+                                type="file"
+                                accept="image/*,.pdf,application/pdf"
+                                className="sr-only"
+                                disabled={!!replacingKey}
+                                onChange={ev => {
+                                  const file = ev.target.files?.[0]
+                                  ev.target.value = ''
+                                  if (file) replaceEntryPhoto(group.key, i, file)
+                                }}
+                              />
+                            </label>
+                            <button
+                              onClick={() => removeEntry(group.key, i)}
+                              disabled={!!replacingKey}
+                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-red-600 disabled:opacity-50"
+                            >
+                              <Trash2 size={12} /> Remove
+                            </button>
+                          </div>
+                        </div>
                         {entry.aiComment && (
                           <div className={`flex items-center gap-1.5 text-xs rounded px-2.5 py-1.5 mb-3 ${entry.suspiciousPersonal ? 'text-amber-700 bg-amber-50 border border-amber-200' : 'text-blue-700 bg-blue-50 border border-blue-200'}`}>
                             {entry.suspiciousPersonal && <AlertTriangle size={13} className="flex-shrink-0" />} {entry.aiComment}
@@ -580,7 +664,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
               )}
 
               <div className="flex items-center gap-3">
-                <Button loading={loading} disabled={groups.length === 0} onClick={handleLogAll}>
+                <Button loading={loading} disabled={groups.length === 0 || !!replacingKey} onClick={handleLogAll}>
                   Log {totalEntryCount > 1 ? `${totalEntryCount} expenses` : 'expense'}
                   {groups.length > 1 ? ` across ${groups.length} receipts` : ''}
                 </Button>

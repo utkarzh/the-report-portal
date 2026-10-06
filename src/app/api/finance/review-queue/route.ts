@@ -12,11 +12,16 @@ export async function GET(request: NextRequest) {
   const project = request.nextUrl.searchParams.get('project')
   const status = request.nextUrl.searchParams.get('status') || 'pending'
   const category = request.nextUrl.searchParams.get('category')
+  // Same options as the project ledgers (finance-ledger.ts): by the receipt's
+  // own expense date (default) or by when it was uploaded.
+  const sort = request.nextUrl.searchParams.get('sort') || 'date_desc'
 
   let query = supabaseAdmin
     .from('finance_expenses')
     .select('*, finance_expense_flags(*), finance_projects(name, settlement_currency, exchange_rate), profiles!finance_expenses_logged_by_fkey(full_name, email), finance_receipts(file_path)')
-    .order('created_at', { ascending: false })
+  query = sort === 'uploaded_desc'
+    ? query.order('created_at', { ascending: false })
+    : query.order('expense_date', { ascending: sort === 'date_asc' }).order('created_at', { ascending: false })
 
   if (status !== 'all') query = query.eq('status', status)
   if (project) query = query.eq('project_id', project)

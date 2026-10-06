@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Search, Receipt, ChevronRight, Layers, Car, BedDouble, Phone, Printer, Landmark, X, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
@@ -9,7 +10,9 @@ import { projectWeekNumberForDate } from '@/lib/finance-weeks'
 import ExpenseDetailModal from '@/components/finance/ExpenseDetailModal'
 import AiReviewDisclosure from '@/components/finance/AiReviewDisclosure'
 import ReceiptLightbox, { isPreviewableReceiptUrl } from '@/components/finance/ReceiptLightbox'
-import WeekNavigator from '@/components/finance/WeekNavigator'
+import WeekNavigator, { ALL_WEEKS } from '@/components/finance/WeekNavigator'
+import { LEDGER_SORT_OPTIONS, compareLedgerRows, fundingConversionNote, type LedgerSort } from '@/lib/finance-ledger'
+import { formatDayMonth } from '@/lib/date-format'
 
 type StatusFilter = 'all' | 'pending' | 'verified' | 'rejected'
 type TypeFilter = 'all' | 'expense' | 'funding' | 'transfer'
@@ -17,10 +20,10 @@ type ExpenseWithReceipt = FinanceExpense & { receiptUrl: string | null; exchange
 type FundingRow = FinanceFunding & { profiles: { full_name: string | null; email: string } | null }
 
 type LedgerRow =
-  | { kind: 'funding'; date: string; label: string; amountIn: number; sortKey: number }
-  | { kind: 'transfer_in'; date: string; label: string; amountIn: number; sortKey: number }
-  | { kind: 'transfer_out'; date: string; label: string; amountOut: number; sortKey: number }
-  | { kind: 'expense'; date: string; expense: ExpenseWithReceipt; amountOut: number; sortKey: number }
+  | { kind: 'funding'; date: string; uploadedAt: string; label: string; detail: string | null; amountIn: number }
+  | { kind: 'transfer_in'; date: string; uploadedAt: string; label: string; detail: string | null; amountIn: number }
+  | { kind: 'transfer_out'; date: string; uploadedAt: string; label: string; detail: string | null; amountOut: number }
+  | { kind: 'expense'; date: string; uploadedAt: string; expense: ExpenseWithReceipt; amountOut: number }
 
 // Same icon set as admin's SpendByCategoryModal (admin/projects/[id]/page.tsx)
 // — kept in sync so a category means the same picture everywhere.
@@ -40,7 +43,12 @@ interface Props {
   transfersOut: FinanceTransfer[]
   categorySpend: Record<string, number>
   currencySymbol: string
+  settlementCurrency: string
   projectCreatedAt: string
+  // Lets the Director delete, edit or replace the photo on their OWN
+  // not-yet-verified entries — e.g. one wrong receipt out of a six-receipt
+  // photo — without touching the rest of that upload.
+  currentUserId: string
 }
 
 // A field user's history used to be expenses only — funding sent by admin
@@ -51,7 +59,8 @@ interface Props {
 // this merges expenses + fundings + transfers into one ledger, same as
 // admin/projects/[id]/page.tsx, with a type filter alongside the existing
 // status/category ones (which only apply to expense rows, same as admin).
-export default function FieldExpensesSection({ expenses, fundings, transfersIn, transfersOut, categorySpend, currencySymbol, projectCreatedAt }: Props) {
+export default function FieldExpensesSection({ expenses, fundings, transfersIn, transfersOut, categorySpend, currencySymbol, settlementCurrency, projectCreatedAt, currentUserId }: Props) {
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [status, setStatus] = useState<StatusFilter>('all')
@@ -60,6 +69,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
   const [detailExpense, setDetailExpense] = useState<ExpenseWithReceipt | null>(null)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
+  const [sort, setSort] = useState<LedgerSort>('date_desc')
 
   const totalCategorySpend = Object.values(categorySpend).reduce((sum, v) => sum + (v || 0), 0)
   const topCategory = Object.entries(FINANCE_EXPENSE_CATEGORY_LABELS)
@@ -72,36 +82,56 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
     else window.open(url, '_blank', 'noreferrer')
   }
 
-  const ledgerRows: LedgerRow[] = useMemo(() => [
-    ...fundings.map(f => ({
-      kind: 'funding' as const,
-      date: f.date_sent,
-      label: `Funds received${f.profiles ? ` · sent by ${f.profiles.full_name || f.profiles.email}` : ''}`,
-      amountIn: Number(f.amount),
-      sortKey: new Date(f.date_sent).getTime(),
-    })),
-    ...transfersIn.map(t => ({
-      kind: 'transfer_in' as const,
-      date: t.created_at.slice(0, 10),
-      label: `Transfer in${t.reason ? ` — ${t.reason}` : ''}`,
-      amountIn: Number(t.to_amount ?? t.amount),
-      sortKey: new Date(t.created_at).getTime(),
-    })),
-    ...transfersOut.map(t => ({
-      kind: 'transfer_out' as const,
-      date: t.created_at.slice(0, 10),
-      label: `Transfer out${t.reason ? ` — ${t.reason}` : ''}`,
-      amountOut: Number(t.amount),
-      sortKey: new Date(t.created_at).getTime(),
-    })),
-    ...expenses.map(e => ({
-      kind: 'expense' as const,
-      date: e.expense_date,
-      expense: e,
-      amountOut: Number(e.settlement_amount),
-      sortKey: new Date(e.expense_date).getTime(),
-    })),
-  ].sort((a, b) => b.sortKey - a.sortKey), [fundings, transfersIn, transfersOut, expenses])
+  const ledgerRows: LedgerRow[] = useMemo(() => {
+    const rows: LedgerRow[] = [
+      ...fundings.map(f => ({
+        kind: 'funding' as const,
+        date: f.date_sent,
+        uploadedAt: f.created_at,
+        label: f.concept ? `Funds received — ${f.concept}` : 'Funds received',
+        detail: [
+          f.profiles ? `sent by ${f.profiles.full_name || f.profiles.email}` : null,
+          fundingConversionNote(f, settlementCurrency),
+        ].filter(Boolean).join(' · ') || null,
+        amountIn: Number(f.amount),
+      })),
+      ...transfersIn.map(t => ({
+        kind: 'transfer_in' as const,
+        date: t.created_at.slice(0, 10),
+        uploadedAt: t.created_at,
+        label: `Transfer in${t.reason ? ` — ${t.reason}` : ''}`,
+        detail: null,
+        amountIn: Number(t.to_amount ?? t.amount),
+      })),
+      ...transfersOut.map(t => ({
+        kind: 'transfer_out' as const,
+        date: t.created_at.slice(0, 10),
+        uploadedAt: t.created_at,
+        label: `Transfer out${t.reason ? ` — ${t.reason}` : ''}`,
+        detail: null,
+        amountOut: Number(t.amount),
+      })),
+      ...expenses.map(e => ({
+        kind: 'expense' as const,
+        date: e.expense_date,
+        uploadedAt: e.created_at,
+        expense: e,
+        amountOut: Number(e.settlement_amount),
+      })),
+    ]
+    return rows.sort((a, b) => compareLedgerRows(a, b, sort))
+  }, [fundings, transfersIn, transfersOut, expenses, sort, settlementCurrency])
+
+  // How many entries were split out of the same uploaded photo — shown in
+  // the detail modal so deleting one is clearly "one of six", not the photo.
+  const receiptSiblingCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const e of expenses) {
+      const key = e.receipt_id || e.receipt_file_path
+      if (key) counts[key] = (counts[key] || 0) + 1
+    }
+    return counts
+  }, [expenses])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -133,7 +163,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
     acc[wn] = (acc[wn] || 0) + 1
     return acc
   }, {})
-  const weekLedger = filtered.filter(row => weekNumberOf(row.date) === effectiveWeek)
+  const weekLedger = effectiveWeek === ALL_WEEKS ? filtered : filtered.filter(row => weekNumberOf(row.date) === effectiveWeek)
 
   function toggleCategory(key: string) {
     setCategory((prev) => (prev === key ? 'all' : (key as FinanceExpenseCategory)))
@@ -192,6 +222,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
           selectedWeek={effectiveWeek}
           onChange={setSelectedWeek}
           counts={weekCounts}
+          allowAll
         />
       </div>
 
@@ -235,6 +266,14 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
             <option key={key} value={key}>{label}</option>
           ))}
         </select>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as LedgerSort)}
+          aria-label="Sort transactions"
+          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-2 hover:border-gray-300 transition-colors"
+        >
+          {LEDGER_SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
       </div>
 
       {ledgerRows.length === 0 ? (
@@ -243,7 +282,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
         </div>
       ) : weekLedger.length === 0 ? (
         <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-8 text-sm text-gray-500 text-center">
-          {(weekCounts[effectiveWeek] ?? 0) === 0 ? 'No transactions this week.' : 'No transactions match these filters.'}
+          {effectiveWeek !== ALL_WEEKS && (weekCounts[effectiveWeek] ?? 0) === 0 ? 'No transactions this week.' : 'No transactions match these filters.'}
         </div>
       ) : (
         // Same table format as the admin ledger (admin/projects/[id]/page.tsx)
@@ -266,7 +305,12 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                   onClick={row.kind === 'expense' ? () => setDetailExpense(row.expense) : undefined}
                   className={`align-top hover:bg-[#faf9f6] transition-colors duration-150 ${row.kind === 'expense' ? 'cursor-pointer' : ''}`}
                 >
-                  <td className="px-4 py-3.5 tabular-nums whitespace-nowrap text-gray-500">{row.date}</td>
+                  <td className="px-4 py-3.5 tabular-nums whitespace-nowrap text-gray-500">
+                    {row.date}
+                    {row.uploadedAt.slice(0, 10) !== row.date && (
+                      <div className="text-[10.5px] text-gray-400 mt-0.5">uploaded {formatDayMonth(row.uploadedAt)}</div>
+                    )}
+                  </td>
                   {row.kind === 'expense' ? (
                     <>
                       <td className="px-4 py-3.5">
@@ -313,7 +357,10 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                           <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${row.kind === 'transfer_out' ? 'bg-gray-100 text-gray-500' : 'bg-emerald-50 text-emerald-600'}`}>
                             {row.kind === 'transfer_out' ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}
                           </div>
-                          <span className="font-medium text-gray-900">{row.label}</span>
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-900">{row.label}</div>
+                            {row.detail && <div className="text-xs text-gray-500 mt-0.5">{row.detail}</div>}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap font-medium">
@@ -345,6 +392,9 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
           symbol={currencySymbol}
           onClose={() => setDetailExpense(null)}
           exchangeRateProofUrl={detailExpense.exchangeRateProofUrl}
+          canManageOwn={detailExpense.logged_by === currentUserId && detailExpense.status !== 'verified'}
+          siblingCount={receiptSiblingCounts[detailExpense.receipt_id || detailExpense.receipt_file_path || ''] ?? 1}
+          onUpdated={() => router.refresh()}
         />
       )}
       {lightboxUrl && <ReceiptLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}

@@ -14,20 +14,27 @@ interface Props {
   // Optional per-week transaction count, shown in the dropdown so it's
   // obvious which weeks actually have anything in them before jumping there.
   counts?: Record<number, number>
+  // Adds an "All weeks" option, reported to onChange as ALL_WEEKS — so the
+  // whole history can be sorted/reviewed at once rather than week by week.
+  allowAll?: boolean
 }
+
+export const ALL_WEEKS = 0
 
 // Calendar-style single-week navigation for the ledger — replaces stacking
 // every week's table on top of each other, which read as one long undifferentiated
 // scroll. Mirrors the week picker already used in ExportWeekModal.tsx.
-export default function WeekNavigator({ projectCreatedAt, currentWeekNumber, selectedWeek, onChange, counts }: Props) {
-  const bounds = projectWeekBounds(projectCreatedAt, selectedWeek)
+export default function WeekNavigator({ projectCreatedAt, currentWeekNumber, selectedWeek, onChange, counts, allowAll }: Props) {
+  const showingAll = selectedWeek === ALL_WEEKS
+  const bounds = showingAll ? null : projectWeekBounds(projectCreatedAt, selectedWeek)
+  const totalCount = Object.values(counts ?? {}).reduce((sum, n) => sum + n, 0)
   const weekOptions = Array.from({ length: currentWeekNumber }, (_, i) => currentWeekNumber - i) // descending
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <button
         onClick={() => onChange(selectedWeek - 1)}
-        disabled={selectedWeek <= 1}
+        disabled={showingAll || selectedWeek <= 1}
         className="w-7 h-7 rounded-full border border-[#e5e3df] bg-white flex items-center justify-center text-gray-500 hover:border-gray-300 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
         aria-label="Previous week"
       >
@@ -39,6 +46,7 @@ export default function WeekNavigator({ projectCreatedAt, currentWeekNumber, sel
         onChange={e => onChange(Number(e.target.value))}
         className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg pl-3 pr-2 py-1.5 hover:border-gray-300 transition-colors"
       >
+        {allowAll && <option value={ALL_WEEKS}>All weeks — {totalCount}</option>}
         {weekOptions.map(n => {
           const b = projectWeekBounds(projectCreatedAt, n)
           const count = counts?.[n] ?? 0
@@ -52,14 +60,14 @@ export default function WeekNavigator({ projectCreatedAt, currentWeekNumber, sel
 
       <button
         onClick={() => onChange(selectedWeek + 1)}
-        disabled={selectedWeek >= currentWeekNumber}
+        disabled={showingAll || selectedWeek >= currentWeekNumber}
         className="w-7 h-7 rounded-full border border-[#e5e3df] bg-white flex items-center justify-center text-gray-500 hover:border-gray-300 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
         aria-label="Next week"
       >
         <ChevronRight size={14} />
       </button>
 
-      <span className="text-[11px] text-gray-400">{bounds.start} – {bounds.end}</span>
+      {bounds && <span className="text-[11px] text-gray-400">{bounds.start} – {bounds.end}</span>}
     </div>
   )
 }

@@ -125,7 +125,9 @@ export default async function FieldProjectPage({ params }: Props) {
         transfersOut={(transfersOut ?? []) as FinanceTransfer[]}
         categorySpend={categorySpend}
         currencySymbol={currencySymbol}
+        settlementCurrency={project.settlement_currency}
         projectCreatedAt={project.created_at}
+        currentUserId={profile.id}
       />
     </div>
   )

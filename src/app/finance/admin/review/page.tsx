@@ -5,6 +5,8 @@ import { Check, X, AlertTriangle, Info, Copy, ShieldAlert, ScanEye, ListChecks }
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
+import { LEDGER_SORT_OPTIONS, type LedgerSort } from '@/lib/finance-ledger'
+import { formatDayMonthYear } from '@/lib/date-format'
 import type { FinanceExpense, FinanceExpenseFlag, FinanceFlagSeverity } from '@/types'
 
 type QueueItem = FinanceExpense & {
@@ -38,18 +40,19 @@ export default function ReviewQueuePage() {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('pending')
   const [category, setCategory] = useState('')
+  const [sort, setSort] = useState<LedgerSort>('date_desc')
   const [rejectTarget, setRejectTarget] = useState<QueueItem | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
-    const params = new URLSearchParams({ status })
+    const params = new URLSearchParams({ status, sort })
     if (category) params.set('category', category)
     fetch(`/api/finance/review-queue?${params}`)
       .then(r => r.json())
       .then(d => setItems(d.expenses ?? []))
       .finally(() => setLoading(false))
-  }, [status, category])
+  }, [status, category, sort])
 
   useEffect(() => { load() }, [load])
 
@@ -80,7 +83,7 @@ export default function ReviewQueuePage() {
         </p>
       </div>
 
-      <div className="flex gap-3 mb-6 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 max-w-2xl">
         <Select
           label="Status"
           options={[{ value: 'pending', label: 'Pending' }, { value: 'verified', label: 'Verified' }, { value: 'rejected', label: 'Rejected' }, { value: 'all', label: 'All' }]}
@@ -94,6 +97,13 @@ export default function ReviewQueuePage() {
           value={category}
           onChange={e => setCategory(e.target.value)}
           placeholder="All categories"
+        />
+        <Select
+          label="Sort by"
+          options={LEDGER_SORT_OPTIONS}
+          value={sort}
+          onChange={e => setSort(e.target.value as LedgerSort)}
+          placeholder=""
         />
       </div>
 
@@ -117,7 +127,7 @@ export default function ReviewQueuePage() {
                     <StatusBadge status={item.status} />
                   </div>
                   <div className="text-xs text-gray-500">
-                    logged by {item.profiles?.full_name || item.profiles?.email} · {item.expense_date}
+                    logged by {item.profiles?.full_name || item.profiles?.email} · {item.expense_date} · uploaded {formatDayMonthYear(item.created_at)}
                   </div>
                 </div>
 

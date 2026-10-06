@@ -121,7 +121,15 @@ export interface FinanceFunding {
   project_id: string;
   amount: number;
   date_sent: string;
-  proof_image_path: string;
+  // Optional since migration 033 — Finance records the transfer, so evidence
+  // is only attached when it's useful.
+  proof_image_path: string | null;
+  concept: string | null;
+  // `amount` is always the credit in the project's settlement currency;
+  // these record the face value when the funds were sent in another one.
+  sent_amount: number | null;
+  sent_currency: string | null;
+  exchange_rate: number | null;
   recorded_by: string | null;
   created_at: string;
 }
