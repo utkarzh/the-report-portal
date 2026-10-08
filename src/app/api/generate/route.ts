@@ -120,6 +120,11 @@ SEARCH QUERY RULES:
 - When results look old, add "${currentYear}" (and if needed "${lastYear}") and search again. Discard sources that only describe pre-${lastYear} states unless used as labelled background.
 - Always check the publication date of a source before trusting it. Prefer the most recent. Reject ${currentYear === 2026 ? '2023/2024' : 'older'} articles as the basis for "current" claims.
 
+APPOINTMENT DATE — ONE DEDICATED SEARCH, ALWAYS (exception to the recency-qualifier rule):
+- Spend one search specifically on when the subject took their CURRENT role, phrased like "<full name> appointed <organisation>" WITHOUT a year qualifier — the appointment announcement may predate ${currentYear}, and a dated query surfaces recent profiles instead of the announcement itself.
+- Watch for re-appointments, second terms, interim periods and returns to a former role. If the subject held the same title before, someone else held it in between, and the CURRENT term starts at the most recent appointment, not the first. Identifying the immediate predecessor is a fast way to catch this.
+- A profile or award write-up that mentions a start year in passing is NOT an appointment source; prefer the official announcement, government/company press release, or contemporaneous news coverage.
+
 You have a budget of ${MAX_WEB_SEARCHES} web searches — spend them well. Prioritise, in order:
 1. Current role, title, and organization RIGHT NOW (${currentYear}) — verify, never assume
 2. Appointments, departures, promotions, board changes in the last 12 months
@@ -134,6 +139,7 @@ OUTPUT RULES:
 - Cite source URLs for EVERY factual claim about the subject, with the publication date where available
 - Every claim about the subject's CURRENT situation must be backed by a ${lastYear}–${currentYear} web_search result, not training data
 - If something cannot be verified, write N/A — never fall back to old training-data assumptions
+- A fact you mark UNCONFIRMED stays unconfirmed everywhere: never restate it elsewhere in the document as settled fact, and never derive anything from it (e.g. "approximately N years of tenure" from an unconfirmed start year)
 - Training data is acceptable ONLY for clearly-labelled pre-${lastYear} historical/biographical background`
 
   const systemBlocks = [

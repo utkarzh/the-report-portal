@@ -63,6 +63,8 @@ const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
   copywriting_draft: "Copywriting — draft",
   copywriting_check: "Copywriting — check",
   copywriting_revision: "Copywriting — revision",
+  knowledge_base_query: "Knowledge Base — questions",
+  knowledge_base_indexing: "Knowledge Base — indexing",
 };
 const WORKFLOW_ORDER: UsageWorkflow[] = [
   "research",
@@ -82,6 +84,8 @@ const WORKFLOW_ORDER: UsageWorkflow[] = [
   "interview_letter_template_generate",
   "sales_coach_report_card",
   "sales_coach_coach",
+  "knowledge_base_query",
+  "knowledge_base_indexing",
   "finance_receipt_extraction",
   "finance_receipt_verification",
   "finance_audit_report",

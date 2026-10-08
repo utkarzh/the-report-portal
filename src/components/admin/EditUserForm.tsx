@@ -12,11 +12,13 @@ import {
   Handshake,
   Wallet,
   PenLine,
+  BookOpen,
 } from "lucide-react";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import ModuleCheckbox from "@/components/admin/ModuleCheckbox";
+import UserKnowledgeDepartments from "@/components/knowledge/admin/UserKnowledgeDepartments";
 import type { Profile } from "@/types";
 
 // Same icon per module as the Sidebar nav, so a module reads as the same
@@ -62,6 +64,11 @@ const EDITORIAL_MODULE_FIELDS = [
     label: "Copywriting Tool",
     icon: PenLine,
   },
+  {
+    key: "canAccessKnowledgeBase" as const,
+    label: "Knowledge Base",
+    icon: BookOpen,
+  },
 ];
 
 interface Props {
@@ -86,6 +93,7 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
       user.can_access_interview_letter_generator,
     canAccessSalesNegotiationCoach: user.can_access_sales_negotiation_coach,
     canAccessCopywritingTool: user.can_access_copywriting_tool,
+    canAccessKnowledgeBase: user.can_access_knowledge_base ?? false,
     financeRole: (user.finance_role || "") as "" | "finance_admin" | "field",
   });
   const [loading, setLoading] = useState(false);
@@ -118,6 +126,7 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
             form.canAccessInterviewLetterGenerator,
           canAccessSalesNegotiationCoach: form.canAccessSalesNegotiationCoach,
           canAccessCopywritingTool: form.canAccessCopywritingTool,
+          canAccessKnowledgeBase: form.canAccessKnowledgeBase,
           financeRole: form.financeRole || null,
         }),
       }),
@@ -233,6 +242,10 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
               />
             ))}
           </div>
+
+          {form.canAccessKnowledgeBase && (
+            <UserKnowledgeDepartments userId={user.id} />
+          )}
 
           <p className="text-[10px] text-gray-400 -mb-1">Finance</p>
           <ModuleCheckbox

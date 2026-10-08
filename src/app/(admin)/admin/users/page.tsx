@@ -12,6 +12,7 @@ import UsersPagination from "@/components/admin/UsersPagination";
 import InviteUserButton from "@/components/admin/InviteUserButton";
 import { Users, ShieldCheck, Newspaper, Wallet } from "lucide-react";
 import type { Profile } from "@/types";
+import { isMissingKbColumn } from "@/lib/knowledge/schema-compat";
 
 const PAGE_SIZE = 10;
 // Fraction of the monthly token limit at which a user is flagged as "near limit".
@@ -28,6 +29,7 @@ const EDITORIAL_ACCESS_COLUMN_MAP: Partial<Record<AccessKey, keyof Profile>> = {
   interview_letters: "can_access_interview_letter_generator",
   sales_coach: "can_access_sales_negotiation_coach",
   copywriting_tool: "can_access_copywriting_tool",
+  knowledge_base: "can_access_knowledge_base",
 };
 
 interface SearchParams {
@@ -62,6 +64,7 @@ const EDITORIAL_MODULES: { key: keyof Profile; label: string }[] = [
   { key: "can_access_interview_letter_generator", label: "Interview Letters" },
   { key: "can_access_sales_negotiation_coach", label: "Sales Coach" },
   { key: "can_access_copywriting_tool", label: "Copywriting Tool" },
+  { key: "can_access_knowledge_base", label: "Knowledge Base" },
 ];
 
 export default async function UsersPage({
@@ -119,7 +122,7 @@ export default async function UsersPage({
   // The filtered/paginated table and the org-wide stats row are independent
   // of each other — run them together instead of one-after-the-other so this
   // page needs only one round trip to the database, not two.
-  const [{ data: tableData, count }, { data: statsRows }] = await Promise.all([
+  const [{ data: tableData, count }, statsResult] = await Promise.all([
     usageFilter === "near" ? baseQuery() : baseQuery().range(from, to),
     // One lightweight query powers every overview number: the near-limit tab
     // badge and the department stat cards — unaffected by the current filters,
@@ -127,9 +130,21 @@ export default async function UsersPage({
     supabaseAdmin
       .from("profiles")
       .select(
-        "role, tokens_used, token_limit, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, can_access_sales_negotiation_coach, can_access_copywriting_tool, finance_role",
+        "role, tokens_used, token_limit, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, can_access_sales_negotiation_coach, can_access_copywriting_tool, can_access_knowledge_base, finance_role",
       ),
   ]);
+  let statsRows = statsResult.data;
+  // Pre-034 database: no Knowledge Base column yet — count without it.
+  if (isMissingKbColumn(statsResult.error)) {
+    const legacy = await supabaseAdmin
+      .from("profiles")
+      .select(
+        "role, tokens_used, token_limit, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, can_access_sales_negotiation_coach, can_access_copywriting_tool, finance_role",
+      );
+    statsRows =
+      legacy.data?.map((u) => ({ ...u, can_access_knowledge_base: false })) ??
+      null;
+  }
 
   let users: Profile[];
   let totalCount: number;
@@ -162,7 +177,8 @@ export default async function UsersPage({
       u.can_access_meeting_preparation ||
       u.can_access_interview_letter_generator ||
       u.can_access_sales_negotiation_coach ||
-      u.can_access_copywriting_tool,
+      u.can_access_copywriting_tool ||
+      u.can_access_knowledge_base,
   ).length;
   const financeCount = allProfiles.filter(
     (u) => u.role === "admin" || u.finance_role !== null,

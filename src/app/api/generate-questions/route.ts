@@ -24,7 +24,10 @@ This will be exported as a one-page, fully formatted "Interview Outline" (Calibr
 - BOLDING: within each question, bold (**word**) exactly ONE word that signals that question's theme. Do not bold anything else — no full phrases, no extra words, nothing outside the heading and that one word per question.
 - ITALICS: italicise (*text*) publication names, foreign-language phrases, and titles of artworks (books, films, paintings, and similar) wherever they appear. Do not italicise anything else.
 - CASE: standard sentence case throughout. Capitalise only proper nouns, publication/book titles, days, months, holidays, and acronyms/initialisms — never title-case a whole question or heading.
-- Output ONLY the theme headings and questions in this format — no numbering, no preamble, no closing commentary.`
+- Output ONLY the theme headings and questions in this format — no numbering, no preamble, no closing commentary.
+
+--- SOURCE RULES (MANDATORY) ---
+You have NO web search or browsing in this step. Where the instructions above ask you to verify, check LinkedIn, or search, that already happened in the research step — the RESEARCH section and any user feedback are your only sources. Never claim to have checked, verified or searched anything here, and never cite a source that isn't in the RESEARCH. If the user's feedback corrects a fact in the research (e.g. an appointment date), the user's correction wins. If a fact the research marks UNCONFIRMED is needed, follow the General Prompt's unconfirmed-fact fallback instead of stating it as settled.`
 
 export async function POST(request: NextRequest) {
   const auth = await getApiUser()

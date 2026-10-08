@@ -16,6 +16,7 @@ import {
   Handshake,
   Wallet,
   PenLine,
+  BookOpen,
 } from "lucide-react";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
@@ -70,6 +71,11 @@ const EDITORIAL_MODULE_FIELDS = [
     label: "Copywriting Tool",
     icon: PenLine,
   },
+  {
+    key: "canAccessKnowledgeBase" as const,
+    label: "Knowledge Base",
+    icon: BookOpen,
+  },
 ];
 
 const defaultForm = {
@@ -85,6 +91,7 @@ const defaultForm = {
   canAccessInterviewLetterGenerator: false,
   canAccessSalesNegotiationCoach: false,
   canAccessCopywritingTool: false,
+  canAccessKnowledgeBase: false,
   financeRole: "" as "" | "finance_admin" | "field",
 };
 
@@ -150,6 +157,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
             form.canAccessInterviewLetterGenerator,
           canAccessSalesNegotiationCoach: form.canAccessSalesNegotiationCoach,
           canAccessCopywritingTool: form.canAccessCopywritingTool,
+          canAccessKnowledgeBase: form.canAccessKnowledgeBase,
           financeRole: form.financeRole || null,
         }),
       }),

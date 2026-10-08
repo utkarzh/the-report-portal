@@ -29,6 +29,7 @@ export default function DashboardLayout({
         profile.can_access_sales_negotiation_coach
       }
       canAccessCopywritingTool={profile.can_access_copywriting_tool}
+      canAccessKnowledgeBase={profile.can_access_knowledge_base}
       canAccessFinance={canAccessFinance(profile)}
       financeHref={isFinanceAdmin(profile) ? "/finance/admin" : "/finance"}
     >

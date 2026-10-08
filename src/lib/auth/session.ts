@@ -61,6 +61,7 @@ export function getProfileFromHeaders() {
     can_access_sales_negotiation_coach:
       h.get("x-user-can-sales-coach") === "true",
     can_access_copywriting_tool: h.get("x-user-can-copywriting") === "true",
+    can_access_knowledge_base: h.get("x-user-can-knowledge-base") === "true",
     finance_role: (h.get("x-user-finance-role") ||
       null) as Profile["finance_role"],
   };

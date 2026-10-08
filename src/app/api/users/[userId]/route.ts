@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isMissingKbColumn, withoutKbFlag } from "@/lib/knowledge/schema-compat";
 
 interface Params {
   params: { userId: string };
@@ -50,6 +51,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       canAccessInterviewLetterGenerator,
       canAccessSalesNegotiationCoach,
       canAccessCopywritingTool,
+      canAccessKnowledgeBase,
       financeRole,
     } = body;
 
@@ -85,6 +87,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       updates.can_access_interview_letter_generator = true;
       updates.can_access_sales_negotiation_coach = true;
       updates.can_access_copywriting_tool = true;
+      updates.can_access_knowledge_base = true;
       // Platform admins reach finance through role === 'admin', not this column.
       updates.finance_role = null;
     } else {
@@ -107,6 +110,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           canAccessSalesNegotiationCoach === true;
       if (canAccessCopywritingTool !== undefined)
         updates.can_access_copywriting_tool = canAccessCopywritingTool === true;
+      if (canAccessKnowledgeBase !== undefined)
+        updates.can_access_knowledge_base = canAccessKnowledgeBase === true;
       // Finance Admin is only ever granted to Admin accounts — a normal user
       // can be a Field director/rep, never a Finance Admin, regardless of
       // what the client sends (the UI already only offers 'field', this is
@@ -115,10 +120,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         updates.finance_role = financeRole === "field" ? "field" : null;
     }
 
-    const { error } = await supabaseAdmin
+    let { error } = await supabaseAdmin
       .from("profiles")
       .update(updates)
       .eq("id", params.userId);
+    // Pre-034 database: no Knowledge Base column yet — save everything else.
+    if (isMissingKbColumn(error)) {
+      ({ error } = await supabaseAdmin
+        .from("profiles")
+        .update(withoutKbFlag(updates))
+        .eq("id", params.userId));
+    }
 
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });

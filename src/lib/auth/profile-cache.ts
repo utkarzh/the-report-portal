@@ -32,6 +32,7 @@ export interface CachedProfile {
   can_access_interview_letter_generator: boolean;
   can_access_sales_negotiation_coach: boolean;
   can_access_copywriting_tool: boolean;
+  can_access_knowledge_base: boolean;
   finance_role: string | null;
   iat: number;
 }

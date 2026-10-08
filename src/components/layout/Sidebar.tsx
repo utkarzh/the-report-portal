@@ -23,6 +23,8 @@ import {
   Mail,
   Handshake,
   PenLine,
+  BookOpen,
+  Library,
 } from "lucide-react";
 import type { UserRole } from "@/types";
 
@@ -39,6 +41,7 @@ interface SidebarProps {
   canAccessInterviewLetterGenerator: boolean;
   canAccessSalesNegotiationCoach: boolean;
   canAccessCopywritingTool: boolean;
+  canAccessKnowledgeBase: boolean;
   canAccessFinance?: boolean;
   financeHref?: string;
   mobileOpen?: boolean;
@@ -105,6 +108,7 @@ export default function Sidebar({
   canAccessInterviewLetterGenerator,
   canAccessSalesNegotiationCoach,
   canAccessCopywritingTool,
+  canAccessKnowledgeBase,
   canAccessFinance = false,
   financeHref = "/finance",
   mobileOpen = false,
@@ -168,6 +172,16 @@ export default function Sidebar({
             label: "Copywriting Tool",
             href: "/copywriting",
             icon: PenLine,
+            beta: true,
+          },
+        ]
+      : []),
+    ...(canAccessKnowledgeBase
+      ? [
+          {
+            label: "Knowledge Base",
+            href: "/knowledge",
+            icon: BookOpen,
             beta: true,
           },
         ]
@@ -288,6 +302,7 @@ export default function Sidebar({
             <NavLink item={{ label: 'Analytics', href: '/admin/analytics', icon: BarChart3 }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Feedback', href: '/admin/feedback', icon: Inbox }} collapsed={collapsed} pathname={pathname} />
+            <NavLink item={{ label: 'Knowledge Base', href: '/admin/knowledge', icon: Library }} collapsed={collapsed} pathname={pathname} />
           </>
         )}
       </nav>

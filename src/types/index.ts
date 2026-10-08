@@ -26,6 +26,7 @@ export interface Profile {
   can_access_interview_letter_generator: boolean;
   can_access_sales_negotiation_coach: boolean;
   can_access_copywriting_tool: boolean;
+  can_access_knowledge_base: boolean;
   finance_role: FinanceRole;
   created_at: string;
   updated_at: string;
@@ -44,6 +45,7 @@ export interface Invitation {
   can_access_interview_letter_generator: boolean;
   can_access_sales_negotiation_coach: boolean;
   can_access_copywriting_tool: boolean;
+  can_access_knowledge_base: boolean;
   finance_role: FinanceRole;
   token: string;
   status: InviteStatus;
@@ -368,7 +370,9 @@ export type UsageWorkflow =
   | "copywriting_plan"
   | "copywriting_draft"
   | "copywriting_check"
-  | "copywriting_revision";
+  | "copywriting_revision"
+  | "knowledge_base_query"
+  | "knowledge_base_indexing";
 
 export interface UsageEvent {
   id: string;
@@ -1167,4 +1171,153 @@ export interface AppFeedback {
   page_url: string | null
   status: FeedbackStatus
   created_at: string
+}
+
+// ------------------------------------------------------------
+// Knowledge Base (Module 7, migration 034)
+// ------------------------------------------------------------
+export type KnowledgeItemType = "document" | "text" | "video" | "link";
+export type KnowledgeItemStatus = "draft" | "published" | "archived";
+export type KnowledgeExtractionStatus =
+  | "pending"
+  | "processing"
+  | "ready"
+  | "needs_attention"
+  | "failed";
+export type KnowledgeIndexStatus = "not_indexed" | "indexing" | "indexed";
+export type KnowledgeRating =
+  | "helpful"
+  | "unclear"
+  | "incorrect"
+  | "outdated"
+  | "missing";
+export type KnowledgeFeedbackKind = "feedback" | "suggestion";
+export type KnowledgeFeedbackStatus = "open" | "accepted" | "declined" | "done";
+
+export interface KnowledgeDepartment {
+  id: string;
+  name: string;
+  description: string;
+  guardian_id: string | null;
+  archived_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeTopic {
+  id: string;
+  department_id: string;
+  name: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeItem {
+  id: string;
+  department_id: string;
+  topic_id: string | null;
+  type: KnowledgeItemType;
+  title: string;
+  description: string;
+  status: KnowledgeItemStatus;
+  is_example: boolean;
+  published_version_id: string | null;
+  draft_version_id: string | null;
+  last_published_at: string | null;
+  archived_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeItemVersion {
+  id: string;
+  item_id: string;
+  version_number: number;
+  title: string;
+  description: string;
+  content: string;
+  url: string | null;
+  file_path: string | null;
+  file_name: string | null;
+  file_mime: string | null;
+  file_size: number | null;
+  extracted_text: string | null;
+  char_count: number;
+  extraction_status: KnowledgeExtractionStatus;
+  extraction_error: string | null;
+  extraction_started_at: string | null;
+  index_status: KnowledgeIndexStatus;
+  chunk_count: number;
+  restored_from_version_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
+  published_by: string | null;
+}
+
+// Snapshot of one source shown next to an answer (knowledge_messages.sources).
+export interface KnowledgeSource {
+  ref: number; // the [S#] number the model cites
+  item_id: string;
+  version_id: string;
+  title: string;
+  type: KnowledgeItemType;
+  department_id: string;
+  department_name: string;
+  guardian_name: string | null;
+  topic_name: string | null;
+  last_updated: string | null;
+  url: string | null;
+  file_name: string | null;
+  is_example: boolean;
+  cited: boolean; // false = "related", retrieved but not cited
+  headings: string[];
+}
+
+export interface KnowledgeChat {
+  id: string;
+  user_id: string | null;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeMessage {
+  id: string;
+  chat_id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources: KnowledgeSource[];
+  used_version_ids: string[];
+  department_ids: string[];
+  no_answer: boolean;
+  status: "complete" | "failed";
+  tokens_total: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+export interface KnowledgeFeedback {
+  id: string;
+  kind: KnowledgeFeedbackKind;
+  rating: KnowledgeRating | null;
+  suggestion_type: "change" | "new" | null;
+  comment: string;
+  link_url: string | null;
+  attachment_path: string | null;
+  attachment_name: string | null;
+  user_id: string | null;
+  department_id: string | null;
+  item_id: string | null;
+  message_id: string | null;
+  status: KnowledgeFeedbackStatus;
+  guardian_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
 }

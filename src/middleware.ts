@@ -9,6 +9,7 @@ import {
   canAccessInterviewLetterGenerator,
   canAccessSalesNegotiationCoach,
   canAccessCopywritingTool,
+  canAccessKnowledgeBase,
   canAccessFinance,
   isFinanceAdmin,
   landingPathFor,
@@ -20,7 +21,14 @@ import {
   verifyProfileCache,
   type CachedProfile,
 } from "@/lib/auth/profile-cache";
+import { isMissingKbColumn } from "@/lib/knowledge/schema-compat";
 import type { UserRole, FinanceRole } from "@/types";
+
+// Profile columns read on every navigation. The Knowledge Base flag is added
+// separately so a database that hasn't run migration 034 yet can still sign
+// users in (see the fallback below).
+const PROFILE_COLUMNS =
+  "role, status, full_name, tokens_used, token_limit, active_session_id, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, can_access_sales_negotiation_coach, can_access_copywriting_tool, finance_role";
 
 // Unset by default: caching is opt-in (see profile-cache.ts) so a deployment
 // without this env var behaves exactly as before — always a live DB check.
@@ -227,6 +235,7 @@ export async function middleware(request: NextRequest) {
     "x-user-can-interview-letters",
     "x-user-can-sales-coach",
     "x-user-can-copywriting",
+    "x-user-can-knowledge-base",
     "x-user-finance-role",
   ]) {
     requestHeaders.delete(key);
@@ -242,13 +251,26 @@ export async function middleware(request: NextRequest) {
       : null;
 
     if (!profile) {
-      const { data: freshProfile } = await supabase
+      const withKb = await supabase
         .from("profiles")
-        .select(
-          "role, status, full_name, tokens_used, token_limit, active_session_id, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, can_access_sales_negotiation_coach, can_access_copywriting_tool, finance_role",
-        )
+        .select(`${PROFILE_COLUMNS}, can_access_knowledge_base`)
         .eq("id", user.id)
         .single();
+      let freshProfile: Omit<CachedProfile, "user_id" | "iat"> | null =
+        withKb.data;
+      // Before migration 034 the column doesn't exist and the whole select
+      // fails — which the check below would read as "no profile" and bounce
+      // every user back to /login. Re-read without it; the module reads as off.
+      if (isMissingKbColumn(withKb.error)) {
+        const legacy = await supabase
+          .from("profiles")
+          .select(PROFILE_COLUMNS)
+          .eq("id", user.id)
+          .single();
+        freshProfile = legacy.data
+          ? { ...legacy.data, can_access_knowledge_base: false }
+          : null;
+      }
 
       if (freshProfile) {
         profile = { ...freshProfile, user_id: user.id, iat: Date.now() };
@@ -333,6 +355,8 @@ export async function middleware(request: NextRequest) {
       can_access_sales_negotiation_coach:
         profile.can_access_sales_negotiation_coach,
       can_access_copywriting_tool: profile.can_access_copywriting_tool,
+      // `?? false` so a profile cached by a pre-034 deploy still parses.
+      can_access_knowledge_base: profile.can_access_knowledge_base ?? false,
       finance_role: profile.finance_role as FinanceRole,
     };
     const blockedFromInterview =
@@ -358,6 +382,8 @@ export async function middleware(request: NextRequest) {
       !canAccessSalesNegotiationCoach(access);
     const blockedFromCopywriting =
       pathname.startsWith("/copywriting") && !canAccessCopywritingTool(access);
+    const blockedFromKnowledgeBase =
+      pathname.startsWith("/knowledge") && !canAccessKnowledgeBase(access);
     // /finance/admin needs finance-admin (or platform admin); plain /finance
     // needs any finance access at all.
     const blockedFromFinanceAdmin =
@@ -375,6 +401,7 @@ export async function middleware(request: NextRequest) {
       blockedFromInterviewLetters ||
       blockedFromSalesCoach ||
       blockedFromCopywriting ||
+      blockedFromKnowledgeBase ||
       blockedFromFinanceAdmin ||
       blockedFromFinance
     ) {
@@ -421,6 +448,10 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set(
       "x-user-can-copywriting",
       String(canAccessCopywritingTool(access)),
+    );
+    requestHeaders.set(
+      "x-user-can-knowledge-base",
+      String(canAccessKnowledgeBase(access)),
     );
     requestHeaders.set("x-user-finance-role", profile.finance_role ?? "");
   }

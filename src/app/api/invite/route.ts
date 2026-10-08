@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getApiUser } from "@/lib/auth/api-user";
 import { getBaseUrl } from "@/lib/url";
+import { isMissingKbColumn, withoutKbFlag } from "@/lib/knowledge/schema-compat";
 
 // GET /api/invite?token=xxx — public, used by invite page
 export async function GET(request: NextRequest) {
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
     canAccessInterviewLetterGenerator,
     canAccessSalesNegotiationCoach,
     canAccessCopywritingTool,
+    canAccessKnowledgeBase,
     financeRole,
   } = body;
 
@@ -94,42 +96,53 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { data: invite, error: insertError } = await supabaseAdmin
+  const invitation = {
+    email,
+    role,
+    // Admins are never token-limited — store NULL ("no limit"). Normal users
+    // fall back to the 2M default when no limit is supplied.
+    token_limit: role === "admin" ? null : tokenLimit || 2000000,
+    // Admins always have full module access; normal users get exactly what
+    // the admin selected (interview defaults on, transcriptions off).
+    can_access_interview:
+      role === "admin" ? true : canAccessInterview !== false,
+    can_access_transcriptions:
+      role === "admin" ? true : canAccessTranscriptions === true,
+    can_access_business_cases:
+      role === "admin" ? true : canAccessBusinessCases === true,
+    can_access_editorial_briefs:
+      role === "admin" ? true : canAccessEditorialBriefs === true,
+    can_access_meeting_preparation:
+      role === "admin" ? true : canAccessMeetingPreparation === true,
+    can_access_interview_letter_generator:
+      role === "admin" ? true : canAccessInterviewLetterGenerator === true,
+    can_access_sales_negotiation_coach:
+      role === "admin" ? true : canAccessSalesNegotiationCoach === true,
+    can_access_copywriting_tool:
+      role === "admin" ? true : canAccessCopywritingTool === true,
+    can_access_knowledge_base:
+      role === "admin" ? true : canAccessKnowledgeBase === true,
+    // Platform admins reach finance through role === 'admin' — never store a
+    // finance_role for them (see canAccessFinance/isFinanceAdmin). Finance
+    // Admin is only ever granted to Admin accounts, so a normal-user invite
+    // can only carry 'field', regardless of what the client sends.
+    finance_role:
+      role === "admin" ? null : financeRole === "field" ? "field" : null,
+    invited_by: user.id,
+  };
+  let { data: invite, error: insertError } = await supabaseAdmin
     .from("invitations")
-    .insert({
-      email,
-      role,
-      // Admins are never token-limited — store NULL ("no limit"). Normal users
-      // fall back to the 2M default when no limit is supplied.
-      token_limit: role === "admin" ? null : tokenLimit || 2000000,
-      // Admins always have full module access; normal users get exactly what
-      // the admin selected (interview defaults on, transcriptions off).
-      can_access_interview:
-        role === "admin" ? true : canAccessInterview !== false,
-      can_access_transcriptions:
-        role === "admin" ? true : canAccessTranscriptions === true,
-      can_access_business_cases:
-        role === "admin" ? true : canAccessBusinessCases === true,
-      can_access_editorial_briefs:
-        role === "admin" ? true : canAccessEditorialBriefs === true,
-      can_access_meeting_preparation:
-        role === "admin" ? true : canAccessMeetingPreparation === true,
-      can_access_interview_letter_generator:
-        role === "admin" ? true : canAccessInterviewLetterGenerator === true,
-      can_access_sales_negotiation_coach:
-        role === "admin" ? true : canAccessSalesNegotiationCoach === true,
-      can_access_copywriting_tool:
-        role === "admin" ? true : canAccessCopywritingTool === true,
-      // Platform admins reach finance through role === 'admin' — never store a
-      // finance_role for them (see canAccessFinance/isFinanceAdmin). Finance
-      // Admin is only ever granted to Admin accounts, so a normal-user invite
-      // can only carry 'field', regardless of what the client sends.
-      finance_role:
-        role === "admin" ? null : financeRole === "field" ? "field" : null,
-      invited_by: user.id,
-    })
+    .insert(invitation)
     .select("id, token")
     .single();
+  // Pre-034 database: no Knowledge Base column yet — invite without it.
+  if (isMissingKbColumn(insertError)) {
+    ({ data: invite, error: insertError } = await supabaseAdmin
+      .from("invitations")
+      .insert(withoutKbFlag(invitation))
+      .select("id, token")
+      .single());
+  }
 
   if (insertError || !invite) {
     return NextResponse.json(

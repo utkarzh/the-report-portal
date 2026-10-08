@@ -21,6 +21,7 @@ interface Props {
   canAccessInterviewLetterGenerator: boolean;
   canAccessSalesNegotiationCoach: boolean;
   canAccessCopywritingTool: boolean;
+  canAccessKnowledgeBase: boolean;
   canAccessFinance?: boolean;
   financeHref?: string;
 }
@@ -39,6 +40,7 @@ export default function AppShell({
   canAccessInterviewLetterGenerator,
   canAccessSalesNegotiationCoach,
   canAccessCopywritingTool,
+  canAccessKnowledgeBase,
   canAccessFinance,
   financeHref,
 }: Props) {
@@ -82,6 +84,7 @@ export default function AppShell({
         canAccessInterviewLetterGenerator={canAccessInterviewLetterGenerator}
         canAccessSalesNegotiationCoach={canAccessSalesNegotiationCoach}
         canAccessCopywritingTool={canAccessCopywritingTool}
+        canAccessKnowledgeBase={canAccessKnowledgeBase}
         canAccessFinance={canAccessFinance}
         financeHref={financeHref}
         mobileOpen={mobileOpen}

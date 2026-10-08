@@ -105,6 +105,10 @@ export const COPYWRITING_DRAFT_RESERVE = 100_000;
 export const COPYWRITING_CHECK_RESERVE = 40_000;
 export const COPYWRITING_REVISION_RESERVE = 60_000;
 
+// Knowledge Base — one question: up to ~60k chars of retrieved passages
+// (~15k tokens) plus a short history and a ≤2k-token answer.
+export const KNOWLEDGE_BASE_QUERY_RESERVE = 30_000;
+
 export interface UsageBreakdown {
   inputTokens: number; // uncached input (billed at full input price)
   outputTokens: number;

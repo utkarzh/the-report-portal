@@ -274,3 +274,22 @@ body {
 }
 .prose-research > *:first-child { margin-top: 0; }
 .prose-research > *:last-child { margin-bottom: 0; }
+
+/* Knowledge Base — citation chips in answers ([S1] → ¹) */
+.kb-cite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  margin: 0 0.1rem;
+  padding: 0 0.25rem;
+  border-radius: 9999px;
+  background: #f0efec;
+  color: #6b6458;
+  font-size: 0.625rem;
+  font-weight: 600;
+  vertical-align: super;
+  line-height: 1;
+  cursor: default;
+}
