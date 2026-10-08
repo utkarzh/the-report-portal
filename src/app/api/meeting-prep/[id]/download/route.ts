@@ -45,7 +45,7 @@ export async function GET(
   })
 
   const buffer = await Packer.toBuffer(doc)
-  // "Name, Title and Company" — no "Meeting Prep" suffix, per the
+  // "Name, Title, Company" — no "Meeting Prep" suffix, per the
   // naming convention shared with Interview Outline/Transcript/Letter.
   const identity = joinIdentityForFilename([session.interviewee_name, session.interviewee_title, session.company_org])
   const filename = `${sanitizeFilename(identity || session.interviewee_name || 'Meeting Preparation')}.docx`

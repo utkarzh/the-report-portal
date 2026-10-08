@@ -53,7 +53,7 @@ export async function GET(
   const heading = type === 'questions' ? 'Interview Questions' : 'Background Research'
   const subjectSafe = (session.full_name || 'Interview Subject').replace(/[^a-z0-9-_ ]/gi, '').trim() || 'subject'
   // Interview Outline (the "questions" export, matched to the standardised
-  // header below) uses the "Topics for Name, Title and Company" naming
+  // header below) uses the "Topics for Name, Title, Company" naming
   // convention. Background Research isn't one of the three formatted-document
   // tools, so its filename keeps the old "Subject — Background Research" form.
   const identity = joinIdentityForFilename([session.full_name, session.title_position, session.company_org])

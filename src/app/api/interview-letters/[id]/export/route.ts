@@ -54,7 +54,7 @@ export async function GET(
     created_at: project.created_at,
   }
   // The master letter has no recipient (personalization happens after this
-  // export), so "Interview Request Letter – Name, Title and Company" falls
+  // export), so "Interview Request Letter – Name, Title, Company" falls
   // back to the project's own company/media-partner identity instead.
   const identity = joinIdentityForFilename([project.company, project.media_partner])
   const base = sanitizeFilename(`Interview Request Letter – ${identity || 'interview-letter'}`)

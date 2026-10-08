@@ -152,21 +152,19 @@ export function normalizePullQuotes(markdown: string): string {
   return out.join('\n')
 }
 
-// Joins 1-3 identity fields ("Name, Title, Company") for use in a DOWNLOAD
-// FILENAME as "A, B and C" (Oxford "and" before the last item, no third
-// comma) — distinct from buildStandardHeader()'s in-document identity line
-// above, which stays comma-only on purpose (that's the printed convention,
-// this is the filename convention — the two were specified separately).
+// Joins identity fields ("Name, Title, Company") for use in a DOWNLOAD
+// FILENAME. Comma-only, same convention as buildStandardHeader()'s
+// in-document identity line below — this used to insert an Oxford "and"
+// before the last item (a separately-specified filename convention), but
+// that read as inconsistent across the app and was dropped (client request,
+// Oct 2026): "remove 'and', must be a comma everywhere."
 export function joinIdentityForFilename(parts: (string | null | undefined)[]): string {
-  const clean = parts.map((s) => (s || '').trim()).filter(Boolean)
-  if (clean.length === 0) return ''
-  if (clean.length === 1) return clean[0]
-  return `${clean.slice(0, -1).join(', ')} and ${clean[clean.length - 1]}`
+  return parts.map((s) => (s || '').trim()).filter(Boolean).join(', ')
 }
 
 // Strips characters invalid in file names on Windows/macOS but keeps
 // everything else (commas, "&", accents, …) — shared by every download route
-// building a "Name, Title and Company" style filename.
+// building a "Name, Title, Company" style filename.
 export function sanitizeFilename(s: string): string {
   return s.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 150)
 }

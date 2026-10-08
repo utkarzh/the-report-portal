@@ -120,11 +120,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   }
 
-  // "Transcript – Name, Title and Company" — same identity fields as the
-  // standardised header, joined with the naming convention's "and" rather
-  // than the header's comma-only style. Falls back to the transcription's
-  // own title when the interviewee metadata is missing (rows created before
-  // migration 024).
+  // "Transcript – Name, Title, Company" — same identity fields and the same
+  // comma-only join as the standardised header. Falls back to the
+  // transcription's own title when the interviewee metadata is missing (rows
+  // created before migration 024).
   const identity = joinIdentityForFilename([row.full_name, row.title_position, row.company_org])
   const filename = `${sanitizeFilename(`Transcript – ${identity || title}`)}.${format}`
 
