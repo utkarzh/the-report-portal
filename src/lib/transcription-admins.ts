@@ -8,6 +8,7 @@ export const TRANSCRIPTION_AUDIO_ADMIN_EMAILS = [
   'rafael@the-report.com',
   'elizabeth@the-report.com',
   'utkarsh.parihar.435+w@gmail.com',
+  'utkarsh.parihar.435@gmail.com',
 ]
 
 export function isTranscriptionAudioAdminEmail(email: string | null | undefined): boolean {
