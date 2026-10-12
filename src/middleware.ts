@@ -367,19 +367,25 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/transcriptions") &&
       !canAccessTranscriptions(access);
     const blockedFromBusinessCases =
-      pathname.startsWith("/business-cases") && !canAccessBusinessCases(access);
+      pathname.startsWith("/commercial/business-cases") &&
+      !canAccessBusinessCases(access);
     const blockedFromEditorialBriefs =
       pathname.startsWith("/editorial-briefs") &&
       !canAccessEditorialBriefs(access);
     const blockedFromMeetingPreparation =
-      pathname.startsWith("/meeting-preparation") &&
+      pathname.startsWith("/commercial/meeting-preparation") &&
       !canAccessMeetingPreparation(access);
     const blockedFromInterviewLetters =
       pathname.startsWith("/interview-letters") &&
       !canAccessInterviewLetterGenerator(access);
     const blockedFromSalesCoach =
-      pathname.startsWith("/sales-coach") &&
+      pathname.startsWith("/commercial/sales-coach") &&
       !canAccessSalesNegotiationCoach(access);
+    // /commercial/admin/* needs platform admin — the module access checks
+    // above only cover the user-facing module paths, mirroring how
+    // /finance/admin needs its own extra check beyond plain /finance access.
+    const blockedFromCommercialAdmin =
+      pathname.startsWith("/commercial/admin") && access.role !== "admin";
     const blockedFromCopywriting =
       pathname.startsWith("/copywriting") && !canAccessCopywritingTool(access);
     const blockedFromKnowledgeBase =
@@ -400,6 +406,7 @@ export async function middleware(request: NextRequest) {
       blockedFromMeetingPreparation ||
       blockedFromInterviewLetters ||
       blockedFromSalesCoach ||
+      blockedFromCommercialAdmin ||
       blockedFromCopywriting ||
       blockedFromKnowledgeBase ||
       blockedFromFinanceAdmin ||

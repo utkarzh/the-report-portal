@@ -21,8 +21,8 @@ export default async function MediaLibraryPage() {
 
         <Breadcrumbs
           items={[
-            { label: 'Meeting Preparation', href: '/meeting-preparation' },
-            { label: 'Admin', href: '/admin/meeting-prep' },
+            { label: 'Meeting Preparation', href: '/commercial/meeting-preparation' },
+            { label: 'Admin', href: '/commercial/admin/meeting-prep' },
             { label: 'Media Library' },
           ]}
         />
@@ -35,7 +35,7 @@ export default async function MediaLibraryPage() {
             </p>
           </div>
           <Link
-            href="/admin/meeting-prep/media-library/new"
+            href="/commercial/admin/meeting-prep/media-library/new"
             className="inline-flex items-center gap-2 bg-black text-white px-4 py-2.5 text-xs font-medium tracking-wider uppercase hover:bg-gray-900 transition-colors flex-shrink-0"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -62,7 +62,7 @@ export default async function MediaLibraryPage() {
                 </div>
                 <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                   <Link
-                    href={`/admin/meeting-prep/media-library/${entry.id}`}
+                    href={`/commercial/admin/meeting-prep/media-library/${entry.id}`}
                     className="text-xs text-gray-500 hover:text-black transition-colors px-3 py-1.5 border border-[#e5e3df] hover:border-gray-400"
                   >
                     Edit

@@ -18,8 +18,8 @@ export default async function AdvertiserTrackerPage() {
       <div className="max-w-5xl mx-auto">
         <Breadcrumbs
           items={[
-            { label: 'Meeting Preparation', href: '/meeting-preparation' },
-            { label: 'Admin', href: '/admin/meeting-prep' },
+            { label: 'Meeting Preparation', href: '/commercial/meeting-preparation' },
+            { label: 'Admin', href: '/commercial/admin/meeting-prep' },
             { label: 'Advertiser Tracker' },
           ]}
         />

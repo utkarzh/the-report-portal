@@ -24,7 +24,11 @@ export const SAMPLE_EXT_RE = /\.(docx|pdf|xlsx|xls|txt|md|markdown)$/i
 
 export interface DocTypeConfig {
   type: DocType
-  /** URL slug for the module's routes, e.g. /business-cases */
+  /** URL slug for the module's routes, e.g. /editorial-briefs or
+   *  commercial/business-cases — every route in this shared engine builds its
+   *  URL as `/${slug}`, so Business Cases living in the Commercial domain
+   *  while Editorial Briefs stays in the main app needs no special-casing
+   *  anywhere else — just this one string differing per type. */
   slug: string
   /** Singular label, e.g. "Business Case" */
   label: string
@@ -49,7 +53,7 @@ export interface DocTypeConfig {
 export const DOC_TYPES: Record<DocType, DocTypeConfig> = {
   business_case: {
     type: 'business_case',
-    slug: 'business-cases',
+    slug: 'commercial/business-cases',
     label: 'Business Case',
     labelPlural: 'Business Cases',
     permissionKey: 'can_access_business_cases',

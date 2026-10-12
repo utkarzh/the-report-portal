@@ -27,7 +27,7 @@ export default async function SalesCoachAdminPage() {
       <div className="max-w-5xl mx-auto">
         <Breadcrumbs
           items={[
-            { label: 'Sales Coach', href: '/sales-coach' },
+            { label: 'Sales Coach', href: '/commercial/sales-coach' },
             { label: 'Admin' },
           ]}
         />
@@ -51,7 +51,7 @@ export default async function SalesCoachAdminPage() {
               {SALES_COACH_KNOWLEDGE_DOCS.map(({ key, label, description }, i) => (
                 <Link
                   key={key}
-                  href={`/admin/sales-coach/knowledge/${key}`}
+                  href={`/commercial/admin/sales-coach/knowledge/${key}`}
                   className="flex items-center justify-between gap-4 px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
                 >
                   <span className="flex items-start gap-3 min-w-0">
@@ -76,7 +76,7 @@ export default async function SalesCoachAdminPage() {
               or a criterion the coach marked unverifiable. Visibility only — declared outcomes are never disputed here.
             </p>
             <Link
-              href="/admin/sales-coach/negotiations"
+              href="/commercial/admin/sales-coach/negotiations"
               className="flex items-center justify-between px-4 py-3 mt-4 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
             >
               <span>

@@ -48,7 +48,7 @@ export default function MediaLibraryForm({ entry }: Props) {
       setSuccess(true)
       router.refresh()
     } else {
-      router.push('/admin/meeting-prep/media-library')
+      router.push('/commercial/admin/meeting-prep/media-library')
       router.refresh()
     }
     setLoading(false)

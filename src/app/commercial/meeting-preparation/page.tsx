@@ -85,7 +85,7 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
         </div>
 
         <Link
-          href="/meeting-preparation/new"
+          href="/commercial/meeting-preparation/new"
           className="group inline-flex items-center gap-2.5 rounded-xl bg-black py-2.5 pl-3 pr-4 text-sm font-medium tracking-wide text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
         >
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/15 transition-colors group-hover:bg-white/25">
@@ -109,7 +109,7 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href="/admin/meeting-prep" className="group inline-flex items-center gap-2 rounded-lg border border-[#c8973f]/25 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c8973f]/50 hover:text-[#a07530] hover:shadow">
+              <Link href="/commercial/admin/meeting-prep" className="group inline-flex items-center gap-2 rounded-lg border border-[#c8973f]/25 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c8973f]/50 hover:text-[#a07530] hover:shadow">
                 <ShieldCheck size={14} className="text-[#a07530]" />
                 <span>Admin area</span>
               </Link>
@@ -119,7 +119,7 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
       )}
 
       <div className="mb-6">
-        <SearchInput basePath="/meeting-preparation" initialValue={search} placeholder="Search by interviewee, company, publication..." />
+        <SearchInput basePath="/commercial/meeting-preparation" initialValue={search} placeholder="Search by interviewee, company, publication..." />
       </div>
 
       {items.length === 0 ? (
@@ -130,7 +130,7 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
           {search ? (
             <span>
               No meeting preparations match &ldquo;<span className="font-medium text-gray-700">{search}</span>&rdquo;.{' '}
-              <Link href="/meeting-preparation" className="text-gray-700 underline hover:text-black">Clear search</Link>
+              <Link href="/commercial/meeting-preparation" className="text-gray-700 underline hover:text-black">Clear search</Link>
             </span>
           ) : (
             <span>No meeting preparations yet. Create one to get started.</span>
@@ -143,7 +143,7 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
               <EntityCard
                 key={s.id}
                 index={i}
-                href={`/meeting-preparation/${s.id}`}
+                href={`/commercial/meeting-preparation/${s.id}`}
                 icon={<CalendarClock size={16} />}
                 title={s.interviewee_name}
                 subtitle={[s.company_org, s.publication].filter(Boolean).join(' · ')}
@@ -168,7 +168,7 @@ export default async function MeetingPreparationPage({ searchParams }: { searchP
               totalPages={totalPages}
               totalCount={totalCount}
               pageSize={PAGE_SIZE}
-              basePath="/meeting-preparation"
+              basePath="/commercial/meeting-preparation"
               label="meeting preparations"
               search={search}
             />

@@ -18,13 +18,10 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  CalendarClock,
   Wallet,
   Mail,
-  Handshake,
   PenLine,
   BookOpen,
-  Library,
 } from "lucide-react";
 import type { UserRole } from "@/types";
 
@@ -53,6 +50,7 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   beta?: boolean;
+  alpha?: boolean;
 }
 
 function NavLink({
@@ -67,7 +65,8 @@ function NavLink({
   const isActive =
     pathname === item.href || pathname.startsWith(item.href + "/");
   const Icon = item.icon;
-  const label = item.beta ? `${item.label} (Beta)` : item.label;
+  const stageTag = item.alpha ? "Alpha" : item.beta ? "Beta" : null;
+  const label = stageTag ? `${item.label} (${stageTag})` : item.label;
   return (
     <Link
       href={item.href}
@@ -85,9 +84,9 @@ function NavLink({
         className={`flex items-center gap-1.5 min-w-0 ${collapsed ? "lg:hidden" : ""}`}
       >
         <span className="truncate">{item.label}</span>
-        {item.beta && (
+        {stageTag && (
           <span className="flex-shrink-0 text-[9px] font-semibold uppercase tracking-wide text-amber-400/90 border border-amber-400/40 rounded px-1 py-px leading-none">
-            Beta
+            {stageTag}
           </span>
         )}
       </span>
@@ -125,9 +124,6 @@ export default function Sidebar({
     ...(canAccessTranscriptions
       ? [{ label: "Transcriptions", href: "/transcriptions", icon: AudioLines }]
       : []),
-    ...(canAccessBusinessCases
-      ? [{ label: "Business Cases", href: "/business-cases", icon: Briefcase }]
-      : []),
     ...(canAccessEditorialBriefs
       ? [
           {
@@ -137,31 +133,12 @@ export default function Sidebar({
           },
         ]
       : []),
-    ...(canAccessMeetingPreparation
-      ? [
-          {
-            label: "Meeting Preparation",
-            href: "/meeting-preparation",
-            icon: CalendarClock,
-          },
-        ]
-      : []),
     ...(canAccessInterviewLetterGenerator
       ? [
           {
             label: "Interview Letters",
             href: "/interview-letters",
             icon: Mail,
-            beta: true,
-          },
-        ]
-      : []),
-    ...(canAccessSalesNegotiationCoach
-      ? [
-          {
-            label: "Sales Coach",
-            href: "/sales-coach",
-            icon: Handshake,
             beta: true,
           },
         ]
@@ -182,7 +159,7 @@ export default function Sidebar({
             label: "Knowledge Base",
             href: "/knowledge",
             icon: BookOpen,
-            beta: true,
+            alpha: true,
           },
         ]
       : []),
@@ -267,6 +244,29 @@ export default function Sidebar({
           </>
         )}
 
+        {(canAccessBusinessCases ||
+          canAccessMeetingPreparation ||
+          canAccessSalesNegotiationCoach) && (
+          <>
+            <div className="mt-4 pt-4 border-t border-gray-800 mb-2">
+              <p
+                className={`px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 ${collapsed ? "lg:hidden" : ""}`}
+              >
+                Commercial
+              </p>
+            </div>
+            <NavLink
+              item={{
+                label: "Commercial Tools",
+                href: "/commercial",
+                icon: Briefcase,
+              }}
+              collapsed={collapsed}
+              pathname={pathname}
+            />
+          </>
+        )}
+
         {canAccessFinance && (
           <>
             <div className="mt-4 pt-4 border-t border-gray-800 mb-2">
@@ -302,7 +302,6 @@ export default function Sidebar({
             <NavLink item={{ label: 'Analytics', href: '/admin/analytics', icon: BarChart3 }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Feedback', href: '/admin/feedback', icon: Inbox }} collapsed={collapsed} pathname={pathname} />
-            <NavLink item={{ label: 'Knowledge Base', href: '/admin/knowledge', icon: Library }} collapsed={collapsed} pathname={pathname} />
           </>
         )}
       </nav>

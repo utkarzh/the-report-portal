@@ -7,7 +7,8 @@ import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
-import { SALES_COACH_STAGE_LABELS, formatScore, outcomeLabel } from '@/lib/sales-coach'
+import { SALES_COACH_STAGE_LABELS, outcomeLabel, scorePercent } from '@/lib/sales-coach'
+import { ScorePill } from '@/components/sales-coach/ScoreDisplay'
 import PrivacyNotice from '@/components/sales-coach/PrivacyNotice'
 import DeleteNegotiationButton from '@/components/sales-coach/DeleteNegotiationButton'
 import EntityCard from '@/components/ui/EntityCard'
@@ -87,7 +88,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
           </div>
         </div>
         <Link
-          href="/sales-coach/new"
+          href="/commercial/sales-coach/new"
           className="group inline-flex items-center gap-2.5 rounded-xl bg-black py-2.5 pl-3 pr-4 text-sm font-medium tracking-wide text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
         >
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/15 transition-colors group-hover:bg-white/25">
@@ -109,14 +110,14 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <AdminLink href="/admin/sales-coach" icon={<BookOpenText size={14} className="text-[#a07530]" />} label="Knowledge documents" />
+              <AdminLink href="/commercial/admin/sales-coach" icon={<BookOpenText size={14} className="text-[#a07530]" />} label="Knowledge documents" />
             </div>
           </div>
         </div>
       )}
 
       <div className="mb-6">
-        <SearchInput basePath="/sales-coach" initialValue={search} placeholder="Search by company, country, publication..." />
+        <SearchInput basePath="/commercial/sales-coach" initialValue={search} placeholder="Search by company, country, publication..." />
       </div>
 
       {items.length === 0 ? (
@@ -125,7 +126,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
           {search ? (
             <span>
               No negotiations match &ldquo;<span className="font-medium text-gray-700">{search}</span>&rdquo;.{' '}
-              <Link href="/sales-coach" className="text-gray-700 underline hover:text-black">Clear search</Link>
+              <Link href="/commercial/sales-coach" className="text-gray-700 underline hover:text-black">Clear search</Link>
             </span>
           ) : (
             <span>{isAdmin ? 'No negotiations have been submitted yet.' : 'No negotiations yet. Submit one to get your first Report Card.'}</span>
@@ -138,7 +139,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
               <EntityCard
                 key={r.id}
                 index={i}
-                href={`/sales-coach/${r.id}`}
+                href={`/commercial/sales-coach/${r.id}`}
                 icon={<Handshake size={16} />}
                 title={r.company || 'Untitled negotiation'}
                 subtitle={[r.country, r.media_publication].filter(Boolean).join(' · ') || outcomeLabel(r.declared_outcome)}
@@ -148,9 +149,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
                 metaRight={
                   <span className="flex flex-shrink-0 items-center gap-1.5">
                     {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number' && (
-                      <span title={outcomeLabel(r.declared_outcome)} className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white">
-                        {formatScore(Number(r.execution_score), r.execution_denominator)}
-                      </span>
+                      <ScorePill pct={scorePercent(Number(r.execution_score), r.execution_denominator)} />
                     )}
                     {isAdmin && Number(r.cost_usd) > 0 && (
                       <span title="AI cost" className="inline-flex items-center gap-1 rounded-full bg-[#f7f6f3] px-2 py-0.5 text-[11px] font-medium tabular-nums text-gray-600"><Sparkles size={10} />${Number(r.cost_usd).toFixed(4)}</span>
@@ -164,7 +163,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
           </div>
 
           {totalPages > 1 && (
-            <ListPagination page={page} totalPages={totalPages} totalCount={totalCount} pageSize={PAGE_SIZE} basePath="/sales-coach" label="negotiations" search={search} />
+            <ListPagination page={page} totalPages={totalPages} totalCount={totalCount} pageSize={PAGE_SIZE} basePath="/commercial/sales-coach" label="negotiations" search={search} />
           )}
         </>
       )}

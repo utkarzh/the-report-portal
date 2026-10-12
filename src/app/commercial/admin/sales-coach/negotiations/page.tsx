@@ -41,8 +41,8 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
       <div className="max-w-6xl mx-auto">
         <Breadcrumbs
           items={[
-            { label: 'Sales Coach', href: '/sales-coach' },
-            { label: 'Admin', href: '/admin/sales-coach' },
+            { label: 'Sales Coach', href: '/commercial/sales-coach' },
+            { label: 'Admin', href: '/commercial/admin/sales-coach' },
             { label: 'Negotiations' },
           ]}
         />
@@ -57,13 +57,13 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
           </div>
           <div className="flex items-center gap-1 rounded-lg border border-[#e5e3df] bg-white p-1 text-xs font-medium">
             <Link
-              href="/admin/sales-coach/negotiations"
+              href="/commercial/admin/sales-coach/negotiations"
               className={`rounded-md px-3 py-1.5 transition-colors ${!flaggedOnly ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}
             >
               All
             </Link>
             <Link
-              href="/admin/sales-coach/negotiations?flagged=1"
+              href="/commercial/admin/sales-coach/negotiations?flagged=1"
               className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors ${flaggedOnly ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}
             >
               <Flag size={12} /> Flagged

@@ -580,7 +580,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
       {/* Subject side panel */}
       <aside className="flex w-64 flex-shrink-0 flex-col border-r border-[#e5e3df] bg-white">
         <div className="flex-1 overflow-y-auto p-5">
-          <Link href="/meeting-preparation" className="inline-flex items-center gap-1.5 text-xs text-gray-400 transition-colors hover:text-gray-700">
+          <Link href="/commercial/meeting-preparation" className="inline-flex items-center gap-1.5 text-xs text-gray-400 transition-colors hover:text-gray-700">
             <ArrowLeft size={13} />
             <span>Meeting Preparation</span>
           </Link>
@@ -640,7 +640,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
 
         {isAdmin && (
           <div className="border-t border-[#e5e3df] p-5">
-            <DeleteMeetingPrepButton sessionId={session.id} title={session.interviewee_name} redirectTo="/meeting-preparation" />
+            <DeleteMeetingPrepButton sessionId={session.id} title={session.interviewee_name} redirectTo="/commercial/meeting-preparation" />
           </div>
         )}
       </aside>

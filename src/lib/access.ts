@@ -86,11 +86,11 @@ export function isFinanceAdmin(
 export function landingPathFor(p: ModuleAccess): string {
   if (canAccessInterview(p)) return "/interview";
   if (canAccessTranscriptions(p)) return "/transcriptions";
-  if (canAccessBusinessCases(p)) return "/business-cases";
+  if (canAccessBusinessCases(p)) return "/commercial/business-cases";
   if (canAccessEditorialBriefs(p)) return "/editorial-briefs";
-  if (canAccessMeetingPreparation(p)) return "/meeting-preparation";
+  if (canAccessMeetingPreparation(p)) return "/commercial/meeting-preparation";
   if (canAccessInterviewLetterGenerator(p)) return "/interview-letters";
-  if (canAccessSalesNegotiationCoach(p)) return "/sales-coach";
+  if (canAccessSalesNegotiationCoach(p)) return "/commercial/sales-coach";
   if (canAccessCopywritingTool(p)) return "/copywriting";
   if (canAccessKnowledgeBase(p)) return "/knowledge";
   if (canAccessFinance(p))

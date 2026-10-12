@@ -101,7 +101,7 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
         return
       }
       const { id } = await res.json()
-      router.push(`/meeting-preparation/${id}?generating=true`)
+      router.push(`/commercial/meeting-preparation/${id}?generating=true`)
     } catch {
       setError('Network error. Please try again.')
       setLoading(false)

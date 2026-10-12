@@ -11,9 +11,9 @@ export default function NewMediaLibraryEntryPage() {
 
         <Breadcrumbs
           items={[
-            { label: 'Meeting Preparation', href: '/meeting-preparation' },
-            { label: 'Admin', href: '/admin/meeting-prep' },
-            { label: 'Media Library', href: '/admin/meeting-prep/media-library' },
+            { label: 'Meeting Preparation', href: '/commercial/meeting-preparation' },
+            { label: 'Admin', href: '/commercial/admin/meeting-prep' },
+            { label: 'Media Library', href: '/commercial/admin/meeting-prep/media-library' },
             { label: 'New Publication' },
           ]}
         />

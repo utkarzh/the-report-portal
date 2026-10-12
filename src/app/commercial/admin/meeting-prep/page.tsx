@@ -22,7 +22,7 @@ export default async function MeetingPrepAdminPage() {
       <div className="max-w-5xl mx-auto">
         <Breadcrumbs
           items={[
-            { label: 'Meeting Preparation', href: '/meeting-preparation' },
+            { label: 'Meeting Preparation', href: '/commercial/meeting-preparation' },
             { label: 'Admin' },
           ]}
         />
@@ -46,7 +46,7 @@ export default async function MeetingPrepAdminPage() {
                 <p className="text-[10px] text-gray-400 mt-2">{count ?? 0} publication{count === 1 ? '' : 's'}</p>
               </div>
               <Link
-                href="/admin/meeting-prep/media-library"
+                href="/commercial/admin/meeting-prep/media-library"
                 className="text-xs font-medium tracking-wider uppercase bg-black text-white px-4 py-2.5 hover:bg-gray-900 transition-colors flex-shrink-0"
               >
                 Manage
@@ -65,7 +65,7 @@ export default async function MeetingPrepAdminPage() {
                 <p className="text-[10px] text-gray-400 mt-2">{trackerCount ?? 0} countr{trackerCount === 1 ? 'y' : 'ies'}</p>
               </div>
               <Link
-                href="/admin/meeting-prep/advertiser-tracker"
+                href="/commercial/admin/meeting-prep/advertiser-tracker"
                 className="text-xs font-medium tracking-wider uppercase bg-black text-white px-4 py-2.5 hover:bg-gray-900 transition-colors flex-shrink-0"
               >
                 Manage
@@ -83,7 +83,7 @@ export default async function MeetingPrepAdminPage() {
               {INTERVIEW_TYPES.map(({ value, label }) => (
                 <Link
                   key={value}
-                  href={`/admin/meeting-prep/planteo-library/${value}`}
+                  href={`/commercial/admin/meeting-prep/planteo-library/${value}`}
                   className="flex items-center justify-between px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
                 >
                   {label} variant
@@ -103,7 +103,7 @@ export default async function MeetingPrepAdminPage() {
               {MEETING_PREP_PROMPT_KEYS.map(({ key, label, description }) => (
                 <Link
                   key={key}
-                  href={`/admin/meeting-prep/prompts/${key}`}
+                  href={`/commercial/admin/meeting-prep/prompts/${key}`}
                   className="flex items-center justify-between gap-4 px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors"
                 >
                   <div className="min-w-0">

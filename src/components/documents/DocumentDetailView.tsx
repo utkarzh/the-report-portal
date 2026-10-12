@@ -7,7 +7,7 @@ import { reconcileDocumentStatus } from '@/lib/documents-reconcile'
 import type { DocType, DocumentSession } from '@/types'
 
 // Shared detail/output view. Mirrors research/[sessionId]/page.tsx. Verifies the
-// row belongs to this doc_type so /business-cases/<id> can't open a brief.
+// row belongs to this doc_type so /commercial/business-cases/<id> can't open a brief.
 export default async function DocumentDetailView({
   docType,
   id,

@@ -30,8 +30,8 @@ export default async function SalesCoachKnowledgePage({ params }: Props) {
       <div className="max-w-5xl mx-auto">
         <Breadcrumbs
           items={[
-            { label: 'Sales Coach', href: '/sales-coach' },
-            { label: 'Admin', href: '/admin/sales-coach' },
+            { label: 'Sales Coach', href: '/commercial/sales-coach' },
+            { label: 'Admin', href: '/commercial/admin/sales-coach' },
             { label: doc.label },
           ]}
         />
