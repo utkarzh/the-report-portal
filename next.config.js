@@ -11,6 +11,9 @@ const nextConfig = {
       // The Knowledge Base admin area moved inside the module (like every
       // other module's admin tools). Keeps old bookmarks and links working.
       { source: '/admin/knowledge/:path*', destination: '/knowledge/admin/:path*', permanent: false },
+      // The Commercial hub page was removed; its three modules are listed
+      // directly in the main Sidebar.
+      { source: '/commercial', destination: '/dashboard', permanent: false },
     ]
   },
 }

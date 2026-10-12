@@ -23,6 +23,7 @@ import {
 } from "@/lib/auth/profile-cache";
 import { isMissingKbColumn } from "@/lib/knowledge/schema-compat";
 import type { UserRole, FinanceRole } from "@/types";
+import { isSalesCoachAdminEmail } from "@/lib/sales-coach-admins";
 
 // Profile columns read on every navigation. The Knowledge Base flag is added
 // separately so a database that hasn't run migration 034 yet can still sign
@@ -237,6 +238,7 @@ export async function middleware(request: NextRequest) {
     "x-user-can-copywriting",
     "x-user-can-knowledge-base",
     "x-user-finance-role",
+    "x-user-email",
   ]) {
     requestHeaders.delete(key);
   }
@@ -384,8 +386,13 @@ export async function middleware(request: NextRequest) {
     // /commercial/admin/* needs platform admin — the module access checks
     // above only cover the user-facing module paths, mirroring how
     // /finance/admin needs its own extra check beyond plain /finance access.
-    const blockedFromCommercialAdmin =
-      pathname.startsWith("/commercial/admin") && access.role !== "admin";
+    // Sales Coach admin is the exception: an explicit email allowlist, not
+    // the admin role (see sales-coach-admins.ts).
+    const blockedFromCommercialAdmin = pathname.startsWith(
+      "/commercial/admin/sales-coach",
+    )
+      ? !isSalesCoachAdminEmail(user.email)
+      : pathname.startsWith("/commercial/admin") && access.role !== "admin";
     const blockedFromCopywriting =
       pathname.startsWith("/copywriting") && !canAccessCopywritingTool(access);
     const blockedFromKnowledgeBase =
@@ -421,6 +428,7 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set("x-user-id", user.id);
     requestHeaders.set("x-user-role", profile.role);
     requestHeaders.set("x-user-name", profile.full_name ?? "");
+    requestHeaders.set("x-user-email", user.email ?? "");
     requestHeaders.set("x-user-tokens-used", String(profile.tokens_used));
     requestHeaders.set("x-user-token-limit", String(profile.token_limit));
     // Effective access (admins always true) — read by getProfileFromHeaders.

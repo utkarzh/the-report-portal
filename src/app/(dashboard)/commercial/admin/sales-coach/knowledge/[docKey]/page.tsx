@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
-import { requireAdminHeader } from '@/lib/auth/session'
+import { requireSalesCoachAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isSalesCoachKnowledgeKey, SALES_COACH_KNOWLEDGE_DOCS } from '@/lib/sales-coach'
 import SalesCoachKnowledgeForm from '@/components/admin/SalesCoachKnowledgeForm'
@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default async function SalesCoachKnowledgePage({ params }: Props) {
-  requireAdminHeader()
+  requireSalesCoachAdminHeader()
 
   if (!isSalesCoachKnowledgeKey(params.docKey)) notFound()
   const docKey = params.docKey

@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { isSalesCoachKnowledgeKey } from '@/lib/sales-coach'
+import { isSalesCoachAdminEmail } from '@/lib/sales-coach-admins'
 
 interface Params {
   params: { docKey: string }
@@ -33,19 +34,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ promptText: data?.content || '' })
 }
 
-// PATCH — admin only, snapshots the previous version before overwriting (US-046/048).
+// PATCH — Sales Coach admins only (email allowlist, see sales-coach-admins.ts),
+// snapshots the previous version before overwriting (US-046/048).
 export async function PATCH(request: NextRequest, { params }: Params) {
   const auth = await getApiUser()
   if (!auth.user) return auth.response
   const user = auth.user
 
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
+  if (!isSalesCoachAdminEmail(user.email)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

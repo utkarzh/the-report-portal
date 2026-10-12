@@ -7,6 +7,7 @@ import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
+import { isSalesCoachAdminEmail } from '@/lib/sales-coach-admins'
 import { SALES_COACH_STAGE_LABELS, outcomeLabel, scorePercent } from '@/lib/sales-coach'
 import { ScorePill } from '@/components/sales-coach/ScoreDisplay'
 import PrivacyNotice from '@/components/sales-coach/PrivacyNotice'
@@ -99,7 +100,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
         </Link>
       </div>
 
-      {isAdmin && (
+      {isSalesCoachAdminEmail(profile.email) && (
         <div className="mb-6 rounded-xl border border-[#c8973f]/25 bg-[#fbf7ed] p-4 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">

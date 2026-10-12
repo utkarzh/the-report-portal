@@ -46,6 +46,8 @@ interface Props {
   messages: SalesCoachMessage[]
   corrections: SalesCoachCorrection[]
   audioUrl: string | null
+  // Sales Coach admin email allowlist only (see sales-coach-admins.ts).
+  canDownloadAudio: boolean
   isAdmin: boolean
   // True right after submission: transcribe (if audio) and generate the Report
   // Card without another click. Never true on a plain revisit.
@@ -53,7 +55,7 @@ interface Props {
   creatorName: string | null
 }
 
-export default function NegotiationWorkspace({ negotiation: initial, messages, corrections: initialCorrections, audioUrl, isAdmin, autoStart, creatorName }: Props) {
+export default function NegotiationWorkspace({ negotiation: initial, messages, corrections: initialCorrections, audioUrl, canDownloadAudio, isAdmin, autoStart, creatorName }: Props) {
   const router = useRouter()
   const [n, setN] = useState<SalesCoachNegotiation>(initial)
   const [corrections, setCorrections] = useState<SalesCoachCorrection[]>(initialCorrections)
@@ -312,6 +314,16 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
         {audioUrl && (
           <div className="border-t border-[#eceae5] px-6 py-4">
             <AudioPlayer ref={audioRef} src={audioUrl} onTimeUpdate={(secs) => setActiveMs(secs * 1000)} />
+            {canDownloadAudio && (
+            <div className="mt-2 flex justify-end">
+              <a
+                href={`/api/sales-coach/${n.id}/audio`}
+                className="inline-flex items-center gap-1.5 text-xs text-gray-500 transition hover:text-gray-900"
+              >
+                <Download size={12} /> Download recording
+              </a>
+            </div>
+            )}
           </div>
         )}
         {isAdmin && (n.tokens_total > 0 || Number(n.cost_usd) > 0) && (

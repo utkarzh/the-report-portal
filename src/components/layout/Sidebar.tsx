@@ -19,6 +19,8 @@ import {
   ChevronRight,
   LogOut,
   Wallet,
+  CalendarClock,
+  Handshake,
   Mail,
   PenLine,
   BookOpen,
@@ -255,15 +257,27 @@ export default function Sidebar({
                 Commercial
               </p>
             </div>
-            <NavLink
-              item={{
-                label: "Commercial Tools",
-                href: "/commercial",
-                icon: Briefcase,
-              }}
-              collapsed={collapsed}
-              pathname={pathname}
-            />
+            {canAccessBusinessCases && (
+              <NavLink
+                item={{ label: "Business Cases", href: "/commercial/business-cases", icon: Briefcase }}
+                collapsed={collapsed}
+                pathname={pathname}
+              />
+            )}
+            {canAccessMeetingPreparation && (
+              <NavLink
+                item={{ label: "Meeting Preparation", href: "/commercial/meeting-preparation", icon: CalendarClock }}
+                collapsed={collapsed}
+                pathname={pathname}
+              />
+            )}
+            {canAccessSalesNegotiationCoach && (
+              <NavLink
+                item={{ label: "Sales Coach", href: "/commercial/sales-coach", icon: Handshake, beta: true }}
+                collapsed={collapsed}
+                pathname={pathname}
+              />
+            )}
           </>
         )}
 

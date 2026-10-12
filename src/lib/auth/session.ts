@@ -2,6 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isSalesCoachAdminEmail } from "@/lib/sales-coach-admins";
 import type { Profile, UserRole } from "@/types";
 
 export const getServerUser = cache(async () => {
@@ -44,6 +45,7 @@ export function getProfileFromHeaders() {
   return {
     id: h.get("x-user-id") ?? "",
     full_name: h.get("x-user-name") || null,
+    email: h.get("x-user-email") || null,
     role,
     status: "active" as const,
     tokens_used: Number(h.get("x-user-tokens-used") ?? "0"),
@@ -74,6 +76,14 @@ export function requireAdminHeader(): void {
   const role = h.get("x-user-role");
   if (!role) redirect("/login");
   if (role !== "admin") redirect("/dashboard");
+}
+
+// Synchronous Sales Coach admin guard — an email allowlist, not the admin
+// role (see sales-coach-admins.ts). Used by /commercial/admin/sales-coach.
+export function requireSalesCoachAdminHeader(): void {
+  const h = headers();
+  if (!h.get("x-user-role")) redirect("/login");
+  if (!isSalesCoachAdminEmail(h.get("x-user-email"))) redirect("/commercial/sales-coach");
 }
 
 // Synchronous finance-admin guard (platform admins pass too — see

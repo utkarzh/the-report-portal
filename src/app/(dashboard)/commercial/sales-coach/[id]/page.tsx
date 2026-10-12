@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
 import { SALES_COACH_AUDIO_BUCKET } from '@/lib/sales-coach'
+import { isSalesCoachAdminEmail } from '@/lib/sales-coach-admins'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import NegotiationWorkspace from '@/components/sales-coach/NegotiationWorkspace'
 import DeleteNegotiationButton from '@/components/sales-coach/DeleteNegotiationButton'
@@ -82,6 +83,7 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
           messages={messages}
           corrections={corrections}
           audioUrl={audioUrl}
+          canDownloadAudio={isSalesCoachAdminEmail(profile.email)}
           isAdmin={profile.role === 'admin'}
           autoStart={searchParams.start === '1'}
           creatorName={creatorName}

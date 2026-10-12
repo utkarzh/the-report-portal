@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 import { Flag } from 'lucide-react'
-import { requireAdminHeader } from '@/lib/auth/session'
+import { requireSalesCoachAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import SalesCoachNegotiationsTable from '@/components/admin/SalesCoachNegotiationsTable'
@@ -18,7 +18,7 @@ interface Props {
 // commit cc1b0b6 at the client's own request. Declared outcomes stay trusted
 // outright; this page never second-guesses one.
 export default async function SalesCoachNegotiationsAdminPage({ searchParams }: Props) {
-  requireAdminHeader()
+  requireSalesCoachAdminHeader()
 
   const flaggedOnly = searchParams.flagged === '1'
 

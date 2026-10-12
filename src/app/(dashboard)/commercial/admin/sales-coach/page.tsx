@@ -1,13 +1,13 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { requireAdminHeader } from '@/lib/auth/session'
+import { requireSalesCoachAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import { SALES_COACH_KNOWLEDGE_DOCS } from '@/lib/sales-coach'
 
 export default async function SalesCoachAdminPage() {
-  requireAdminHeader()
+  requireSalesCoachAdminHeader()
 
   // Flagged = a fact correction on record or a criterion needing audio
   // verification. Fetched (capped, not paginated — same reasoning as the
