@@ -5,6 +5,7 @@ import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { TRANSCRIPTION_AUDIO_BUCKET } from '@/lib/transcriptions'
+import { isTranscriptionAudioAdminEmail } from '@/lib/transcription-admins'
 import { reconcilePendingTranscriptions } from '@/lib/assemblyai/reconcile'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import TranscriptionWorkspace from '@/components/transcriptions/TranscriptionWorkspace'
@@ -58,6 +59,7 @@ export default async function TranscriptionDetailPage({ params }: { params: { id
           transcription={transcription}
           audioUrl={signed?.signedUrl ?? null}
           isAdmin={profile.role === 'admin'}
+          canDownloadAudio={isTranscriptionAudioAdminEmail(profile.email)}
         />
       </div>
     </div>

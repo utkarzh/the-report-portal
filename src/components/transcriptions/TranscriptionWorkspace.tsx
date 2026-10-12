@@ -81,6 +81,8 @@ interface Props {
   transcription: Transcription
   audioUrl: string | null
   isAdmin?: boolean
+  // Transcription audio download allowlist only (see transcription-admins.ts).
+  canDownloadAudio?: boolean
 }
 
 // Reads an SSE stream produced by the transcribe/refine routes, calling
@@ -132,7 +134,7 @@ async function consumeStream(
   }
 }
 
-export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmin = false }: Props) {
+export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmin = false, canDownloadAudio = false }: Props) {
   const router = useRouter()
 
   const chunkPaths = transcription.chunk_paths ?? []
@@ -483,7 +485,19 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
         </div>
 
         {audioUrl ? (
-          <AudioPlayer src={audioUrl} />
+          <>
+            <AudioPlayer src={audioUrl} />
+            {canDownloadAudio && (
+              <div className="mt-2 flex justify-end">
+                <a
+                  href={`/api/transcriptions/${transcription.id}/audio`}
+                  className="inline-flex items-center gap-1.5 text-xs text-gray-500 transition hover:text-gray-900"
+                >
+                  <Download size={12} /> Download recording
+                </a>
+              </div>
+            )}
+          </>
         ) : (
           <p className="mt-5 text-sm text-gray-400">Audio preview unavailable.</p>
         )}
