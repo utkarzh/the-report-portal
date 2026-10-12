@@ -1,12 +1,14 @@
 'use client'
 
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare } from 'lucide-react'
-import { formatScore, scoreCoverageSuffix, outcomeLabel, SALES_COACH_CRITERIA, applicableCriteriaCount, formatTimestamp } from '@/lib/sales-coach'
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare, ArrowDown, TrendingUp } from 'lucide-react'
+import { SALES_COACH_CRITERIA, formatTimestamp, scoreBand, scoreOpportunities, scorePercent, unverifiedNote } from '@/lib/sales-coach'
+import { BAND_TONE, ScoreRing } from '@/components/sales-coach/ScoreDisplay'
 import { formatDayMonthYearTime, formatDayMonth } from '@/lib/date-format'
 import type { SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict, SalesCoachOutcome, SalesCoachCorrection } from '@/types'
 
 // The Report Card as ONE document (US-039/040/041): identity header →
-// scoreline → summary → nine criteria with verbatim evidence → scoreline recap
+// score (percentage ring + plain-language band + breakdown) → where to focus
+// next → summary → nine criteria with verbatim evidence → scoreline recap
 // → deeper analysis → the single coaching question — all inside a single
 // paper-like card, in the order of the client's sample. renderReportCardMarkdown()
 // is the text twin of this view; both read the same object.
@@ -63,8 +65,11 @@ export default function ReportCardView({
 }) {
   const scored = card.criteria.filter((c) => c.scored)
   const count = (v: SalesCoachVerdict) => scored.filter((c) => c.verdict === v).length
-  const weakest = card.criteria.find((c) => c.scored && c.verdict === 'fail') || card.criteria.find((c) => c.scored && c.verdict === 'warn')
-  const weakestLabel = weakest ? (SALES_COACH_CRITERIA.find((k) => k.key === weakest.key)?.label || weakest.label) : null
+  const pct = scorePercent(card.execution_score, card.execution_denominator)
+  const band = scoreBand(pct)
+  const focus = scoreOpportunities(card).slice(0, 2)
+  const strengths = scored.filter((c) => c.verdict === 'pass').map(criterionLabel)
+  const uvNote = unverifiedNote(card.criteria)
 
   return (
     <article className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
@@ -81,44 +86,109 @@ export default function ReportCardView({
         </p>
       </header>
 
-      {/* ── Scoreline ────────────────────────────────────────────── */}
-      <div className="mx-6 rounded-xl bg-[#faf9f7] px-6 py-5 sm:mx-12">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-          <div className="flex flex-shrink-0 items-baseline gap-1 text-gray-900">
-            <span className="text-5xl font-semibold tabular-nums tracking-tight">{formatScore(card.execution_score, card.execution_denominator).split('/')[0]}</span>
-            <span className="text-xl text-gray-400">/ {card.execution_denominator}</span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">
-              Execution score · {card.execution_denominator} scored criteria{scoreCoverageSuffix(card.criteria)}
-              {card.execution_denominator === applicableCriteriaCount(card.declared_outcome)
-                ? ` · fixed for "${outcomeLabel(card.declared_outcome)}"`
-                : ' · one or more criteria need audio verification'}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+      {/* ── Score ────────────────────────────────────────────────── */}
+      <div className="mx-6 rounded-xl bg-[#faf9f7] px-6 py-6 sm:mx-12">
+        <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+          <ScoreRing pct={pct} />
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            {band ? (
+              <>
+                <p className={`text-lg font-semibold tracking-tight ${BAND_TONE[band.tone].text}`}>{band.label}</p>
+                <p className="mt-1 text-sm leading-6 text-gray-600">{band.hint}</p>
+              </>
+            ) : (
+              <p className="text-sm leading-6 text-gray-600">There wasn&apos;t enough verifiable material in the recording to calculate a score.</p>
+            )}
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
               <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${card.declared_outcome ? OUTCOME_TONE[card.declared_outcome] : 'bg-stone-100 text-stone-700'}`}>
                 {card.commercial_outcome_label}
               </span>
             </div>
-            <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
-              <span className="inline-flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-600" /> {count('pass')} met</span>
-              <span className="inline-flex items-center gap-1"><AlertTriangle size={11} className="text-amber-600" /> {count('warn')} partly met</span>
-              <span className="inline-flex items-center gap-1"><XCircle size={11} className="text-red-600" /> {count('fail')} not met</span>
-              <span className="inline-flex items-center gap-1"><MinusCircle size={11} className="text-stone-400" /> {count('na')} not applicable</span>
-              {count('uv') > 0 && <span className="inline-flex items-center gap-1"><HelpCircle size={11} className="text-sky-500" /> {count('uv')} unverifiable</span>}
-            </div>
           </div>
         </div>
-        <p className="mt-4 border-t border-[#e9e7e2] pt-4 text-[15px] font-medium leading-relaxed text-gray-900">{card.headline}</p>
+
+        {scored.length > 0 && (
+          <div className="mt-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">How your score breaks down</p>
+              <p className="whitespace-nowrap text-[11px] text-gray-500">
+                {[count('pass') && `${count('pass')} met`, count('warn') && `${count('warn')} partly`, count('fail') && `${count('fail')} missed`].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="mt-2 flex gap-1">
+              {scored.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => scrollToCriterion(c.key)}
+                  title={`${criterionLabel(c)} — ${VERDICT[c.verdict].label}`}
+                  className={`h-2.5 flex-1 rounded-full transition-opacity hover:opacity-70 ${SEGMENT[c.verdict]}`}
+                />
+              ))}
+            </div>
+            {strengths.length > 0 && (
+              <p className="mt-3 text-xs leading-5 text-gray-600">
+                <span className="font-semibold text-emerald-700">What landed: </span>
+                {strengths.join(', ')}
+              </p>
+            )}
+            {uvNote && (
+              <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-5 text-gray-500">
+                <HelpCircle size={12} className="mt-0.5 flex-shrink-0 text-sky-500" />
+                {uvNote}
+              </p>
+            )}
+          </div>
+        )}
+
+        <p className="mt-5 border-t border-[#e9e7e2] pt-4 text-[15px] font-medium leading-relaxed text-gray-900">{card.headline}</p>
       </div>
 
-      {onStartCoaching && !hasCoachingHistory && (
+      {/* ── Where to focus next ──────────────────────────────────────── */}
+      {focus.length > 0 && (
+        <div className="mx-6 mt-4 rounded-xl border border-[#e5e3df] bg-[#fffdf8] px-5 py-4 sm:mx-12">
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">
+            <TrendingUp size={12} /> Where to focus next
+          </p>
+          <ul className="mt-3 flex flex-col gap-2.5">
+            {focus.map((f) => (
+              <li key={f.key} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <p className="text-sm text-gray-800">
+                  <span className="font-semibold text-gray-900">{f.label}</span>
+                  <span className={`ml-2 text-xs font-medium ${f.verdict === 'fail' ? 'text-red-700' : 'text-amber-700'}`}>
+                    {f.verdict === 'fail' ? 'Missed' : 'Partly done'}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-gray-500">Getting this fully right would take you to {f.reachPct}%.</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => scrollToCriterion(f.key)}
+                  className="inline-flex flex-shrink-0 items-center gap-1 self-start text-xs font-medium text-gray-600 transition-colors hover:text-black sm:self-center"
+                >
+                  See what to change <ArrowDown size={12} />
+                </button>
+              </li>
+            ))}
+          </ul>
+          {onStartCoaching && !hasCoachingHistory && (
+            <div className="mt-4 flex flex-col items-start gap-3 border-t border-[#efe9dc] pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-700">Your coach has read this card and can walk you through {focus[0].label} step by step.</p>
+              <button
+                type="button"
+                onClick={onStartCoaching}
+                className="inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-black px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-900"
+              >
+                <MessageSquare size={13} /> Practise with your coach
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {focus.length === 0 && onStartCoaching && !hasCoachingHistory && (
         <div className="mx-6 mt-4 flex flex-col items-start gap-3 rounded-xl border border-[#e5e3df] bg-[#fffdf8] px-5 py-3.5 sm:mx-12 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-gray-700">
-            <span className="font-medium text-gray-900">
-              {weakestLabel ? `Want to fix your ${weakestLabel} before the next call?` : 'Want to make next time even stronger?'}
-            </span>{' '}
-            Your coach has read this Report Card and is ready to walk through it with you.
+            <span className="font-medium text-gray-900">Every step that applied was met.</span>{' '}
+            Your coach can help you make the next one even sharper.
           </p>
           <button
             type="button"
@@ -192,7 +262,10 @@ export default function ReportCardView({
         <dl className="grid gap-4 sm:grid-cols-2">
           <div>
             <dt className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Execution score</dt>
-            <dd className="mt-1 text-sm font-semibold tabular-nums text-gray-900">{formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} scored criteria{scoreCoverageSuffix(card.criteria)}</dd>
+            <dd className="mt-1 text-sm font-semibold tabular-nums text-gray-900">
+              {pct === null ? '—' : `${pct}%`}
+              {band && <span className={`ml-1.5 font-medium ${BAND_TONE[band.tone].text}`}>· {band.label}</span>}
+            </dd>
           </div>
           <div>
             <dt className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Commercial outcome</dt>
@@ -266,7 +339,7 @@ export default function ReportCardView({
       <footer className="border-t border-[#eceae5] px-6 py-3 text-center text-[11px] text-gray-400 sm:px-12">
         {meta.generatedAt ? `Generated ${formatDayMonthYearTime(meta.generatedAt)}` : ''}
         {meta.modelUsed ? ` · ${meta.modelUsed}` : ''}
-        {' · Evidence quoted verbatim from the transcript · Score recomputed in code'}
+        {' · Evidence quoted verbatim from the transcript'}
       </footer>
     </article>
   )
@@ -282,7 +355,7 @@ function CriterionRow({ criterion: c, onTimestampClick, onFlag }: { criterion: S
   const label = meta?.label || c.label
   const aiSaid = c.evidence?.[0]?.text || c.reason || c.note || ''
   return (
-    <li className="py-5">
+    <li id={`criterion-${c.key}`} className="scroll-mt-24 py-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex items-baseline gap-2.5">
           <span className="text-xs font-semibold tabular-nums text-gray-400">{String(meta?.number ?? 0).padStart(2, '0')}</span>
@@ -329,6 +402,28 @@ function CriterionRow({ criterion: c, onTimestampClick, onFlag }: { criterion: S
       )}
     </li>
   )
+}
+
+const SEGMENT: Record<SalesCoachVerdict, string> = {
+  pass: 'bg-emerald-500',
+  warn: 'bg-amber-400',
+  fail: 'bg-red-400',
+  na: 'bg-stone-200',
+  uv: 'bg-sky-200',
+}
+
+function criterionLabel(c: SalesCoachCriterion): string {
+  return SALES_COACH_CRITERIA.find((k) => k.key === c.key)?.label || c.label
+}
+
+// Jump from the score breakdown / focus list to that criterion's evidence,
+// with a brief highlight so the eye lands on the right row.
+function scrollToCriterion(key: string) {
+  const el = document.getElementById(`criterion-${key}`)
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  el.classList.add('bg-[#fffdf8]')
+  setTimeout(() => el.classList.remove('bg-[#fffdf8]'), 1600)
 }
 
 function titleCase(s: string): string {

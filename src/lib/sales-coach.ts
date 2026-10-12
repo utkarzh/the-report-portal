@@ -162,6 +162,93 @@ export function formatScore(score: number | null | undefined, denominator: numbe
   return `${s}/${denominator}`
 }
 
+// The Execution Score is shown to everyone — admins included — as a
+// percentage ("79%"), never as points or "X scored criteria" (9 Oct 2026,
+// client request). Stored data — execution_score/denominator and
+// report_card_markdown — stays in points; everything below is display only.
+export function scorePercent(score: number | null | undefined, denominator: number | null | undefined): number | null {
+  if (typeof score !== 'number' || typeof denominator !== 'number' || !Number.isFinite(score) || denominator <= 0) return null
+  return Math.round((score / denominator) * 100)
+}
+
+export function formatScorePercent(score: number | null | undefined, denominator: number | null | undefined): string {
+  const pct = scorePercent(score, denominator)
+  return pct === null ? '—' : `${pct}%`
+}
+
+// A plain-language reading of the percentage, so a number on its own is never
+// the whole message. Presentation only — the verdicts and the arithmetic stay
+// the Project Prompt's and recomputeScore()'s; these bands only describe them.
+export type ScoreBandTone = 'strong' | 'solid' | 'growth'
+export interface ScoreBand {
+  tone: ScoreBandTone
+  label: string
+  short: string
+  hint: string
+}
+
+export function scoreBand(pct: number | null): ScoreBand | null {
+  if (pct === null) return null
+  if (pct >= 80) return { tone: 'strong', label: 'Strong execution', short: 'Strong', hint: 'Most of the TRC sequence landed. The details below are what separate this from a perfect call.' }
+  if (pct >= 50) return { tone: 'solid', label: 'Good foundation, clear gaps', short: 'Good', hint: 'The core was there, but a few key steps were missed or only partly done. Fixing them is where the next deal is won.' }
+  return { tone: 'growth', label: 'Room to grow', short: 'Room to grow', hint: 'Several key steps of the TRC sequence were missed. Start with the one below; it has the biggest impact on your next call.' }
+}
+
+// The steps that cost the most, biggest gain first: what fully meeting each
+// would bring the percentage to. Uses the same per-verdict points as
+// recomputeScore(), so the numbers always add up.
+export interface ScoreOpportunity {
+  key: string
+  label: string
+  verdict: 'warn' | 'fail'
+  reachPct: number
+}
+
+export function scoreOpportunities(card: Pick<SalesCoachReportCard, 'criteria' | 'execution_score' | 'execution_denominator'>): ScoreOpportunity[] {
+  const denom = card.execution_denominator
+  if (!denom || denom <= 0) return []
+  return card.criteria
+    .filter((c): c is SalesCoachCriterion & { verdict: 'warn' | 'fail' } => c.scored && (c.verdict === 'fail' || c.verdict === 'warn'))
+    .map((c) => ({
+      key: c.key,
+      label: SALES_COACH_CRITERIA.find((k) => k.key === c.key)?.label || c.label,
+      verdict: c.verdict,
+      reachPct: Math.round(((card.execution_score + (1 - (VERDICT_POINTS[c.verdict] ?? 0))) / denom) * 100),
+    }))
+    .sort((a, b) => b.reachPct - a.reachPct)
+}
+
+// Steps that couldn't be checked from the recording, in plain words. Keeps
+// the Project Prompt's intent ("never display X/Y alone when UV criteria
+// exist") now that the score is a percentage: say plainly that something
+// wasn't counted, rather than letting a high or low % stand unexplained.
+export function unverifiedNote(criteria: SalesCoachCriterion[]): string | null {
+  const uv = criteria.filter((c) => c.verdict === 'uv').length
+  if (uv === 0) return null
+  return uv === 1
+    ? "1 step couldn't be verified from the audio, so it isn't counted for or against you."
+    : `${uv} steps couldn't be verified from the audio, so they aren't counted for or against you.`
+}
+
+// Rewrites the scoreline phrases in a stored report_card_markdown into a
+// percentage, dropping the "UV, N/A" coverage suffix in favour of
+// unverifiedNote()'s plain wording. Rewritten rather than re-rendered because
+// older cards were stored in an earlier layout ("1.5/6 applicable points", a
+// Commercial Outcome criterion) that the current renderer would not
+// reproduce. Only matches the phrases our own renderer writes, never model
+// prose.
+export function scoreTextAsPercent(markdown: string): string {
+  return markdown.replace(
+    /(\d+(?:\.\d+)?)\s?\/\s?(\d+) (?:scored criteria|applicable points)(?: — (\d+) UV, \d+ N\/A)?/g,
+    (match, s: string, d: string, uv?: string) => {
+      const pct = formatScorePercent(Number(s), Number(d))
+      if (pct === '—') return match
+      const n = uv ? Number(uv) : 0
+      return n > 0 ? `${pct} (${n} step${n === 1 ? '' : 's'} not verifiable from the audio, not counted)` : pct
+    },
+  )
+}
+
 // The Project Prompt's coverage convention: "Never display X/Y alone when UV
 // criteria exist" — append the UV/N-A counts so a low denominator caused by
 // unverifiable audio is never mistaken for a low score. Plain "X/Y" when there

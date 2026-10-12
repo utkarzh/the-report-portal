@@ -13,7 +13,8 @@ import ReportCardView from '@/components/sales-coach/ReportCardView'
 import CorrectionModal, { type FlagTarget } from '@/components/sales-coach/CorrectionModal'
 import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
-import { coachGreeting, formatOutcomeDetails, formatScore, outcomeLabel, pickTranscript, suggestedCoachingPrompts } from '@/lib/sales-coach'
+import { coachGreeting, formatOutcomeDetails, outcomeLabel, pickTranscript, scoreBand, scorePercent, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
+import { ScorePill } from '@/components/sales-coach/ScoreDisplay'
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
 import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection } from '@/types'
 
@@ -261,7 +262,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   const steps = [
     { label: 'Submitted', sub: formatDayMonth(n.created_at), state: 'done' as StepState },
     { label: 'Transcript', sub: busy === 'transcribing' ? 'Usually 1–3 min' : transcript ? (transcript.source === 'system' ? 'Speaker-labelled' : 'Provided') : n.audio_path ? 'Pending' : '—', state: transcriptStep },
-    { label: 'Report Card', sub: busy === 'analyzing' ? 'Usually 2–4 min' : hasCard ? formatScore(Number(n.execution_score), n.execution_denominator) : 'Pending', state: cardStep },
+    { label: 'Report Card', sub: busy === 'analyzing' ? 'Usually 2–4 min' : hasCard ? scoreSummary(Number(n.execution_score), n.execution_denominator) : 'Pending', state: cardStep },
     { label: 'Coaching', sub: hasCard ? (messages.length > 0 ? `${messages.length} messages` : 'Ready') : 'After the card', state: coachStep },
   ]
 
@@ -303,9 +304,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               <span className="font-medium text-gray-800">{outcomeLabel(n.declared_outcome)}</span>
             </span>
             {hasCard && typeof n.execution_denominator === 'number' && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-black px-3 py-1 text-xs font-semibold tabular-nums text-white">
-                {formatScore(Number(n.execution_score), n.execution_denominator)}<span className="font-normal text-white/60">score</span>
-              </span>
+              <ScorePill pct={scorePercent(Number(n.execution_score), n.execution_denominator)} withLabel />
             )}
           </div>
         </div>
@@ -401,7 +400,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
                 >
                   <Flag size={13} /> Give feedback
                 </button>
-                <CopyTextButton text={n.report_card_markdown} />
+                <CopyTextButton text={n.report_card_markdown ? scoreTextAsPercent(n.report_card_markdown) : null} />
                 <a
                   href={`/api/sales-coach/${n.id}/download`}
                   className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-900"
@@ -508,6 +507,13 @@ function TabButton({ active, onClick, icon, label, badge }: { active: boolean; o
       {badge && !active && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#c8973f]" />}
     </button>
   )
+}
+
+// "79% · Good" for the stepper.
+function scoreSummary(score: number, denominator: number | null): string {
+  const pct = scorePercent(score, denominator)
+  const band = scoreBand(pct)
+  return pct === null || !band ? '—' : `${pct}% · ${band.short}`
 }
 
 function CopyTextButton({ text }: { text: string | null }) {

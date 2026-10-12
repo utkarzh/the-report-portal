@@ -10,7 +10,7 @@ import {
   SONNET_PRICING,
 } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { pickTranscript } from '@/lib/sales-coach'
+import { pickTranscript, scoreTextAsPercent } from '@/lib/sales-coach'
 import { buildNegotiationContext, buildTranscriptBlock, loadKnowledgeBundle } from '@/lib/sales-coach-context'
 import type { SalesCoachNegotiation } from '@/types'
 
@@ -110,8 +110,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     .eq('negotiation_id', n.id)
     .order('created_at', { ascending: true })
 
+  // Everyone sees the score as a percentage, so the coach is handed the card
+  // in the same terms — it never quotes "5.5/7" to someone shown "79%".
+  const cardText = n.report_card_markdown?.trim()
   const reportCardBlock = n.report_card
-    ? `--- REPORT CARD (already produced for this negotiation) ---\n${n.report_card_markdown?.trim() || JSON.stringify(n.report_card, null, 2)}`
+    ? `--- REPORT CARD (already produced for this negotiation) ---\n${cardText ? scoreTextAsPercent(cardText) : JSON.stringify(n.report_card, null, 2)}`
     : '--- REPORT CARD ---\nThe formal Report Card has not been generated yet. Coach directly from the transcript and context.'
 
   const systemText = [

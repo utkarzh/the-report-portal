@@ -7,7 +7,7 @@ import {
   renderTokens, MARGIN, LETTER_W, LETTER_H, CONTENT_W_PORTRAIT,
   NAVY, BLUE, INK, GREY_FOOT, SZ, FONT,
 } from '@/lib/docx-template'
-import { formatScore, scoreCoverageSuffix, renderReportCardMarkdown } from '@/lib/sales-coach'
+import { renderReportCardMarkdown, scoreBand, scorePercent, scoreTextAsPercent, unverifiedNote } from '@/lib/sales-coach'
 import type { SalesCoachNegotiation, SalesCoachReportCard } from '@/types'
 
 marked.use({ gfm: true, breaks: true })
@@ -16,11 +16,16 @@ marked.use({ gfm: true, breaks: true })
 // continuous document (no cover page break): a header block with the
 // negotiation's identity and scoreline, then the card body rendered from the
 // same markdown the UI's "Copy as text" produces, via the shared renderer.
+// The Execution Score is a percentage with its plain-language band, for
+// everyone — same as the on-screen card.
 export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachReportCard): Document {
   const dateStr = new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   const interviewee = [n.interviewee_name, n.interviewee_position].filter(Boolean).join(', ')
   const where = [n.media_publication, n.country].filter(Boolean).join(' · ')
-  const score = `${formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} scored criteria${scoreCoverageSuffix(card.criteria)}`
+  const pct = scorePercent(card.execution_score, card.execution_denominator)
+  const band = scoreBand(pct)
+  const score = pct === null ? '—' : `${pct}%${band ? ` — ${band.label}` : ''}`
+  const uvNote = unverifiedNote(card.criteria)
 
   const meta = (text: string, color = '595959') =>
     new Paragraph({
@@ -48,6 +53,7 @@ export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachRe
       spacing: { before: 160, after: 40 },
       children: [new TextRun({ text: `Execution Score: ${score}`, bold: true, size: SZ.coverSub, color: NAVY, font: FONT })],
     }),
+    ...(uvNote ? [meta(uvNote)] : []),
     meta(`Commercial outcome: ${card.commercial_outcome_label}`, INK),
     new Paragraph({
       spacing: { before: 200, after: 240 },
@@ -57,7 +63,8 @@ export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachRe
   ]
 
   // The markdown opens with "# REPORT CARD", which the header above already says.
-  const body = renderReportCardMarkdown(card).replace(/^# REPORT CARD\n/, '')
+  const markdown = renderReportCardMarkdown(card)
+  const body = scoreTextAsPercent(markdown).replace(/^# REPORT CARD\n/, '')
   const tokens = marked.lexer(body)
 
   const footer = () =>
