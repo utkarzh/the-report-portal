@@ -68,30 +68,34 @@ export default function MarkdownEditor({
     },
   ]
 
+  const words = value.trim() ? value.trim().split(/\s+/).length : 0
+
   return (
-    <div className="rounded-lg border border-[#e5e3df] bg-white">
-      <div className="flex items-center justify-between gap-2 border-b border-[#e5e3df] px-2 py-1.5">
+    <div className="overflow-hidden rounded-xl border border-[#e5e3df] bg-white transition-colors focus-within:border-gray-400">
+      <div className="flex items-center justify-between gap-2 border-b border-[#eceae5] bg-[#fcfbf9] px-2 py-1.5">
         <div className="flex items-center gap-0.5">
-          {tools.map(({ icon: Icon, label, run }) => (
-            <button
-              key={label}
-              type="button"
-              title={label}
-              onClick={run}
-              disabled={disabled || tab === 'preview'}
-              className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-black disabled:opacity-40"
-            >
-              <Icon size={15} />
-            </button>
+          {tools.map(({ icon: Icon, label, run }, i) => (
+            <span key={label} className="flex items-center">
+              {(i === 2 || i === 3) && <span className="mx-1 h-4 w-px bg-[#e5e3df]" />}
+              <button
+                type="button"
+                title={label}
+                onClick={run}
+                disabled={disabled || tab === 'preview'}
+                className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-white hover:text-black disabled:opacity-40"
+              >
+                <Icon size={15} />
+              </button>
+            </span>
           ))}
         </div>
-        <div className="flex rounded-md bg-gray-100 p-0.5 text-[11px] font-medium">
+        <div className="flex rounded-lg border border-[#eceae5] bg-white p-0.5 text-[11px] font-medium">
           {(['write', 'preview'] as const).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={`rounded px-2.5 py-1 capitalize ${tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+              className={`rounded-md px-2.5 py-1 capitalize transition-colors ${tab === t ? 'bg-black text-white' : 'text-gray-500 hover:text-gray-900'}`}
             >
               {t}
             </button>
@@ -106,14 +110,18 @@ export default function MarkdownEditor({
           disabled={disabled}
           rows={minRows}
           placeholder={'## Purpose\nWhat this guide covers…\n\n## Steps\n1. First step\n2. Second step'}
-          className="block w-full resize-y rounded-b-lg px-4 py-3 font-mono text-[13px] leading-relaxed placeholder:text-gray-300 focus:outline-none disabled:bg-gray-50"
+          className="block w-full resize-y px-4 py-3 font-mono text-[13px] leading-relaxed placeholder:text-gray-300 focus:outline-none disabled:bg-gray-50"
         />
       ) : (
         <div
-          className="prose-research min-h-[300px] px-5 py-4 text-sm text-gray-800"
+          className="kb-article prose-research min-h-[300px] px-5 py-4 text-gray-800"
           dangerouslySetInnerHTML={{ __html: value.trim() ? renderKbMarkdown(value) : '<p class="text-gray-400">Nothing to preview yet.</p>' }}
         />
       )}
+      <div className="flex items-center justify-between gap-3 border-t border-[#eceae5] bg-[#fcfbf9] px-3 py-1.5 text-[11px] text-gray-400">
+        <span>Markdown: ## heading · **bold** · - list · [text](link)</span>
+        <span className="tabular-nums">{words.toLocaleString('en-US')} word{words === 1 ? '' : 's'}</span>
+      </div>
     </div>
   )
 }

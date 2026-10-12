@@ -1,13 +1,12 @@
 export const dynamic = 'force-dynamic'
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getKbPageContext } from '@/lib/knowledge/page-context'
 import { departmentForManagement, displayName } from '@/lib/knowledge/access'
 import { LEAN_VERSION_COLUMNS } from '@/lib/knowledge/manage-data'
-import KnowledgeNav from '@/components/knowledge/KnowledgeNav'
+import KnowledgeHeader from '@/components/knowledge/KnowledgeHeader'
+import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import ItemEditor, { type VersionSummary } from '@/components/knowledge/ItemEditor'
 import type { KnowledgeItem, KnowledgeItemVersion, KnowledgeTopic } from '@/types'
 
@@ -54,10 +53,14 @@ export default async function KnowledgeItemEditorPage({ params }: { params: { de
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
       <div className="max-w-6xl mx-auto">
-        <KnowledgeNav active="manage" showManage subtitle="Organise, write and publish your department’s knowledge, and review what users send you." />
-        <Link href={basePath} className="mb-4 inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-black">
-          <ArrowLeft size={13} /> {department.name}
-        </Link>
+        <KnowledgeHeader ctx={ctx} active="manage" adminBar={false} subtitle="Write, publish and keep your department’s knowledge up to date, and act on what colleagues send you." />
+        <Breadcrumbs
+          items={[
+            { label: 'Manage', href: '/knowledge/manage' },
+            { label: department.name, href: basePath },
+            { label: draft?.title ?? item.title },
+          ]}
+        />
         <ItemEditor
           key={`${draft?.id ?? 'none'}-${draft?.updated_at ?? ''}-${item.updated_at}`}
           item={item}

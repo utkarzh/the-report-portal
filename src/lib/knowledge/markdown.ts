@@ -28,6 +28,29 @@ export function renderKbMarkdown(md: string): string {
   return kbMarked.parse(md || '', { async: false }) as string
 }
 
+export interface TocEntry {
+  id: string
+  text: string
+  level: 2 | 3
+}
+
+function decodeEntities(s: string): string {
+  return s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+}
+
+// Same as renderKbMarkdown, plus an "On this page" list for a guide: every
+// h2/h3 gets a stable anchor id (section-1, section-2…).
+export function renderKbMarkdownWithToc(md: string): { html: string; toc: TocEntry[] } {
+  const toc: TocEntry[] = []
+  const html = renderKbMarkdown(md).replace(/<h([23])>([\s\S]*?)<\/h\1>/g, (_, level: string, inner: string) => {
+    const id = `section-${toc.length + 1}`
+    const text = decodeEntities(inner.replace(/<[^>]+>/g, '')).trim()
+    if (text) toc.push({ id, text, level: level === '2' ? 2 : 3 })
+    return `<h${level} id="${id}">${inner}</h${level}>`
+  })
+  return { html, toc }
+}
+
 // Same, plus the answer's [S1] / [S2, S3] tags turned into small citation
 // chips that match the numbered source cards beside the answer.
 export function renderAnswerHtml(md: string): string {

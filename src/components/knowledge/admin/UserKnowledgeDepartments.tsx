@@ -61,7 +61,7 @@ export default function UserKnowledgeDepartments({ userId }: { userId: string })
         Knowledge Base departments {saving && <Loader2 size={10} className="animate-spin" />}
       </p>
       {departments === null && !error && <p className="text-xs text-gray-400">Loading…</p>}
-      {departments !== null && live.length === 0 && <p className="text-xs text-gray-400">No departments yet — create them in Admin → Knowledge Base.</p>}
+      {departments !== null && live.length === 0 && <p className="text-xs text-gray-400">No departments yet — create them in Knowledge Base → Admin tools.</p>}
       {live.length > 0 && (
         <div className="grid grid-cols-2 gap-2">
           {live.map((d) => (

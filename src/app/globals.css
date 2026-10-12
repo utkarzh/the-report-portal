@@ -291,5 +291,25 @@ body {
   font-weight: 600;
   vertical-align: super;
   line-height: 1;
-  cursor: default;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.kb-cite:hover {
+  background: #c8973f;
+  color: #fff;
+}
+
+/* Knowledge Base — reading view for a published item */
+.kb-article {
+  font-size: 0.9375rem;
+}
+.kb-article h2,
+.kb-article h3 {
+  scroll-margin-top: 1.5rem;
+}
+.kb-article h2 { font-size: 1.125rem; margin-top: 2rem; }
+.kb-article h3 { font-size: 1rem; margin-top: 1.5rem; }
+.kb-article p,
+.kb-article li {
+  line-height: 1.8;
 }

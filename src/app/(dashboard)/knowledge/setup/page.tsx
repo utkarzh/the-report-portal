@@ -10,7 +10,7 @@ import { knowledgeBaseInstalled } from '@/lib/knowledge/installed'
 export default async function KnowledgeSetupPage() {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
-  if (await knowledgeBaseInstalled()) redirect(profile.role === 'admin' ? '/admin/knowledge' : '/knowledge')
+  if (await knowledgeBaseInstalled()) redirect(profile.role === 'admin' ? '/knowledge/admin' : '/knowledge')
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
