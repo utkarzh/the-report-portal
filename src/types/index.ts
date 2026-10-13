@@ -924,6 +924,9 @@ export interface SalesCoachNegotiation {
   system_transcript_segments: SalesCoachTranscriptSegment[] | null;
   declared_outcome: SalesCoachOutcome | null;
   outcome_details: Record<string, unknown>;
+  // Migration 036: set on a "Re-evaluate" copy — the ORIGINAL negotiation it
+  // was copied from. Absent (undefined) until 036 has run.
+  reevaluated_from?: string | null;
   report_card: SalesCoachReportCard | null;
   report_card_markdown: string | null;
   execution_score: number | null;

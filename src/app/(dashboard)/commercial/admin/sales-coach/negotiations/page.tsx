@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { Flag } from 'lucide-react'
 import { requireSalesCoachAdminHeader } from '@/lib/auth/session'
+import { isMissingReevaluatedColumn } from '@/lib/sales-coach'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import SalesCoachNegotiationsTable from '@/components/admin/SalesCoachNegotiationsTable'
@@ -22,11 +23,34 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
 
   const flaggedOnly = searchParams.flagged === '1'
 
-  const { data: rows } = await supabaseAdmin
-    .from('sales_coach_negotiations')
-    .select('id, company, country, media_publication, submitted_by_name, declared_outcome, execution_score, execution_denominator, uv_criteria, stage, created_at, sales_coach_corrections(count)')
-    .order('created_at', { ascending: false })
-    .limit(200)
+  // reevaluated_from marks a "Re-evaluate" copy (migration 036) — listed
+  // right above its original, which shares its created_at. Before 036 the
+  // column doesn't exist, so list without it rather than fail.
+  const COLUMNS = 'id, company, country, media_publication, submitted_by_name, declared_outcome, execution_score, execution_denominator, uv_criteria, stage, created_at, sales_coach_corrections(count)'
+  const runQuery = (columns: string) =>
+    supabaseAdmin
+      .from('sales_coach_negotiations')
+      .select(columns)
+      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
+      .limit(200)
+  let result = await runQuery(`${COLUMNS}, reevaluated_from`)
+  if (result.error && isMissingReevaluatedColumn(result.error)) result = await runQuery(COLUMNS)
+  const rows = result.data as unknown as Array<{
+    id: string
+    company: string | null
+    country: string | null
+    media_publication: string | null
+    submitted_by_name: string | null
+    declared_outcome: string
+    execution_score: number | null
+    execution_denominator: number | null
+    uv_criteria: string[] | null
+    stage: string
+    created_at: string
+    reevaluated_from?: string | null
+    sales_coach_corrections: { count: number }[] | null
+  }> | null
 
   const withFlags = (rows || []).map((r) => ({
     ...r,

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Search, X, Flag, HelpCircle } from 'lucide-react'
+import { Search, X, Flag, HelpCircle, RotateCcw } from 'lucide-react'
 import { SALES_COACH_STAGE_LABELS, outcomeLabel, scorePercent, scoreUvDetail } from '@/lib/sales-coach'
 import { ScorePill } from '@/components/sales-coach/ScoreDisplay'
 import type { SalesCoachStage } from '@/types'
@@ -20,6 +20,8 @@ interface NegotiationRow {
   stage: string
   corrections_count: number
   created_at: string
+  // Set on a "Re-evaluate" copy (migration 036); absent before it runs.
+  reevaluated_from?: string | null
 }
 
 // The page fetches at most 200 rows (capped, not paginated), so filtering
@@ -99,8 +101,13 @@ export default function SalesCoachNegotiationsTable({ rows, flaggedOnly }: { row
                       <div className="text-xs text-gray-400 truncate">
                         {[r.country, r.media_publication].filter(Boolean).join(' · ') || '—'}
                       </div>
-                      {(r.corrections_count > 0 || uvCount > 0) && (
+                      {(r.corrections_count > 0 || uvCount > 0 || r.reevaluated_from) && (
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {r.reevaluated_from && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-600">
+                              <RotateCcw size={10} /> Re-evaluation
+                            </span>
+                          )}
                           {r.corrections_count > 0 && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2 py-0.5 text-[10px] font-medium text-[#a07530]">
                               <Flag size={10} /> {r.corrections_count} correction{r.corrections_count === 1 ? '' : 's'}

@@ -76,7 +76,7 @@ export default function DeleteNegotiationButton({
         onClose={() => { setOpen(false); setError(null) }}
         onConfirm={handleDelete}
         title={`Delete "${title}"?`}
-        description="This permanently deletes the negotiation, its transcript, Report Card, coaching conversation and the uploaded audio. This can't be undone."
+        description="This permanently deletes the negotiation, its transcript, Report Card, coaching conversation and the uploaded audio (the audio is kept if a re-evaluation of this negotiation still uses it). This can't be undone."
         confirmLabel="Delete"
         confirmVariant="danger"
         loading={loading}

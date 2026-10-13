@@ -5,7 +5,7 @@ import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
-import { SALES_COACH_AUDIO_BUCKET } from '@/lib/sales-coach'
+import { SALES_COACH_AUDIO_BUCKET, isMissingReevaluatedColumn } from '@/lib/sales-coach'
 import { isSalesCoachAdminEmail } from '@/lib/sales-coach-admins'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import NegotiationWorkspace from '@/components/sales-coach/NegotiationWorkspace'
@@ -58,6 +58,22 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
     .order('created_at', { ascending: true })
   const corrections = (correctionRows || []) as SalesCoachCorrection[]
 
+  // The newest "Re-evaluate" copy of this negotiation (all copies point at
+  // the original), so an older card can point to it. Before migration 036 the
+  // column doesn't exist — the query fails and there's simply no link.
+  let newerReevaluationId: string | null = null
+  const { data: latestCopy, error: latestCopyError } = await supabase
+    .from('sales_coach_negotiations')
+    .select('id')
+    .eq('reevaluated_from', n.reevaluated_from || n.id)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (latestCopy?.id && latestCopy.id !== n.id) newerReevaluationId = latestCopy.id
+  else if (latestCopyError && !isMissingReevaluatedColumn(latestCopyError)) {
+    console.error('Could not look up re-evaluations:', latestCopyError)
+  }
+
   // Admins see who submitted it (same approach as the other modules).
   let creatorName: string | null = null
   if (profile.role === 'admin') {
@@ -78,7 +94,11 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
             <DeleteNegotiationButton negotiationId={n.id} title={n.company || 'this negotiation'} redirectTo="/commercial/sales-coach" />
           )}
         </div>
+        {/* key: a fresh workspace per negotiation — moving from one negotiation
+            straight to another (e.g. Re-evaluate opening its copy) must not
+            carry the previous one's state or skip the copy's auto-start. */}
         <NegotiationWorkspace
+          key={n.id}
           negotiation={n}
           messages={messages}
           corrections={corrections}
@@ -87,6 +107,7 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
           isAdmin={profile.role === 'admin'}
           autoStart={searchParams.start === '1'}
           creatorName={creatorName}
+          newerReevaluationId={newerReevaluationId}
         />
       </div>
     </div>

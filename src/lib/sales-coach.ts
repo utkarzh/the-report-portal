@@ -563,6 +563,20 @@ export function commercialOutcomeNote(
   return 'No outcome was declared.'
 }
 
+// "Re-evaluate" lineage (migration 036). Until 036 has run, PostgREST answers
+// 42703 when a SELECT/filter names this column and PGRST204 when an INSERT
+// payload does — every caller that names it retries without it, so the module
+// keeps working before the migration (only the re-evaluation markers are
+// missing). Pure: safe in server and client code.
+export const REEVALUATED_FROM_COLUMN = 'reevaluated_from'
+
+export function isMissingReevaluatedColumn(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false
+  const message = error.message ?? ''
+  return message.includes(REEVALUATED_FROM_COLUMN)
+    && (error.code === '42703' || error.code === 'PGRST204' || /does not exist|could not find/i.test(message))
+}
+
 // The transcript the analysis and coaching run on. A system transcript
 // (AssemblyAI, speaker-labelled) wins over an uploaded one when both exist.
 export function pickTranscript(

@@ -53,7 +53,11 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 }
 
 // DELETE /api/sales-coach/[id] — admin only. Removes the audio object, then
-// the row (coaching messages cascade).
+// the row (coaching messages and corrections cascade). A "Re-evaluate" copy
+// shares its original's recording, so the audio object is only removed when
+// no other negotiation still points at it — and kept if that can't be checked
+// (an orphaned file is harmless; a deleted shared one breaks the other copy's
+// player and transcript timestamps).
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   const auth = await authorise(params.id)
   if (auth.error) return auth.error
@@ -62,11 +66,21 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   }
 
   if (auth.row.audio_path) {
-    const { error: storageError } = await supabaseAdmin
-      .storage
-      .from(SALES_COACH_AUDIO_BUCKET)
-      .remove([auth.row.audio_path])
-    if (storageError) console.error('Failed to remove sales coach audio:', storageError)
+    const { data: sharing, error: sharingError } = await supabaseAdmin
+      .from('sales_coach_negotiations')
+      .select('id')
+      .eq('audio_path', auth.row.audio_path)
+      .neq('id', auth.row.id)
+      .limit(1)
+    if (sharingError) {
+      console.error('Could not check whether the sales coach audio is shared — keeping it:', sharingError)
+    } else if ((sharing || []).length === 0) {
+      const { error: storageError } = await supabaseAdmin
+        .storage
+        .from(SALES_COACH_AUDIO_BUCKET)
+        .remove([auth.row.audio_path])
+      if (storageError) console.error('Failed to remove sales coach audio:', storageError)
+    }
   }
 
   const { error } = await supabaseAdmin

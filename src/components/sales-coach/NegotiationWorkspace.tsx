@@ -1,16 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Building2, Globe2, Newspaper, UserRound, Users, Mic, Copy, Check,
   Sparkles, RefreshCw, AlertCircle, CalendarDays, Download, Loader2, ClipboardList, MessageSquare, FileText, Flag,
+  RotateCcw, ArrowRight,
 } from 'lucide-react'
 import AudioPlayer, { type AudioPlayerHandle } from '@/components/transcriptions/AudioPlayer'
 import MeetingPrepLoader from '@/components/meeting-prep/MeetingPrepLoader'
 import CoachConversation from '@/components/sales-coach/CoachConversation'
 import ReportCardView from '@/components/sales-coach/ReportCardView'
 import CorrectionModal, { type FlagTarget } from '@/components/sales-coach/CorrectionModal'
+import ReevaluateButton from '@/components/sales-coach/ReevaluateButton'
 import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
 import { coachGreeting, coachingTrackSwitches, formatOutcomeDetails, outcomeLabel, pickTranscript, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
@@ -53,9 +56,12 @@ interface Props {
   // Card without another click. Never true on a plain revisit.
   autoStart: boolean
   creatorName: string | null
+  // The most recent "Re-evaluate" copy of this negotiation, when it isn't
+  // this one (migration 036) — so an older card points to the newer one.
+  newerReevaluationId?: string | null
 }
 
-export default function NegotiationWorkspace({ negotiation: initial, messages, corrections: initialCorrections, audioUrl, canDownloadAudio, isAdmin, autoStart, creatorName }: Props) {
+export default function NegotiationWorkspace({ negotiation: initial, messages, corrections: initialCorrections, audioUrl, canDownloadAudio, isAdmin, autoStart, creatorName, newerReevaluationId }: Props) {
   const router = useRouter()
   const [n, setN] = useState<SalesCoachNegotiation>(initial)
   const [corrections, setCorrections] = useState<SalesCoachCorrection[]>(initialCorrections)
@@ -334,6 +340,26 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
         )}
       </div>
 
+      {/* ── Re-evaluation lineage ───────────────────────────────── */}
+      {newerReevaluationId && newerReevaluationId !== n.id && (
+        <Link
+          href={`/commercial/sales-coach/${newerReevaluationId}`}
+          className="flex items-center justify-between gap-3 rounded-xl border border-[#c8973f]/40 bg-[#fffdf8] px-5 py-3 text-sm text-gray-800 transition-colors hover:border-[#c8973f]"
+        >
+          <span className="flex items-center gap-2"><RotateCcw size={14} className="flex-shrink-0 text-[#a07530]" /> This negotiation has been re-evaluated. Open the latest Report Card.</span>
+          <ArrowRight size={14} className="flex-shrink-0 text-[#a07530]" />
+        </Link>
+      )}
+      {n.reevaluated_from && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-gray-500">
+          <RotateCcw size={12} className="text-[#a07530]" />
+          Re-evaluation — same submission and transcript, scored again with the current coach.
+          <Link href={`/commercial/sales-coach/${n.reevaluated_from}`} className="font-medium text-gray-700 underline-offset-2 hover:text-black hover:underline">
+            View the original
+          </Link>
+        </p>
+      )}
+
       {/* ── Body: exactly one thing at a time ───────────────────── */}
       {busy === 'transcribing' ? (
         <ProcessingPanel
@@ -404,7 +430,8 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               <TabButton active={tab === 'submission'} onClick={() => setTab('submission')} icon={<ClipboardList size={13} />} label="Submission" />
             </div>
             {tab === 'card' && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <ReevaluateButton negotiationId={n.id} />
                 <button
                   type="button"
                   onClick={() => setFlagTarget({ criterionKey: null, fieldLabel: 'General feedback', aiSaid: '', general: true })}

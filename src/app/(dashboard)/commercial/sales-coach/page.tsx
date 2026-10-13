@@ -2,13 +2,13 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Handshake, ShieldCheck, Loader2, CheckCircle2, AlertCircle, Sparkles, BookOpenText } from 'lucide-react'
+import { Plus, Handshake, ShieldCheck, Loader2, CheckCircle2, AlertCircle, Sparkles, BookOpenText, RotateCcw } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
 import { isSalesCoachAdminEmail } from '@/lib/sales-coach-admins'
-import { SALES_COACH_STAGE_LABELS, outcomeLabel, scorePercent, scoreUvDetail } from '@/lib/sales-coach'
+import { SALES_COACH_STAGE_LABELS, isMissingReevaluatedColumn, outcomeLabel, scorePercent, scoreUvDetail } from '@/lib/sales-coach'
 import { ScorePill } from '@/components/sales-coach/ScoreDisplay'
 import PrivacyNotice from '@/components/sales-coach/PrivacyNotice'
 import DeleteNegotiationButton from '@/components/sales-coach/DeleteNegotiationButton'
@@ -17,9 +17,26 @@ import ListPagination from '@/components/ui/ListPagination'
 import SearchInput from '@/components/ui/SearchInput'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import { orIlikeFilter } from '@/lib/search'
-import type { SalesCoachStage } from '@/types'
+import type { SalesCoachOutcome, SalesCoachStage } from '@/types'
 
 const PAGE_SIZE = 12
+
+interface ListRow {
+  id: string
+  user_id: string | null
+  submitted_by_name: string | null
+  company: string | null
+  country: string | null
+  media_publication: string | null
+  declared_outcome: SalesCoachOutcome | null
+  execution_score: number | null
+  execution_denominator: number | null
+  uv_criteria: string[] | null
+  stage: string
+  cost_usd: number | null
+  created_at: string
+  reevaluated_from?: string | null
+}
 
 export default async function SalesCoachPage({ searchParams }: { searchParams: { page?: string; search?: string } }) {
   const profile = getProfileFromHeaders()
@@ -38,17 +55,28 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
   // RLS: a Sales Executive sees only their own submissions (US-044); an admin
   // sees every negotiation across the team, like every other module.
   const supabase = createSupabaseServerClient()
-  let query = supabase
-    .from('sales_coach_negotiations')
-    .select('id, user_id, submitted_by_name, company, country, media_publication, declared_outcome, execution_score, execution_denominator, uv_criteria, stage, cost_usd, created_at', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(from, to)
-  if (!isAdmin) query = query.eq('user_id', profile.id)
-  if (search) {
-    query = query.or(orIlikeFilter(['company', 'country', 'media_publication', 'submitted_by_name'], search))
+  // A "Re-evaluate" copy keeps its original's created_at (the negotiation
+  // date), so updated_at breaks the tie: the copy lists right above it.
+  const LIST_COLUMNS = 'id, user_id, submitted_by_name, company, country, media_publication, declared_outcome, execution_score, execution_denominator, uv_criteria, stage, cost_usd, created_at'
+  const runQuery = (columns: string) => {
+    let query = supabase
+      .from('sales_coach_negotiations')
+      .select(columns, { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
+      .range(from, to)
+    if (!isAdmin) query = query.eq('user_id', profile.id)
+    if (search) {
+      query = query.or(orIlikeFilter(['company', 'country', 'media_publication', 'submitted_by_name'], search))
+    }
+    return query
   }
-
-  const { data: rows, count } = await query
+  // reevaluated_from marks a re-evaluation (migration 036); before 036 the
+  // column doesn't exist, so list without it rather than fail.
+  let result = await runQuery(`${LIST_COLUMNS}, reevaluated_from`)
+  if (result.error && isMissingReevaluatedColumn(result.error)) result = await runQuery(LIST_COLUMNS)
+  const rows = result.data as unknown as ListRow[] | null
+  const count = result.count
   const totalCount = count || 0
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
@@ -146,7 +174,16 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
                 subtitle={[r.country, r.media_publication].filter(Boolean).join(' · ') || outcomeLabel(r.declared_outcome)}
                 date={new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 creatorName={r.creatorName}
-                badge={<StageBadge stage={r.stage as SalesCoachStage} />}
+                badge={
+                  r.reevaluated_from ? (
+                    <span className="flex items-center gap-1.5">
+                      <StatusPill label="Re-evaluation" tone="stone" icon={<RotateCcw size={11} />} />
+                      <StageBadge stage={r.stage as SalesCoachStage} />
+                    </span>
+                  ) : (
+                    <StageBadge stage={r.stage as SalesCoachStage} />
+                  )
+                }
                 metaRight={
                   <span className="flex flex-shrink-0 items-center gap-1.5">
                     {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number' && (
