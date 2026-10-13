@@ -8,7 +8,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
 import { isSalesCoachAdminEmail } from '@/lib/sales-coach-admins'
-import { SALES_COACH_STAGE_LABELS, outcomeLabel, scorePercent } from '@/lib/sales-coach'
+import { SALES_COACH_STAGE_LABELS, outcomeLabel, scorePercent, scoreUvDetail } from '@/lib/sales-coach'
 import { ScorePill } from '@/components/sales-coach/ScoreDisplay'
 import PrivacyNotice from '@/components/sales-coach/PrivacyNotice'
 import DeleteNegotiationButton from '@/components/sales-coach/DeleteNegotiationButton'
@@ -40,7 +40,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
   const supabase = createSupabaseServerClient()
   let query = supabase
     .from('sales_coach_negotiations')
-    .select('id, user_id, submitted_by_name, company, country, media_publication, declared_outcome, execution_score, execution_denominator, stage, cost_usd, created_at', { count: 'exact' })
+    .select('id, user_id, submitted_by_name, company, country, media_publication, declared_outcome, execution_score, execution_denominator, uv_criteria, stage, cost_usd, created_at', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to)
   if (!isAdmin) query = query.eq('user_id', profile.id)
@@ -107,7 +107,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
               <div className="flex-shrink-0 rounded-lg bg-[#c8973f]/10 p-2 text-[#a07530]"><ShieldCheck size={18} /></div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">Admin tools</p>
-                <p className="mt-0.5 text-sm text-gray-600">Manage the four TRC knowledge documents the coach reasons from.</p>
+                <p className="mt-0.5 text-sm text-gray-600">Manage the five TRC knowledge documents the coach reasons from.</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -150,7 +150,10 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
                 metaRight={
                   <span className="flex flex-shrink-0 items-center gap-1.5">
                     {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number' && (
-                      <ScorePill pct={scorePercent(Number(r.execution_score), r.execution_denominator)} />
+                      <ScorePill
+                        pct={scorePercent(Number(r.execution_score), r.execution_denominator)}
+                        detail={scoreUvDetail(Number(r.execution_score), r.execution_denominator, r.uv_criteria?.length || 0)}
+                      />
                     )}
                     {isAdmin && Number(r.cost_usd) > 0 && (
                       <span title="AI cost" className="inline-flex items-center gap-1 rounded-full bg-[#f7f6f3] px-2 py-0.5 text-[11px] font-medium tabular-nums text-gray-600"><Sparkles size={10} />${Number(r.cost_usd).toFixed(4)}</span>

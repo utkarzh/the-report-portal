@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines } from 'lucide-react'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
-import type { SalesCoachMessage, SalesCoachCoachingPrompt } from '@/types'
+import { SALES_COACH_TRACKS } from '@/lib/sales-coach'
+import type { SalesCoachMessage, SalesCoachCoachingPrompt, SalesCoachTrack } from '@/types'
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking'
 type Msg = { role: 'user' | 'assistant'; content: string }
@@ -26,7 +27,7 @@ interface SpeechRecognitionLike {
 // personalize from yet — in practice coaching only unlocks once a card
 // exists, so this path is mostly defensive.
 const FALLBACK_GREETING =
-  "Ask me anything about this negotiation. I've read your Report Card, the full transcript and the four TRC knowledge documents — every answer comes from them."
+  "Ask me anything about this negotiation. I've read your Report Card, the full transcript and the TRC knowledge documents — every answer comes from them."
 const FALLBACK_STARTERS: SalesCoachCoachingPrompt[] = [
   { label: 'Walk me through my Report Card.', prompt: 'Walk me through my Report Card.' },
   { label: 'Where exactly did I lose control of the negotiation?', prompt: 'Where exactly did I lose control of the negotiation?' },
@@ -43,6 +44,7 @@ export default function CoachConversation({
   onInitialInputConsumed,
   greeting,
   starters,
+  trackSwitches,
 }: {
   negotiationId: string
   initialMessages: SalesCoachMessage[]
@@ -61,6 +63,11 @@ export default function CoachConversation({
   // coachGreeting() in sales-coach.ts) — falls back to generic copy if omitted.
   greeting?: string
   starters?: SalesCoachCoachingPrompt[]
+  // One prompt per coaching track (coachingTrackSwitches()): shown as an
+  // always-available "switch" row once the conversation has started, so the
+  // executive can move between meeting execution and the next commercial
+  // action at any time.
+  trackSwitches?: Record<SalesCoachTrack, SalesCoachCoachingPrompt>
 }) {
   const [messages, setMessages] = useState<Msg[]>(
     initialMessages.map((m) => ({ role: m.role, content: m.content })),
@@ -395,7 +402,7 @@ export default function CoachConversation({
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Coach has read</span>
           <ContextChip ok={context.hasReportCard}>Report Card</ContextChip>
           <ContextChip ok={context.transcriptWords > 0}>Transcript{context.transcriptWords > 0 ? ` · ${context.transcriptWords.toLocaleString()} words` : ''}</ContextChip>
-          <ContextChip ok>TRC Project Prompt · Manual · Method · Examples</ContextChip>
+          <ContextChip ok>TRC Project Prompt · Manual · Method · Examples · Follow-Up Playbook</ContextChip>
         </div>
       )}
 
@@ -410,19 +417,26 @@ export default function CoachConversation({
           <div className="mx-auto max-w-xl py-6 text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f2f1ec] text-gray-500"><MessageSquare size={20} /></div>
             <p className="text-sm leading-6 text-gray-600">{greeting || FALLBACK_GREETING}</p>
-            <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              {(starters && starters.length > 0 ? starters : FALLBACK_STARTERS).map((s) => (
-                <button
-                  key={s.label}
-                  type="button"
-                  onClick={() => send(s.prompt)}
-                  disabled={!canCoach || phase === 'thinking'}
-                  className="rounded-xl border border-[#e5e3df] bg-white px-4 py-3 text-left text-xs leading-5 text-gray-700 transition-colors hover:border-[#c8973f]/50 hover:bg-[#fcfbf8] disabled:opacity-50"
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            {starters && starters.some((s) => s.track) ? (
+              <div className="mt-5 grid gap-4 text-left sm:grid-cols-2">
+                {(['execution', 'commercial'] as SalesCoachTrack[]).map((track) => (
+                  <div key={track}>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{SALES_COACH_TRACKS[track].label}</p>
+                    <div className="mt-2 flex flex-col gap-2">
+                      {starters.filter((s) => s.track === track).map((s) => (
+                        <StarterButton key={s.label} disabled={!canCoach || phase === 'thinking'} onClick={() => send(s.prompt)}>{s.label}</StarterButton>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                {(starters && starters.length > 0 ? starters : FALLBACK_STARTERS).map((s) => (
+                  <StarterButton key={s.label} disabled={!canCoach || phase === 'thinking'} onClick={() => send(s.prompt)}>{s.label}</StarterButton>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -438,6 +452,23 @@ export default function CoachConversation({
       {/* Dock */}
       <div className="border-t border-[#eceae5] bg-[#faf9f7] px-5 py-4">
         {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
+        {trackSwitches && messages.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Switch to</span>
+            {(['execution', 'commercial'] as SalesCoachTrack[]).map((track) => (
+              <button
+                key={track}
+                type="button"
+                onClick={() => send(trackSwitches[track].prompt)}
+                disabled={!canCoach || phase === 'thinking'}
+                title={trackSwitches[track].prompt}
+                className="rounded-full border border-[#e5e3df] bg-white px-3 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:border-[#c8973f]/60 hover:text-gray-900 disabled:opacity-40"
+              >
+                {SALES_COACH_TRACKS[track].label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {mode === 'voice' ? (
           <div className="flex flex-col items-center gap-3">
@@ -481,6 +512,19 @@ export default function CoachConversation({
         )}
       </div>
     </div>
+  )
+}
+
+function StarterButton({ onClick, disabled, children }: { onClick: () => void; disabled: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-xl border border-[#e5e3df] bg-white px-4 py-3 text-left text-xs leading-5 text-gray-700 transition-colors hover:border-[#c8973f]/50 hover:bg-[#fcfbf8] disabled:opacity-50"
+    >
+      {children}
+    </button>
   )
 }
 

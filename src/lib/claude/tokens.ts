@@ -84,16 +84,18 @@ export const INTERVIEW_LETTER_PERSONALIZE_RESERVE = 20_000;
 export const INTERVIEW_LETTER_TEMPLATE_GENERATE_RESERVE = 20_000;
 
 // Sales Negotiation Coach — the coaching conversation (US-043) is a multi-turn
-// chat grounded in the transcript, Report Card, and four knowledge docs. Each
-// turn is short spoken output, but the grounding context (transcript + docs) is
-// large and re-sent each turn, so the reserve covers one turn's prompt + reply.
-export const SALES_COACH_COACH_RESERVE = 40_000;
-// The Report Card analysis (US-039) is ONE call that reads the four knowledge
-// docs (~30k tokens), the negotiation context and the whole transcript (often
+// chat grounded in the transcript, Report Card, and five knowledge docs (~46k
+// tokens since the Oct 2026 Project Prompt + Follow-Up Playbook). The
+// grounding context is re-sent each turn, so the reserve covers one turn's
+// prompt + reply: measured turns ran ~41k tokens with four docs, ~49k with five.
+export const SALES_COACH_COACH_RESERVE = 55_000;
+// The Report Card analysis (US-039) is ONE call that reads the five knowledge
+// docs (~46k tokens), the negotiation context and the whole transcript (often
 // 10-30k tokens for an hour-long meeting) and writes a ~4-8k token structured
-// card. Reserve covers the prompt + output of one pass plus the single
-// corrective re-prompt the route may run.
-export const SALES_COACH_ANALYZE_RESERVE = 100_000;
+// card. Measured runs: median ~47k tokens with four docs (~54k with five),
+// up to ~96k (~110k) when the single corrective re-prompt runs — which the
+// reserve covers.
+export const SALES_COACH_ANALYZE_RESERVE = 120_000;
 
 // AI Copywriting Tool — five Claude stages per article. Analysis reads every
 // uploaded source plus TRC guides/examples/publication guide (can be large);

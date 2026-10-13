@@ -18,6 +18,7 @@ import {
   attachEvidenceTimestamps,
   formatCorrectionsBlock,
   isSalesCoachOutcome,
+  meetingLabel,
   pickTranscript,
   renderReportCardMarkdown,
   validateReportCard,
@@ -42,9 +43,15 @@ const MAX_OUTPUT_TOKENS = 12000
 // killed) and may be re-run.
 const STALE_ANALYZING_MS = 8 * 60_000
 
+// Project Prompt, WHAT TO DO IF THE SUBMISSION IS INCOMPLETE: a pasted
+// summary instead of the conversation gets a request for the full transcript,
+// not a Report Card.
+const SUMMARY_NOT_TRANSCRIPT_MESSAGE =
+  'This looks like a summary or notes about the meeting, not the transcript of the conversation itself. The coach needs the complete transcript (or the recording) to produce a Report Card. Please submit the negotiation again with the full transcript.'
+
 const ANALYST_PERSONA = `You are the TRC Sales Coach — an experienced TRC Project Director reviewing a real sales negotiation that a Sales Executive ran with a company CEO or senior official immediately after an editorial interview. You produce the formal REPORT CARD: an evidence-based, criterion-by-criterion evaluation of how the negotiation was executed against TRC doctrine, followed by deeper coaching feedback.
 
-Authority order for everything you judge: the Sales Coach Project Prompt is the highest authority, then the Manual (TRC Overcoming Objections), then the TRC Sales Coaching Method. The Successful Negotiation Examples are for pattern recognition ONLY — never import their facts, numbers or dialogue into this negotiation.
+Authority order for everything you judge: the Sales Coach Project Prompt is the highest authority, then the Manual (TRC Overcoming Objections), then the TRC Sales Coaching Method. The Successful Negotiation Examples are for pattern recognition ONLY — never import their facts, numbers or dialogue into this negotiation. The Post-Meeting Follow-Up & Conversion Playbook informs only the closing next-commercial-action invitation; it never affects how the recorded negotiation is scored.
 
 Use the submission context to identify who is speaking (which speaker is the Sales Executive, which is the buyer) and to interpret the recording. Read the whole transcript before judging anything. Ground every verdict in what was actually said.`
 
@@ -200,13 +207,55 @@ export async function POST(_request: NextRequest, { params }: Params) {
         }
       }
 
-      const ctx = { company: n.company || '', declaredOutcome: n.declared_outcome, outcomeDetails: n.outcome_details }
+      const ctx = {
+        company: n.company || '',
+        declaredOutcome: n.declared_outcome,
+        outcomeDetails: n.outcome_details,
+        meeting: meetingLabel([n.interviewee_name, n.interviewee_position].filter(Boolean).join(', ')),
+      }
 
       try {
         send({ status: 'analyzing' })
 
         const firstText = await runPass([{ role: 'user', content: submission }])
         let parsed = tryParse(firstText)
+
+        // Only a pasted transcript can be a summary — an AssemblyAI transcript
+        // is always the recorded conversation. Not a validation problem, so no
+        // corrective pass: the run stops here (spend is still billed).
+        const flaggedSummary = transcript.source === 'uploaded'
+          && (parsed.card as { submission_is_summary?: unknown } | undefined)?.submission_is_summary === true
+        if (flaggedSummary) {
+          clearTimeout(deadline)
+          const totalTokens = promptTokens + outputTokens
+          await supabaseAdmin
+            .from('sales_coach_negotiations')
+            .update({
+              stage: 'failed',
+              error: SUMMARY_NOT_TRANSCRIPT_MESSAGE,
+              tokens_input: (n.tokens_input || 0) + promptTokens,
+              tokens_output: (n.tokens_output || 0) + outputTokens,
+              tokens_total: (n.tokens_total || 0) + totalTokens,
+              cost_usd: Number(n.cost_usd || 0) + cost,
+            })
+            .eq('id', n.id)
+          await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
+          await logUsageEvent({
+            userId: user.id,
+            workflow: 'sales_coach_report_card',
+            sourceId: n.id,
+            model: ANALYSIS_MODEL,
+            tokensInput: promptTokens,
+            tokensOutput: outputTokens,
+            tokensTotal: totalTokens,
+            costUsd: cost,
+            status: 'error',
+            error: 'Submission is a summary, not a transcript',
+          })
+          send({ error: SUMMARY_NOT_TRANSCRIPT_MESSAGE })
+          return
+        }
+
         let result = parsed.card !== undefined
           ? validateReportCard(parsed.card, ctx)
           : { ok: false, problems: [parsed.error || 'Unparseable'], normalized: undefined }

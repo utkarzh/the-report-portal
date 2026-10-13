@@ -173,11 +173,11 @@ function itemInlineRuns(item: Tokens.ListItem): TextRun[] {
 
 // ── Block builders ────────────────────────────────────────────────────────────
 
-function sectionHeading(text: string): Paragraph {
+function sectionHeading(text: string, keepCase = false): Paragraph {
   return new Paragraph({
     spacing: { before: 320, after: 120 },
     border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: ORANGE_RULE, space: 4 } },
-    children: [new TextRun({ text: text.toUpperCase(), bold: true, size: SZ.section, color: NAVY, font: FONT })],
+    children: [new TextRun({ text: keepCase ? text : text.toUpperCase(), bold: true, size: SZ.section, color: NAVY, font: FONT })],
   })
 }
 
@@ -339,7 +339,10 @@ function isCalloutParagraph(t: Tokens.Generic): boolean {
 
 // ── Body rendering ──────────────────────────────────────────────────────────────
 
-export function renderTokens(tokens: Token[], contentWidth: number): (Paragraph | Table)[] {
+// `keepSectionCase`: print level-1/2 headings as written instead of upper-cased
+// (the Sales Coach Report Card's "A. Negotiation Result" style). Every other
+// caller keeps the default.
+export function renderTokens(tokens: Token[], contentWidth: number, opts: { keepSectionCase?: boolean } = {}): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = []
 
   const renderList = (list: Tokens.List, level: number) => {
@@ -375,7 +378,7 @@ export function renderTokens(tokens: Token[], contentWidth: number): (Paragraph 
       case 'heading': {
         const depth = (tok as Tokens.Heading).depth
         const text = (tok.text ?? '').trim()
-        if (depth <= 2) out.push(sectionHeading(text))
+        if (depth <= 2) out.push(sectionHeading(text, opts.keepSectionCase))
         else out.push(subHeading((tok as Tokens.Heading).tokens, text))
         break
       }

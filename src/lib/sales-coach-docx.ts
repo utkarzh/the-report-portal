@@ -5,66 +5,44 @@ import {
 import { marked } from 'marked'
 import {
   renderTokens, MARGIN, LETTER_W, LETTER_H, CONTENT_W_PORTRAIT,
-  NAVY, BLUE, INK, GREY_FOOT, SZ, FONT,
+  NAVY, INK, GREY_FOOT, SZ, FONT,
 } from '@/lib/docx-template'
-import { renderReportCardMarkdown, scoreBand, scorePercent, scoreTextAsPercent, unverifiedNote } from '@/lib/sales-coach'
+import { renderReportCardMarkdown, scoreTextAsPercent } from '@/lib/sales-coach'
 import type { SalesCoachNegotiation, SalesCoachReportCard } from '@/types'
 
 marked.use({ gfm: true, breaks: true })
 
 // Sales Coach Report Card .docx — a sibling of meeting-prep-docx.ts. One
-// continuous document (no cover page break): a header block with the
-// negotiation's identity and scoreline, then the card body rendered from the
-// same markdown the UI's "Copy as text" produces, via the shared renderer.
-// The Execution Score is a percentage with its plain-language band, for
-// everyone — same as the on-screen card.
+// continuous document (no cover page break), laid out like the client's
+// sample card: the "TRC SALES COACH — REPORT CARD" title with a small
+// publication/date line, then the card body — Company / Meeting / Outcome,
+// sections A–F — rendered from the same markdown the UI's "Copy as text"
+// produces, via the shared renderer. The Overall Execution Score is the last
+// thing in the document, per the Project Prompt.
 export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachReportCard): Document {
   const dateStr = new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-  const interviewee = [n.interviewee_name, n.interviewee_position].filter(Boolean).join(', ')
-  const where = [n.media_publication, n.country].filter(Boolean).join(' · ')
-  const pct = scorePercent(card.execution_score, card.execution_denominator)
-  const band = scoreBand(pct)
-  const score = pct === null ? '—' : `${pct}%${band ? ` — ${band.label}` : ''}`
-  const uvNote = unverifiedNote(card.criteria)
-
-  const meta = (text: string, color = '595959') =>
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 20 },
-      children: [new TextRun({ text, size: SZ.coverMeta, color, font: FONT })],
-    })
+  const subline = [
+    [n.media_publication, n.country].filter(Boolean).join(' · '),
+    `Negotiation of ${dateStr}`,
+    n.submitted_by_name ? `Submitted by ${n.submitted_by_name}` : '',
+  ].filter(Boolean).join(' · ')
 
   const header: Paragraph[] = [
     new Paragraph({
-      alignment: AlignmentType.CENTER,
       spacing: { after: 60 },
-      children: [new TextRun({ text: 'TRC SALES COACH — REPORT CARD', bold: true, size: SZ.coverMeta, color: BLUE, font: FONT })],
+      children: [new TextRun({ text: 'TRC SALES COACH — REPORT CARD', bold: true, size: SZ.coverSub, color: NAVY, font: FONT })],
     }),
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 60 },
-      children: [new TextRun({ text: (n.company || 'Negotiation').toUpperCase(), bold: true, size: SZ.coverTitle, color: NAVY, font: FONT })],
-    }),
-    ...(interviewee ? [meta(interviewee, INK)] : []),
-    ...(where ? [meta(where)] : []),
-    meta(`Negotiation of ${dateStr}${n.submitted_by_name ? ` · Submitted by ${n.submitted_by_name}` : ''}`),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 160, after: 40 },
-      children: [new TextRun({ text: `Execution Score: ${score}`, bold: true, size: SZ.coverSub, color: NAVY, font: FONT })],
-    }),
-    ...(uvNote ? [meta(uvNote)] : []),
-    meta(`Commercial outcome: ${card.commercial_outcome_label}`, INK),
-    new Paragraph({
-      spacing: { before: 200, after: 240 },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'D9D9D9' } },
-      children: [],
+      spacing: { after: 120 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'D9D9D9', space: 6 } },
+      children: [new TextRun({ text: subline, size: SZ.coverMeta, color: '595959', font: FONT })],
     }),
   ]
 
-  // The markdown opens with "# REPORT CARD", which the header above already says.
+  // The markdown opens with the same title, which the header above already
+  // prints; everything after it (Company / Meeting / Outcome, A–F) is the body.
   const markdown = renderReportCardMarkdown(card)
-  const body = scoreTextAsPercent(markdown).replace(/^# REPORT CARD\n/, '')
+  const body = scoreTextAsPercent(markdown).replace(/^# TRC SALES COACH — REPORT CARD\n/, '')
   const tokens = marked.lexer(body)
 
   const footer = () =>
@@ -85,7 +63,7 @@ export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachRe
     {
       properties: { page: { size: { width: LETTER_W, height: LETTER_H }, margin } },
       footers: { default: footer() },
-      children: [...header, ...renderTokens(tokens, CONTENT_W_PORTRAIT)],
+      children: [...header, ...renderTokens(tokens, CONTENT_W_PORTRAIT, { keepSectionCase: true })],
     },
   ]
 

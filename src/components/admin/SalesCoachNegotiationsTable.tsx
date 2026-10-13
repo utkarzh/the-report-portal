@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Search, X, Flag, HelpCircle } from 'lucide-react'
-import { SALES_COACH_STAGE_LABELS, outcomeLabel, scorePercent } from '@/lib/sales-coach'
+import { SALES_COACH_STAGE_LABELS, outcomeLabel, scorePercent, scoreUvDetail } from '@/lib/sales-coach'
 import { ScorePill } from '@/components/sales-coach/ScoreDisplay'
 import type { SalesCoachStage } from '@/types'
 
@@ -118,7 +118,7 @@ export default function SalesCoachNegotiationsTable({ rows, flaggedOnly }: { row
                     <td className="px-4 py-3 text-gray-700">{outcomeLabel(r.declared_outcome as never)}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900">
                       {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number'
-                        ? <ScorePill pct={scorePercent(Number(r.execution_score), r.execution_denominator)} withLabel />
+                        ? <ScorePill pct={scorePercent(Number(r.execution_score), r.execution_denominator)} detail={scoreUvDetail(Number(r.execution_score), r.execution_denominator, uvCount)} withLabel />
                         : '—'}
                     </td>
                     <td className="px-4 py-3">

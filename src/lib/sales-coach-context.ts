@@ -12,7 +12,7 @@ import type { SalesCoachKnowledgeDoc, SalesCoachKnowledgeKey, SalesCoachNegotiat
 // SAME knowledge block and the SAME description of the submission.
 
 export interface KnowledgeBundle {
-  // The four docs in fixed authority order, each under a labelled banner.
+  // The five docs in fixed authority order, each under a labelled banner.
   block: string
   // Raw Project Prompt text — snapshotted onto the negotiation (US-048).
   projectPrompt: string
@@ -44,7 +44,13 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
     const content = (doc?.content || '').trim()
     versions[key] = doc?.updated_at ?? null
     if (isPlaceholder(content)) missing.push(key)
-    const authority = i === 0 ? ' (HIGHEST AUTHORITY)' : key === 'examples' ? ' (pattern recognition only)' : ''
+    const authority = i === 0
+      ? ' (HIGHEST AUTHORITY)'
+      : key === 'examples'
+        ? ' (pattern recognition only)'
+        : key === 'followup_playbook'
+          ? ' (post-meeting conversion tactics only — never used to score the recorded negotiation)'
+          : ''
     return `===== ${label}${authority} =====\n${isPlaceholder(content) ? '(not provided)' : content}`
   }).join('\n\n')
 

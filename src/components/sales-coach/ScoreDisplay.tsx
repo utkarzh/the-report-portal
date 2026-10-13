@@ -12,8 +12,9 @@ export const BAND_TONE: Record<ScoreBandTone, { ring: string; text: string; dot:
 }
 
 // Compact "● 79%" pill for lists, tables and headers. `withLabel` adds the
-// band's short name ("● 79% · Good").
-export function ScorePill({ pct, withLabel = false, dark = false }: { pct: number | null; withLabel?: boolean; dark?: boolean }) {
+// band's short name ("● 79% · Good"); `detail` adds the points behind it
+// ("● 80% (4/5 · 1 UV)") — see scoreUvDetail().
+export function ScorePill({ pct, withLabel = false, dark = false, detail }: { pct: number | null; withLabel?: boolean; dark?: boolean; detail?: string }) {
   const band = scoreBand(pct)
   if (pct === null || !band) return null
   const tone = BAND_TONE[band.tone]
@@ -26,6 +27,7 @@ export function ScorePill({ pct, withLabel = false, dark = false }: { pct: numbe
     >
       <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
       {pct}%
+      {detail && <span className={`font-normal ${dark ? 'text-white/60' : 'opacity-80'}`}>({detail})</span>}
       {withLabel && <span className={`font-normal ${dark ? 'text-white/60' : 'opacity-80'}`}>· {band.short}</span>}
     </span>
   )

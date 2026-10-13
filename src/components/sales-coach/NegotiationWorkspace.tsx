@@ -13,8 +13,7 @@ import ReportCardView from '@/components/sales-coach/ReportCardView'
 import CorrectionModal, { type FlagTarget } from '@/components/sales-coach/CorrectionModal'
 import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
-import { coachGreeting, formatOutcomeDetails, outcomeLabel, pickTranscript, scoreBand, scorePercent, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
-import { ScorePill } from '@/components/sales-coach/ScoreDisplay'
+import { coachGreeting, coachingTrackSwitches, formatOutcomeDetails, outcomeLabel, pickTranscript, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
 import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection } from '@/types'
 
@@ -33,6 +32,7 @@ const ANALYSIS_HINTS = [
   'Scoring each applicable criterion…',
   'Drafting the objections and TRC-doctrine alternatives…',
   'Writing the coaching question…',
+  'Identifying the next commercial priority…',
 ]
 const TRANSCRIBE_HINTS = [
   'Sending the recording to the transcription service…',
@@ -264,7 +264,9 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   const steps = [
     { label: 'Submitted', sub: formatDayMonth(n.created_at), state: 'done' as StepState },
     { label: 'Transcript', sub: busy === 'transcribing' ? 'Usually 1–3 min' : transcript ? (transcript.source === 'system' ? 'Speaker-labelled' : 'Provided') : n.audio_path ? 'Pending' : '—', state: transcriptStep },
-    { label: 'Report Card', sub: busy === 'analyzing' ? 'Usually 2–4 min' : hasCard ? scoreSummary(Number(n.execution_score), n.execution_denominator) : 'Pending', state: cardStep },
+    // No score here: the Report Card leads with the commercial result and
+    // shows the Overall Execution Score only at its end (Project Prompt).
+    { label: 'Report Card', sub: busy === 'analyzing' ? 'Usually 2–4 min' : hasCard ? 'Ready' : 'Pending', state: cardStep },
     { label: 'Coaching', sub: hasCard ? (messages.length > 0 ? `${messages.length} messages` : 'Ready') : 'After the card', state: coachStep },
   ]
 
@@ -283,6 +285,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   // like a continuation of what was just read, not a blank box.
   const coachStarters = n.report_card ? suggestedCoachingPrompts(n.report_card) : []
   const coachGreetingText = n.report_card ? coachGreeting(n.report_card, n.company) : undefined
+  const trackSwitches = n.report_card ? coachingTrackSwitches(n.report_card) : undefined
   const hasCoachingHistory = messages.length > 0
 
   return (
@@ -305,9 +308,6 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               <span className="text-gray-400">Declared</span>
               <span className="font-medium text-gray-800">{outcomeLabel(n.declared_outcome)}</span>
             </span>
-            {hasCard && typeof n.execution_denominator === 'number' && (
-              <ScorePill pct={scorePercent(Number(n.execution_score), n.execution_denominator)} withLabel />
-            )}
           </div>
         </div>
         <Stepper steps={steps} />
@@ -434,8 +434,10 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
                 setCoachPrefill(n.report_card?.coaching_question || '')
                 setTab('coach')
               }}
-              hasCoachingHistory={hasCoachingHistory}
-              onStartCoaching={() => setTab('coach')}
+              onChooseTrack={(track) => {
+                setCoachPrefill(trackSwitches?.[track].prompt || '')
+                setTab('coach')
+              }}
             />
           )}
           {tab === 'transcript' && (
@@ -459,6 +461,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               onInitialInputConsumed={() => setCoachPrefill(null)}
               greeting={coachGreetingText}
               starters={coachStarters}
+              trackSwitches={trackSwitches}
             />
           )}
           {tab === 'submission' && <SubmissionPanel n={n} open />}
@@ -519,13 +522,6 @@ function TabButton({ active, onClick, icon, label, badge }: { active: boolean; o
       {badge && !active && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#c8973f]" />}
     </button>
   )
-}
-
-// "79% · Good" for the stepper.
-function scoreSummary(score: number, denominator: number | null): string {
-  const pct = scorePercent(score, denominator)
-  const band = scoreBand(pct)
-  return pct === null || !band ? '—' : `${pct}% · ${band.short}`
 }
 
 function CopyTextButton({ text }: { text: string | null }) {

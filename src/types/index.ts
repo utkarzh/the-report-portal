@@ -766,7 +766,8 @@ export type SalesCoachKnowledgeKey =
   | "project_prompt"
   | "manual"
   | "method"
-  | "examples";
+  | "examples"
+  | "followup_playbook";
 export type SalesCoachOutcome = "signed" | "retorno" | "lost" | "uncertain";
 export type SalesCoachStage =
   | "draft"
@@ -825,7 +826,22 @@ export interface SalesCoachCriterion {
   note?: string;
   evidence?: SalesCoachEvidence[];
   reason?: string;
+  // "Commercial reality:" — the buyer-controlled fact, reported SEPARATELY
+  // from the execution verdict (Oct 2026 Project Prompt + sample card): e.g.
+  // "CEO interest, not confirmed buy-in." Criteria 4-9 only. Absent on cards
+  // generated before this layout.
+  commercial_reality?: string;
+  // "Better approach:" — the exact TRC wording that would have earned full
+  // credit, when the verdict is below ✅ and a phrasing is the fix.
+  better_approach?: string;
   scored: boolean; // counts toward the Execution Score (na/uv → false); filled in code
+}
+
+// A strength (section B) or area for improvement (section C) of the Report
+// Card — two or three of each at most, fewer when fewer are warranted.
+export interface SalesCoachCardPoint {
+  title: string;
+  detail: string;
 }
 
 export interface SalesCoachObjection {
@@ -860,15 +876,31 @@ export interface SalesCoachReportCard {
   // sales-coach.ts.
   commercial_outcome_label: string;
   commercial_outcome_note: string;
-  headline: string; // one line after the score
+  // Model-written Section 3 detail (Oct 2026 layout), e.g. "Half page at USD
+  // 25,000 proposed, not agreed. Marketing meeting scheduled." Supersedes
+  // commercial_outcome_note on display; absent on older cards.
+  commercial_outcome_summary?: string;
+  // "Meeting:" header line, e.g. "CEO Planteo — Aigerim Kim, CEO". Set in
+  // code at validation time; absent on older cards.
+  meeting?: string;
+  headline: string; // A. result line after the outcome type, e.g. "Half page at USD 25,000 proposed; not yet agreed." — never a score
   execution_score: number; // half points allowed (pass 1 / warn 0.5 / fail 0)
   execution_denominator: number; // applicable (scored) criteria — 8 possible, never includes Commercial Outcome
-  summary: string; // opening paragraph
+  summary: string; // A. Negotiation Result overview
+  // B / C (Oct 2026 layout). Absent on older cards, which carried a
+  // SCORELINE `report_summary` instead.
+  strengths?: SalesCoachCardPoint[];
+  improvements?: SalesCoachCardPoint[];
   criteria: SalesCoachCriterion[];
-  report_summary: string; // the SCORELINE "Report Summary"
+  report_summary?: string; // legacy cards only
   objections: SalesCoachObjection[];
   deeper_analysis: SalesCoachAnalysisSection[];
   coaching_question: string;
+  // End of E. DEEPER COACHING: the two-track invitation (practise the meeting
+  // skill, or plan the next commercial action) and the grounded immediate
+  // commercial priority it names. Absent on older cards.
+  coaching_invitation?: string;
+  next_commercial_priority?: string;
 }
 
 export interface SalesCoachNegotiation {
@@ -939,7 +971,13 @@ export interface SalesCoachCorrection {
 export interface SalesCoachCoachingPrompt {
   label: string;
   prompt: string;
+  // The coaching track it opens: practising the recorded meeting, or the
+  // next commercial action for this opportunity (Project Prompt's two-stage
+  // coaching).
+  track?: SalesCoachTrack;
 }
+
+export type SalesCoachTrack = "execution" | "commercial";
 
 // ── AI Copywriting Tool module ─────────────────────────────────────────────
 export interface CopywritingPublication {

@@ -12,6 +12,8 @@ import type {
   SalesCoachTranscriptSegment,
   SalesCoachCorrection,
   SalesCoachCoachingPrompt,
+  SalesCoachCardPoint,
+  SalesCoachTrack,
 } from '@/types'
 
 // Isomorphic helpers for the Sales Negotiation Coach module — safe to import
@@ -42,9 +44,11 @@ export const SALES_COACH_STAGE_LABELS: Record<SalesCoachStage, string> = {
   failed: 'Needs attention',
 }
 
-// The four admin-managed knowledge documents, in their fixed authority order
+// The five admin-managed knowledge documents, in their fixed authority order
 // (US-038). Order matters: the array itself is the authority hierarchy used
-// when assembling the AI context.
+// when assembling the AI context. The Follow-Up & Conversion Playbook (fifth,
+// Oct 2026) governs post-meeting conversion coaching only — it is never used
+// to score the recorded negotiation.
 export const SALES_COACH_KNOWLEDGE_DOCS: {
   key: SalesCoachKnowledgeKey
   label: string
@@ -54,10 +58,11 @@ export const SALES_COACH_KNOWLEDGE_DOCS: {
   { key: 'manual', label: 'Manual — TRC Overcoming Objections', description: 'Objection-handling doctrine and the planteo build-up formula referenced when offer build-up scores weak.' },
   { key: 'method', label: 'TRC Sales Coaching Method', description: 'The coaching method and evaluation approach.' },
   { key: 'examples', label: 'TRC Successful Negotiation Examples', description: 'Pattern-recognition reference only — its facts are never imported into another negotiation.' },
+  { key: 'followup_playbook', label: 'TRC Post-Meeting Follow-Up & Conversion Playbook', description: 'How the coach helps convert retornos into signed contracts. Used for post-meeting coaching only, never for scoring the recorded negotiation.' },
 ]
 
 export function isSalesCoachKnowledgeKey(v: unknown): v is SalesCoachKnowledgeKey {
-  return v === 'project_prompt' || v === 'manual' || v === 'method' || v === 'examples'
+  return SALES_COACH_KNOWLEDGE_DOCS.some((d) => d.key === v)
 }
 
 export function isSalesCoachOutcome(v: unknown): v is SalesCoachOutcome {
@@ -71,58 +76,89 @@ export function isSalesCoachOutcome(v: unknown): v is SalesCoachOutcome {
 // denominator ("Do not automatically use eight as the denominator. Commercial
 // Outcome is never included."), so it is not one of these criteria at all —
 // see commercialOutcomeLabel()/commercialOutcomeNote() below for how it's
-// rendered instead. `heading` is the upper-case section title used in the
-// text rendering; `label` is the display name in the UI.
-export const SALES_COACH_CRITERIA: { key: string; label: string; heading: string; number: number }[] = [
-  { key: 'sales_offer_buildup', label: 'Sales Offer Build-up', heading: 'SALES OFFER BUILDUP', number: 1 },
-  { key: 'offer_articulation', label: 'Offer Articulation', heading: 'OFFER ARTICULATION', number: 2 },
-  { key: 'ceo_buyin', label: 'CEO Buy-in', heading: 'CEO BUY-IN', number: 4 },
-  { key: 'ceo_preference', label: 'CEO Preference', heading: 'CEO PREFERENCE', number: 5 },
-  { key: 'space_price_retorno', label: 'Space & Price for Retorno', heading: 'SPACE & PRICE FOR RETORNO', number: 6 },
-  { key: 'space_price_agreement', label: 'Space and Price Agreement', heading: 'SPACE AND PRICE AGREEMENT', number: 7 },
-  { key: 'next_steps_stakeholders', label: 'Next Steps and Stakeholders', heading: 'NEXT STEPS AND STAKEHOLDERS', number: 8 },
-  { key: 'scheduled_meeting', label: 'Scheduled Meeting', heading: 'SCHEDULED MEETING', number: 9 },
+// rendered instead. `label` is the criterion name exactly as the client's
+// sample Report Card writes it (Oct 2026), used in both the UI and the text.
+export const SALES_COACH_CRITERIA: { key: string; label: string; number: number }[] = [
+  { key: 'sales_offer_buildup', label: 'Sales Offer Buildup', number: 1 },
+  { key: 'offer_articulation', label: 'Offer Articulation', number: 2 },
+  { key: 'ceo_buyin', label: 'CEO Buy-In', number: 4 },
+  { key: 'ceo_preference', label: 'CEO Preference', number: 5 },
+  { key: 'space_price_retorno', label: 'Space and Price for Retorno', number: 6 },
+  { key: 'space_price_agreement', label: 'Space and Price Agreement', number: 7 },
+  { key: 'next_steps_stakeholders', label: 'Next Steps and Stakeholders', number: 8 },
+  { key: 'scheduled_meeting', label: 'Scheduled Meeting', number: 9 },
 ]
 
 const CRITERION_KEYS = SALES_COACH_CRITERIA.map((c) => c.key)
 const VERDICTS: SalesCoachVerdict[] = ['pass', 'warn', 'fail', 'na', 'uv']
 
-// Which criteria are N/A is a FIXED rule keyed to the declared outcome, not a
-// per-run model judgement — otherwise the same negotiation scored "5/7" one
-// run and "5/8" the next. The denominator is therefore static per outcome
-// path: signed 6, retorno 7, lost 5, uncertain 8 of the eight scored criteria
-// (only a rare UV lowers it further) — matches the Project Prompt's own
-// "Sections 1, 2 and 4–9" denominator rule now that Commercial Outcome (3)
-// is excluded.
+// Which criteria may be N/A, keyed to the declared outcome. Two tiers, both
+// straight from the Project Prompt's own N/A wording:
+//  - FORCED: the unconditional rules ("Use N/A if the outcome is Positive/Won
+//    or Negative/Lost"; no further sales meeting after a signature or a
+//    definitive loss). Applied in code whatever the model says.
+//  - CONDITIONAL: N/A is allowed ONLY under the narrow condition the Prompt
+//    names, and the model must say which in the note. Anything else is a
+//    judgement (pass/warn/fail), never N/A.
+// Until Oct 2026 Space and Price Agreement was forced N/A for a retorno: the
+// old Prompt only gave ✅ for an agreed price, which a retorno can never
+// have. The current Prompt scores the EXECUTION of seeking agreement ("a CEO
+// refusal does not automatically prevent full execution credit") and names
+// Space and Price Agreement among the criteria that rule applies to, so a
+// retorno is now scored on all eight.
 export const NA_BY_DECLARED_OUTCOME: Record<SalesCoachOutcome, string[]> = {
   signed: ['space_price_retorno', 'scheduled_meeting'],
-  retorno: ['space_price_agreement'],
-  lost: ['space_price_retorno', 'space_price_agreement', 'scheduled_meeting'],
+  retorno: [],
+  lost: ['space_price_retorno', 'scheduled_meeting'],
   uncertain: [],
+}
+
+export const CONDITIONAL_NA_BY_DECLARED_OUTCOME: Record<SalesCoachOutcome, { key: string; condition: string }[]> = {
+  signed: [
+    { key: 'next_steps_stakeholders', condition: 'the agreement was signed and no additional stakeholder involvement was required' },
+  ],
+  retorno: [
+    { key: 'space_price_agreement', condition: 'no commercial offer was reached, for reasons outside your control' },
+  ],
+  lost: [
+    { key: 'space_price_agreement', condition: 'no commercial offer was reached, for reasons outside your control' },
+  ],
+  uncertain: [
+    { key: 'space_price_agreement', condition: 'no commercial offer was reached, for reasons outside your control' },
+  ],
 }
 
 export function fixedNaCriteria(declared: SalesCoachOutcome | null | undefined): string[] {
   return declared ? NA_BY_DECLARED_OUTCOME[declared] : []
 }
 
-export function applicableCriteriaCount(declared: SalesCoachOutcome | null | undefined): number {
-  return SALES_COACH_CRITERIA.length - fixedNaCriteria(declared).length
+function conditionalNa(declared: SalesCoachOutcome | null | undefined): { key: string; condition: string }[] {
+  return declared ? CONDITIONAL_NA_BY_DECLARED_OUTCOME[declared] : []
 }
 
 function criterionNumber(key: string): number {
   return SALES_COACH_CRITERIA.find((c) => c.key === key)?.number ?? 0
 }
 
+function criterionRef(key: string): string {
+  const c = SALES_COACH_CRITERIA.find((c) => c.key === key)!
+  return `${c.number}. ${c.label}`
+}
+
 // Per-run instruction appended to the submission so the model applies the
 // table on the first pass (the validator enforces it regardless).
 export function applicabilityInstruction(declared: SalesCoachOutcome | null | undefined): string {
   const na = fixedNaCriteria(declared)
+  const cond = conditionalNa(declared)
   const label = outcomeLabel(declared)
-  const naList = na.length
-    ? na.map((k) => { const c = SALES_COACH_CRITERIA.find((c) => c.key === k)!; return `${c.number}. ${c.label}` }).join('; ')
-    : 'none'
-  return `--- APPLICABLE CRITERIA (fixed rule for a negotiation declared "${label}") ---
-N/A, by rule: ${naList}. Give these the verdict "na" with a one-line note.
+  const naList = na.length ? na.map(criterionRef).join('; ') : 'none'
+  const condLines = cond.length
+    ? cond.map((c) => `- ${criterionRef(c.key)}: "na" ONLY if ${c.condition} — say so in the note. Otherwise score it.`).join('\n')
+    : '- none'
+  return `--- APPLICABLE CRITERIA (rule for a negotiation declared "${label}") ---
+Always N/A: ${naList}. Give these the verdict "na" with a one-line note.
+N/A only under a specific condition:
+${condLines}
 Every other criterion MUST receive pass, warn or fail with evidence — "na" is not allowed for them. Use "uv" only if a specific passage needed for that criterion is missing or unintelligible in the transcript.
 Commercial Outcome (Section 3, the declared result) is not one of your criteria — the system renders it separately. Do not include it in criteria[].`
 }
@@ -163,9 +199,11 @@ export function formatScore(score: number | null | undefined, denominator: numbe
 }
 
 // The Execution Score is shown to everyone — admins included — as a
-// percentage ("79%"), never as points or "X scored criteria" (9 Oct 2026,
-// client request). Stored data — execution_score/denominator and
-// report_card_markdown — stays in points; everything below is display only.
+// percentage ("79%") on lists and pills (9 Oct 2026, client request). The
+// Report Card itself ends with the Project Prompt's own final scoreline,
+// "79% (5.5/7 applicable points)" (Oct 2026 prompt) — see
+// formatOverallScore(). Stored data — execution_score/denominator — stays in
+// points; everything below is display only.
 export function scorePercent(score: number | null | undefined, denominator: number | null | undefined): number | null {
   if (typeof score !== 'number' || typeof denominator !== 'number' || !Number.isFinite(score) || denominator <= 0) return null
   return Math.round((score / denominator) * 100)
@@ -218,6 +256,17 @@ export function scoreOpportunities(card: Pick<SalesCoachReportCard, 'criteria' |
     .sort((a, b) => b.reachPct - a.reachPct)
 }
 
+// The Project Prompt: "Never show a percentage without its applicable
+// denominator when UV criteria exist." Pills on list views pass this as their
+// `detail` so a UV-reduced percentage always carries its points ("4/5 · 1 UV").
+export function scoreUvDetail(
+  score: number | null | undefined,
+  denominator: number | null | undefined,
+  uvCount: number,
+): string | undefined {
+  return uvCount > 0 ? `${formatScore(score, denominator)} · ${uvCount} UV` : undefined
+}
+
 // Steps that couldn't be checked from the recording, in plain words. Keeps
 // the Project Prompt's intent ("never display X/Y alone when UV criteria
 // exist") now that the score is a percentage: say plainly that something
@@ -230,21 +279,30 @@ export function unverifiedNote(criteria: SalesCoachCriterion[]): string | null {
     : `${uv} steps couldn't be verified from the audio, so they aren't counted for or against you.`
 }
 
-// Rewrites the scoreline phrases in a stored report_card_markdown into a
-// percentage, dropping the "UV, N/A" coverage suffix in favour of
-// unverifiedNote()'s plain wording. Rewritten rather than re-rendered because
-// older cards were stored in an earlier layout ("1.5/6 applicable points", a
-// Commercial Outcome criterion) that the current renderer would not
-// reproduce. Only matches the phrases our own renderer writes, never model
-// prose.
+// The final scoreline of the Report Card, exactly as the Project Prompt
+// specifies: "Overall Execution Score: 79% (5.5/7 applicable points)", with
+// the UV/N-A evidence coverage appended when anything was unverifiable, and
+// "NOT CALCULABLE" (never an invented 0% or 100%) when nothing could be scored.
+export function formatOverallScore(card: Pick<SalesCoachReportCard, 'criteria' | 'execution_score' | 'execution_denominator'>): string {
+  const pct = scorePercent(card.execution_score, card.execution_denominator)
+  if (pct === null) return 'NOT CALCULABLE (0 applicable verified criteria)'
+  return `${pct}% (${formatScore(card.execution_score, card.execution_denominator)} applicable points)${scoreCoverageSuffix(card.criteria)}`
+}
+
+// Rewrites the scoreline phrases in a stored report_card_markdown into the
+// current "79% (5.5/7 applicable points)" form. Rewritten rather than
+// re-rendered because older cards were stored in earlier layouts ("1.5/6
+// applicable points", "5.5/7 scored criteria", a Commercial Outcome
+// criterion) that the current renderer would not reproduce. Skips a phrase
+// already preceded by its percentage (the current renderer's own output), and
+// only matches the phrases our own renderer writes, never model prose.
 export function scoreTextAsPercent(markdown: string): string {
   return markdown.replace(
-    /(\d+(?:\.\d+)?)\s?\/\s?(\d+) (?:scored criteria|applicable points)(?: — (\d+) UV, \d+ N\/A)?/g,
-    (match, s: string, d: string, uv?: string) => {
+    /(?<!% \()(?<![\d.])(\d+(?:\.\d+)?)\s?\/\s?(\d+) (?:scored criteria|applicable points)((?: — \d+ UV, \d+ N\/A)?)/g,
+    (match, s: string, d: string, coverage: string) => {
       const pct = formatScorePercent(Number(s), Number(d))
       if (pct === '—') return match
-      const n = uv ? Number(uv) : 0
-      return n > 0 ? `${pct} (${n} step${n === 1 ? '' : 's'} not verifiable from the audio, not counted)` : pct
+      return `${pct} (${formatScore(Number(s), Number(d))} applicable points)${coverage}`
     },
   )
 }
@@ -270,46 +328,109 @@ export function verdictMark(v: SalesCoachVerdict): string {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Coaching-tab personalization — replaces four fixed generic starter prompts
-// with ones drawn from THIS negotiation's own Report Card, so the chat feels
-// like a continuation of what the Sales Executive just read rather than a
-// blank box they have to think of something to type into.
-// ────────────────────────────────────────────────────────────────────────────
-
-export function coachGreeting(card: SalesCoachReportCard, company: string | null): string {
-  return `I've read your Report Card${company ? ` for ${company}` : ''}, the full transcript and the TRC knowledge documents. ${card.headline} Ask me anything, or start here:`
+// The rating words and points of the client's sample card: "Strong (1)",
+// "Partial (0.5)", "Weak (0)". N/A and UV carry no points.
+export const VERDICT_RATING: Record<SalesCoachVerdict, string> = {
+  pass: 'Strong (1)',
+  warn: 'Partial (0.5)',
+  fail: 'Weak (0)',
+  na: 'N/A — not scored',
+  uv: 'UV — Audio verification required',
 }
 
-// Weakest scored criteria first (fail, then warn), turned into a direct
-// "fix this" prompt; the model's own verdict, not re-judged here. Falls back
-// to two generic prompts if the card has nothing to improve on (or isn't a
-// scored criterion at all), so this never returns fewer than the featured
-// coaching question plus one other option.
+// "✅ Strong (1)" — the rating as it follows a criterion's name.
+export function verdictRating(v: SalesCoachVerdict): string {
+  return v === 'na' || v === 'uv' ? VERDICT_RATING[v] : `${verdictMark(v)} ${VERDICT_RATING[v]}`
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Coaching-tab personalization — opening prompts drawn from THIS negotiation's
+// own Report Card, grouped into the Project Prompt's two coaching tracks:
+// MEETING EXECUTION (practise the most important improvement from the
+// recording) and NEXT COMMERCIAL ACTION (what to do with this opportunity
+// now). Both are offered for every outcome; their commercial content follows
+// the declared outcome.
+// ────────────────────────────────────────────────────────────────────────────
+
+export const SALES_COACH_TRACKS: Record<SalesCoachTrack, { label: string; hint: string }> = {
+  execution: { label: 'Meeting execution', hint: 'Practise the most important improvement from this meeting.' },
+  commercial: { label: 'Next commercial action', hint: 'Decide what to do with this opportunity now.' },
+}
+
+export function coachGreeting(card: SalesCoachReportCard, company: string | null): string {
+  const read = `I've read your Report Card${company ? ` for ${company}` : ''}, the full transcript and the TRC knowledge documents.`
+  const invitation = (card.coaching_invitation || '').trim()
+  return invitation
+    ? `${read} ${invitation} You can switch between the two at any time.`
+    : `${read} We can practise the meeting itself, or work on the next commercial action for this opportunity. Pick either, and switch whenever you like:`
+}
+
+// The single prompt that opens (or switches to) the commercial track, worded
+// for the declared outcome and, when the card named one, its grounded
+// immediate priority. The Project Prompt: retorno → convert towards
+// signature; won → contract/implementation coordination only where relevant;
+// lost → a recovery route only if new evidence supports one, otherwise lessons.
+function commercialTrackPrompt(card: SalesCoachReportCard): SalesCoachCoachingPrompt {
+  const priority = (card.next_commercial_priority || '').trim()
+  const withPriority = priority ? ` The Report Card named the immediate priority as: "${priority}"` : ''
+  switch (card.declared_outcome) {
+    case 'retorno':
+      return { track: 'commercial', label: 'Plan how to convert this retorno', prompt: `Let's work on converting this retorno into a signed contract.${withPriority} What should I do next, and when?` }
+    case 'signed':
+      return { track: 'commercial', label: 'Anything to coordinate after signature?', prompt: `The deal is signed. Is there anything in the contract or implementation I should coordinate now?${withPriority}` }
+    case 'lost':
+      return { track: 'commercial', label: 'Is there a credible way back?', prompt: `This one was lost. Is there a credible route to recover it, or what should I take from it for future negotiations?${withPriority}` }
+    default:
+      return { track: 'commercial', label: 'Decide the next commercial action', prompt: `Help me decide the next commercial action for this opportunity.${withPriority}` }
+  }
+}
+
+// The two prompts behind the always-visible "switch track" control in the
+// coaching chat — one per track, so neither has to be finished first.
+export function coachingTrackSwitches(card: SalesCoachReportCard): Record<SalesCoachTrack, SalesCoachCoachingPrompt> {
+  return {
+    execution: {
+      track: 'execution',
+      label: SALES_COACH_TRACKS.execution.label,
+      prompt: 'Let\'s work on the meeting itself. Help me practise the most important improvement from this negotiation.',
+    },
+    commercial: { ...commercialTrackPrompt(card), label: SALES_COACH_TRACKS.commercial.label },
+  }
+}
+
+// Execution track: the card's own reflective question first, then the
+// weakest scored criteria (fail before warn; the model's verdicts, not
+// re-judged here). Commercial track: the outcome-specific opener, plus a
+// practical draft for a retorno. Falls back to a generic execution prompt
+// when nothing scored below pass.
 export function suggestedCoachingPrompts(card: SalesCoachReportCard): SalesCoachCoachingPrompt[] {
-  const prompts: SalesCoachCoachingPrompt[] = []
+  const execution: SalesCoachCoachingPrompt[] = []
   if (card.coaching_question) {
-    prompts.push({ label: 'Your coach’s question', prompt: card.coaching_question })
+    execution.push({ track: 'execution', label: 'Your coach’s question', prompt: card.coaching_question })
   }
   const weight = (v: SalesCoachVerdict) => (v === 'fail' ? 0 : v === 'warn' ? 1 : 2)
   const weak = card.criteria
     .filter((c) => c.scored && (c.verdict === 'fail' || c.verdict === 'warn'))
     .sort((a, b) => weight(a.verdict) - weight(b.verdict))
-  for (const c of weak.slice(0, 3)) {
+  for (const c of weak.slice(0, 2)) {
     const meta = SALES_COACH_CRITERIA.find((k) => k.key === c.key)
     const label = meta?.label || c.label
-    prompts.push({
-      label: `Fix your ${label}`,
-      prompt: `I scored ${verdictMark(c.verdict)} on ${label}. Walk me through exactly what I should have said, and what to do differently next time.`,
+    execution.push({
+      track: 'execution',
+      label: `Practise your ${label}`,
+      prompt: `I scored ${verdictMark(c.verdict)} on ${label}. Show me what I should have said, then let's rehearse that moment.`,
     })
   }
-  if (prompts.length < 2) {
-    prompts.push({ label: 'Walk me through my Report Card', prompt: 'Walk me through my Report Card.' })
+  if (execution.length < 2) {
+    execution.push({ track: 'execution', label: 'What matters most for next time?', prompt: 'If I could only fix one thing before my next negotiation, what should it be and why?' })
   }
-  if (prompts.length < 2) {
-    prompts.push({ label: 'What matters most for next time?', prompt: 'If I could only fix one thing before my next negotiation, what should it be and why?' })
+
+  const commercial: SalesCoachCoachingPrompt[] = [commercialTrackPrompt(card)]
+  if (card.declared_outcome === 'retorno' || card.declared_outcome === 'uncertain') {
+    commercial.push({ track: 'commercial', label: 'Draft a follow-up to the CEO', prompt: 'Draft a short follow-up message to the CEO for this opportunity, based on what was actually agreed in the meeting.' })
   }
-  return prompts.slice(0, 4)
+
+  return [...execution.slice(0, 3), ...commercial]
 }
 
 // The outcome-conditional details captured on the form (US-036), turned into
@@ -385,16 +506,42 @@ export function commercialOutcomeLabel(
   declared: SalesCoachOutcome | null | undefined,
   details: Record<string, unknown> | null | undefined,
 ): string {
-  if (declared === 'signed') return 'POSITIVE / WON'
-  if (declared === 'lost') return 'NEGATIVE / LOST'
+  if (declared === 'signed' || declared === 'lost' || declared === 'uncertain' || !declared) return commercialOutcomeType(declared)
   if (declared === 'retorno') {
     const d = details || {}
     if (d.noneEstablished === true) return 'FOLLOW-UP / RETORNO — OPEN, NO SPACE AGREED UPON'
     const opt1 = formatOutcomeDetails(declared, details).find((r) => r.label === 'Option 1')?.value
     return opt1 ? `FOLLOW-UP / RETORNO — ${opt1}` : 'FOLLOW-UP / RETORNO — OPEN, NO SPACE AGREED UPON'
   }
-  if (declared === 'uncertain') return 'UNCERTAIN'
-  return 'NOT DECLARED'
+  return commercialOutcomeType(declared)
+}
+
+// The bare outcome status — the sample card's "Outcome:" header line and the
+// label that opens "A. Negotiation Result" ("FOLLOW-UP / RETORNO — …").
+export function commercialOutcomeType(declared: SalesCoachOutcome | null | undefined): string {
+  switch (declared) {
+    case 'signed': return 'POSITIVE / WON'
+    case 'retorno': return 'FOLLOW-UP / RETORNO'
+    case 'lost': return 'NEGATIVE / LOST'
+    case 'uncertain': return 'UNCERTAIN'
+    default: return 'NOT DECLARED'
+  }
+}
+
+// The sample card's "Meeting:" header line: "CEO Planteo", plus who it was
+// with when the submission names them.
+export function meetingLabel(interviewee: string | null | undefined): string {
+  const who = (interviewee || '').trim()
+  return who ? `CEO Planteo — ${who}` : 'CEO Planteo'
+}
+
+// The model sometimes repeats the outcome label the system already prints
+// ("FOLLOW-UP / RETORNO — Half page…", "Retorno. Half page…"); drop it so the
+// rendered line never reads "RETORNO — RETORNO — …".
+const LEADING_OUTCOME = /^(?:apparent\s+)?(?:positive\s*\/\s*won|follow-up\s*\/\s*retorno|negative\s*\/\s*lost|signed on the spot|retorno|lost|uncertain)\b\s*[.:—–-]\s*/i
+function stripLeadingOutcome(text: string): string {
+  const stripped = text.replace(LEADING_OUTCOME, '').trim()
+  return stripped ? stripped.charAt(0).toUpperCase() + stripped.slice(1) : text
 }
 
 // The factual detail line under the Commercial Outcome label — what the
@@ -501,12 +648,28 @@ export function attachEvidenceTimestamps(
 
 // "Ordabasy Group Planteo.m4a" -> "Ordabasy Group Planteo". Used ONLY when the
 // Sales Executive left the Company field blank (US-034/US-035 filename rule) —
-// the typed field always wins.
+// the typed field always wins. Per the Project Prompt, removes only obvious
+// technical additions — the extension, "raw"/"formatted", duplicate numbering
+// ("(1)", "copy 2") and upload suffixes (date/time stamps, long digit runs) —
+// and keeps the company name as written. A recorder's default name
+// ("WhatsApp Audio …", "New Recording 3") is not a company: null, so the card
+// says "Unclear from filename" instead of inventing one.
+const GENERIC_RECORDING_NAME = /^(?:whatsapp (?:audio|ptt)|new recording|voice memo|voice recording|recording|audio|untitled|record|rec|ptt|aud)(?: \d+)?$/i
+
 export function deriveCompanyFromFilename(filename: string | null | undefined): string | null {
   if (!filename) return null
-  const base = filename.replace(/\.[a-z0-9]{2,5}$/i, '')
-  const cleaned = base.replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ').trim()
-  return cleaned.length > 0 ? cleaned : null
+  const cleaned = filename
+    .replace(/\.[a-z0-9]{2,5}$/i, '') // extension
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/[([]\s*\d{1,3}\s*[)\]]/g, ' ') // duplicate numbering: "(1)", "[2]"
+    .replace(/\bcopy(?:\s+\d{1,3})?\b/gi, ' ') // "copy", "copy 2"
+    .replace(/\b(?:raw|formatted|uploaded|upload)\b/gi, ' ')
+    .replace(/\b\d{4} \d{2} \d{2}(?: (?:at )?\d{1,2} \d{2}(?: \d{2})?)?\b/g, ' ') // 2026-10-13 [at] 10.32.11
+    .replace(/\b\d{8,}\b/g, ' ') // 20261013, unix timestamps
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!cleaned || GENERIC_RECORDING_NAME.test(cleaned)) return null
+  return cleaned
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -549,6 +712,16 @@ function cleanSections(v: unknown): SalesCoachAnalysisSection[] {
     .map((s) => ({ heading: (s.heading || 'Further analysis').toUpperCase(), body: s.body }))
 }
 
+// Strengths (B) / areas for improvement (C): "two or three … If fewer are
+// supported, give fewer" — so 0-3, truncated rather than rejected.
+function cleanPoints(v: unknown): SalesCoachCardPoint[] {
+  if (!Array.isArray(v)) return []
+  return v
+    .map((p) => ({ title: str((p as { title?: unknown })?.title), detail: str((p as { detail?: unknown })?.detail) }))
+    .filter((p) => p.title || p.detail)
+    .slice(0, 3)
+}
+
 // Structural validation of the model's Report Card. We do NOT trust the model's
 // arithmetic or completeness — this checks every criterion is present exactly
 // once with a valid verdict, the required prose fields are filled, and exactly
@@ -557,7 +730,7 @@ function cleanSections(v: unknown): SalesCoachAnalysisSection[] {
 // problems (empty = valid) so the route can trigger one corrective pass.
 export function validateReportCard(
   rc: unknown,
-  ctx: { company: string; declaredOutcome: SalesCoachOutcome | null; outcomeDetails?: Record<string, unknown> | null },
+  ctx: { company: string; declaredOutcome: SalesCoachOutcome | null; outcomeDetails?: Record<string, unknown> | null; meeting?: string | null },
 ): { ok: boolean; problems: string[]; normalized?: SalesCoachReportCard } {
   const problems: string[] = []
   if (!rc || typeof rc !== 'object' || Array.isArray(rc)) {
@@ -567,8 +740,11 @@ export function validateReportCard(
 
   if (!str(card.headline)) problems.push('Missing headline')
   if (!str(card.summary)) problems.push('Missing summary')
-  if (!str(card.report_summary)) problems.push('Missing report_summary')
+  if (!str(card.commercial_outcome_summary)) problems.push('Missing commercial_outcome_summary (Section 3 detail)')
+  if (!Array.isArray(card.strengths)) problems.push('Missing strengths array')
+  if (!Array.isArray(card.improvements)) problems.push('Missing improvements array')
   if (!str(card.coaching_question)) problems.push('Missing the single coaching question')
+  if (!str(card.coaching_invitation)) problems.push('Missing the two-track coaching invitation')
 
   const rawCriteria = Array.isArray(card.criteria) ? (card.criteria as Record<string, unknown>[]) : []
   if (rawCriteria.length === 0) problems.push('Missing criteria array')
@@ -584,6 +760,7 @@ export function validateReportCard(
     byKey.set(key, c)
   }
   const fixedNa = new Set(fixedNaCriteria(ctx.declaredOutcome))
+  const allowedNa = new Set([...fixedNa, ...conditionalNa(ctx.declaredOutcome).map((c) => c.key)])
   for (const { key, label } of SALES_COACH_CRITERIA) {
     const c = byKey.get(key)
     if (!c) {
@@ -595,10 +772,14 @@ export function validateReportCard(
       problems.push(`Criterion ${label}: verdict must be one of ${VERDICTS.join('/')}`)
       continue
     }
-    // Applicability is a fixed rule (see NA_BY_DECLARED_OUTCOME): a model "na"
-    // outside the rule is a missing judgement, not a valid verdict.
-    if (verdict === 'na' && !fixedNa.has(key) && ctx.declaredOutcome) {
+    // Applicability follows NA_BY_DECLARED_OUTCOME / the conditional table: a
+    // model "na" outside them is a missing judgement, not a valid verdict, and
+    // a conditional N/A must say why it applies.
+    if (verdict === 'na' && !allowedNa.has(key) && ctx.declaredOutcome) {
       problems.push(`Criterion ${label} cannot be N/A for a negotiation declared "${outcomeLabel(ctx.declaredOutcome)}" — give pass, warn or fail with evidence`)
+    }
+    if (verdict === 'na' && allowedNa.has(key) && !fixedNa.has(key) && !str(c.note) && !str(c.reason)) {
+      problems.push(`Criterion ${label}: an N/A here needs a note explaining why the Project Prompt's N/A condition applies`)
     }
     if (!str(c.reason) && !str(c.note) && !fixedNa.has(key)) {
       problems.push(`Criterion ${label}: needs a reason`)
@@ -618,6 +799,8 @@ export function validateReportCard(
       note: str(c.note) || (forcedNa ? `not applicable when the outcome is ${outcomeLabel(ctx.declaredOutcome)}` : undefined),
       evidence: forcedNa ? [] : cleanEvidence(c.evidence),
       reason: forcedNa ? undefined : (str(c.reason) || undefined),
+      commercial_reality: verdict === 'na' ? undefined : (str(c.commercial_reality) || undefined),
+      better_approach: verdict === 'na' || verdict === 'pass' ? undefined : (str(c.better_approach) || undefined),
       scored: isScoredVerdict(verdict),
     }
   })
@@ -629,69 +812,121 @@ export function validateReportCard(
     declared_outcome: ctx.declaredOutcome,
     commercial_outcome_label: commercialOutcomeLabel(ctx.declaredOutcome, ctx.outcomeDetails),
     commercial_outcome_note: commercialOutcomeNote(ctx.declaredOutcome, ctx.outcomeDetails),
-    headline: str(card.headline),
+    commercial_outcome_summary: stripLeadingOutcome(str(card.commercial_outcome_summary)),
+    meeting: ctx.meeting || meetingLabel(null),
+    headline: stripLeadingOutcome(str(card.headline)),
     execution_score: score,
     execution_denominator: denominator,
     summary: str(card.summary),
+    strengths: cleanPoints(card.strengths),
+    improvements: cleanPoints(card.improvements),
     criteria,
-    report_summary: str(card.report_summary),
     objections: cleanObjections(card.objections),
     deeper_analysis: cleanSections(card.deeper_analysis),
     coaching_question: str(card.coaching_question),
+    coaching_invitation: str(card.coaching_invitation),
+    next_commercial_priority: str(card.next_commercial_priority) || undefined,
   }
   return { ok: true, problems: [], normalized }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Text rendering — the layout of the client's sample Report Card, as markdown.
+// Text rendering — the client's sample Report Card (Oct 2026), line for line:
+//   TRC SALES COACH — REPORT CARD / Company / Meeting / Outcome
+//   A. Negotiation Result → B. What You Did Well → C. Main Areas for
+//   Improvement → D. Detailed Performance Assessment ("1. Sales Offer Buildup
+//   — ✅ Strong (1)" + Evidence / Assessment / Commercial reality / Better
+//   approach; 3 = Commercial Outcome — NOT SCORED) → E. Deeper Coaching
+//   (ending with the one reflective question and the two-track invitation)
+//   → F. Overall Execution Score, LAST.
 // Derived from the structured card so the text and the UI can never disagree.
+// Cards from before this layout (no strengths/improvements) skip B and C
+// rather than printing them empty.
 // ────────────────────────────────────────────────────────────────────────────
+
+// A meaningful evidence label ("Your question", "CEO's response") is kept;
+// generic ones ("Quote", "Evidence") are dropped since the line already says
+// "Evidence".
+export function evidenceLabel(label: string | undefined): string {
+  const l = (label || '').trim()
+  return !l || /^(quote|quoted|evidence)$/i.test(l) ? '' : l
+}
 
 export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
   const lines: string[] = []
-  const outcomeLbl = card.commercial_outcome_label
-  const scoreText = `${formatScore(card.execution_score, card.execution_denominator)} scored criteria${scoreCoverageSuffix(card.criteria)}`
-  lines.push('# REPORT CARD')
-  lines.push(`**${outcomeLbl} — ${scoreText} — ${card.headline}**`)
-  lines.push('')
-  lines.push(card.summary)
+  const hasNewLayout = Array.isArray(card.strengths)
+  const outcomeType = commercialOutcomeType(card.declared_outcome)
+
+  lines.push('# TRC SALES COACH — REPORT CARD')
+  lines.push(`**Company:** ${card.company || 'Unclear from filename'}  `)
+  lines.push(`**Meeting:** ${card.meeting || meetingLabel(null)}  `)
+  lines.push(`**Outcome:** ${outcomeType}`)
   lines.push('')
 
-  // Sections 1 and 2, then Section 3 (Commercial Outcome — not scored, the
-  // Project Prompt's own numbering), then the remaining scored criteria.
+  lines.push('## A. Negotiation Result')
+  lines.push(hasNewLayout ? `**${outcomeType} — ${card.headline}**` : `**${card.commercial_outcome_label}**`)
+  if (!hasNewLayout) lines.push(card.headline)
+  lines.push('')
+  lines.push(card.summary)
+  if (!hasNewLayout && card.report_summary) {
+    lines.push('')
+    lines.push(card.report_summary)
+  }
+  lines.push('')
+
+  const points = (heading: string, items: SalesCoachCardPoint[] | undefined, empty: string) => {
+    lines.push(`## ${heading}`)
+    if (!items || items.length === 0) lines.push(empty)
+    else items.forEach((p, i) => lines.push(`${i + 1}. **${p.title.replace(/\.$/, '')}.** ${p.detail}`))
+    lines.push('')
+  }
+  if (hasNewLayout) {
+    points('B. What You Did Well', card.strengths, 'No strengths could be grounded in the transcript evidence.')
+    points('C. Main Areas for Improvement', card.improvements, 'No material controllable improvements were identified.')
+  }
+
+  lines.push('## D. Detailed Performance Assessment')
   card.criteria.forEach((c, i) => {
     const meta = SALES_COACH_CRITERIA.find((k) => k.key === c.key)
     if (i === 2) {
-      lines.push('## 3. COMMERCIAL OUTCOME — NOT SCORED')
-      lines.push(`**${outcomeLbl}**`)
-      lines.push(card.commercial_outcome_note)
+      lines.push('### 3. Commercial Outcome — NOT SCORED')
+      lines.push(card.commercial_outcome_summary
+        ? `${outcomeLabel(card.declared_outcome)}. ${card.commercial_outcome_summary}`
+        : `**${card.commercial_outcome_label}** — ${card.commercial_outcome_note}`)
       lines.push('')
     }
-    lines.push(`## ${meta?.number ?? i + 1}. ${meta?.heading || c.label.toUpperCase()}`)
+    lines.push(`### ${meta?.number ?? i + 1}. ${meta?.label || c.label} — ${verdictRating(c.verdict)}`)
     if (c.verdict === 'na') {
-      lines.push(`**N/A${c.note ? ` — ${c.note}` : ''}**`)
-    } else if (c.verdict === 'uv') {
-      lines.push(`**UV — audio verification required${c.note ? ` — ${c.note}` : ''}**`)
-    } else {
-      lines.push(`**${verdictMark(c.verdict)}${c.note ? ` — ${c.note}` : ''}**`)
+      if (c.note) lines.push(`Not applicable: ${c.note}`)
+      if (c.reason) lines.push(`**Assessment:** ${c.reason}`)
+      lines.push('')
+      return
     }
-    for (const e of c.evidence || []) lines.push(`**${e.label}${e.time_ms !== undefined ? ` [${formatTimestamp(e.time_ms)}]` : ''}:** ${e.text}`)
-    if (c.reason) lines.push(`**Reason:** ${c.reason}`)
+    if (c.note) lines.push(`_${c.note}_`)
+    const ev = c.evidence || []
+    const evText = (e: SalesCoachEvidence) => {
+      const label = evidenceLabel(e.label)
+      const time = e.time_ms !== undefined ? `[${formatTimestamp(e.time_ms)}] ` : ''
+      return `${time}${label ? `${label}: ` : ''}${e.text}`
+    }
+    if (ev.length === 1) lines.push(`**Evidence:** ${evText(ev[0])}`)
+    else if (ev.length > 1) {
+      lines.push('**Evidence:**')
+      ev.forEach((e) => lines.push(`- ${evText(e)}`))
+      lines.push('')
+    }
+    if (c.reason) lines.push(`**Assessment:** ${c.reason}`)
+    if (c.commercial_reality) lines.push(`**Commercial reality:** ${c.commercial_reality}`)
+    if (c.better_approach) lines.push(`**Better approach:** ${c.better_approach}`)
     lines.push('')
   })
 
-  lines.push('## SCORELINE')
-  lines.push(`**Execution Score:** ${formatScore(card.execution_score, card.execution_denominator).replace('/', ' / ')} scored criteria${scoreCoverageSuffix(card.criteria)}`)
-  lines.push(`**Commercial Outcome:** ${outcomeLbl}`)
-  lines.push(`**Report Summary:** ${card.report_summary}`)
-  lines.push('')
-
-  lines.push('# DEEPER ANALYSIS AND FEEDBACK')
+  lines.push('## E. Deeper Coaching')
+  lines.push('### Objections and Handling')
   if (card.objections.length > 0) {
-    lines.push('## OBJECTIONS & HANDLING')
     card.objections.forEach((o, i) => {
       if (card.objections.length > 1) lines.push(`**${i + 1}.**`)
-      lines.push(`**Objection/Hesitation:** ${o.objection}`)
+      lines.push(`**Objection:** ${o.objection}`)
       lines.push(`**How you handled it:** ${o.handled}`)
       if (o.original_wording || o.trc_improved_response) {
         lines.push('**TRC-improved response:**')
@@ -702,18 +937,35 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
       lines.push('')
     })
   } else {
-    lines.push('## OBJECTIONS & HANDLING')
-    lines.push('No objections or hesitations were raised in the transcript.')
+    lines.push('No genuine objections were raised in the transcript.')
     lines.push('')
   }
   for (const s of card.deeper_analysis) {
-    lines.push(`## ${s.heading}`)
+    lines.push(`### ${titleCaseHeading(s.heading)}`)
     lines.push(s.body)
     lines.push('')
   }
-  lines.push('## FINAL COACHING QUESTION')
+  lines.push('### Final Coaching Question')
   lines.push(card.coaching_question)
+  lines.push('')
+  if (card.coaching_invitation) {
+    lines.push('### Continue With Your Coach')
+    lines.push(card.coaching_invitation)
+    lines.push('')
+  }
+
+  lines.push('## F. Overall Execution Score')
+  lines.push(`**Overall Execution Score: ${formatOverallScore(card)}**`)
   return lines.join('\n').trim() + '\n'
+}
+
+// "RETORNO CONTROL" → "Retorno Control", keeping short all-caps acronyms
+// (CEO, TRC) as written.
+export function titleCaseHeading(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/(^|\s|-)\S/g, (m) => m.toUpperCase())
+    .replace(/\b(Ceo|Trc|Ots|Q&a)\b/g, (m) => m.toUpperCase())
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -727,11 +979,41 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
   properties: {
     headline: {
       type: 'string',
-      description: 'One sentence: the single most important execution note from the negotiation.',
+      description: 'The result line of A. NEGOTIATION RESULT, printed right after the outcome label the system supplies ("FOLLOW-UP / RETORNO — <this>"), so do NOT repeat the label. One sentence leading with the commercial result: the space and price signed (won), the precise space and price discussed and its status (retorno, e.g. "Half page at USD 25,000 proposed; not yet agreed."), "OPEN, NO SPACE AGREED UPON" for a retorno with no defined basis, or the stated reason (lost). It may go on to name the principal strength and the one important improvement, as the Project Prompt\'s headline format shows (e.g. "Full page at USD 30,000 signed on the spot; strong editorial buildup, with one important improvement: confirm the selection verbally before preparing the contract."). Never present a proposed price as agreed. NEVER a score, percentage or points.',
     },
     summary: {
       type: 'string',
-      description: 'The opening paragraph, addressed to the Sales Executive as "you"/"your": what you did across the negotiation and the main improvement for next time. 3-5 sentences.',
+      description: 'The paragraph under the result line, addressed to the Sales Executive as "you"/"your": the commercial position actually reached (e.g. CEO interest vs confirmed buy-in) and what you secured, reflecting both the result and how well the negotiation was executed; then, for a retorno, the immediate commercial priority (otherwise the most important improvement for the next call). 2-4 concise sentences — B and C carry the detailed strengths and improvements. A signed deal reads as a success even when the process had gaps. No score.',
+    },
+    commercial_outcome_summary: {
+      type: 'string',
+      description: 'Section 3, COMMERCIAL OUTCOME — NOT SCORED: the factual detail printed after the declared outcome ("Retorno. <this>"), so do NOT repeat the outcome word. The space and price signed or discussed and their status, plus the agreed next step, e.g. "Half page at USD 25,000 proposed, not agreed. Marketing meeting scheduled." For a retorno with no defined basis: "OPEN, NO SPACE AGREED UPON." 1-2 short sentences.',
+    },
+    strengths: {
+      type: 'array',
+      description: 'B. WHAT YOU DID WELL: two or three genuine strengths grounded in transcript evidence — fewer if fewer are supported. Recognise a signature prominently.',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short label, e.g. "Strong editorial buildup".' },
+          detail: { type: 'string', description: 'One sentence of evidence-based explanation, addressed to "you", e.g. "You connected the CEO\'s interview messages to the value of appearing in the publication."' },
+        },
+        required: ['title', 'detail'],
+        additionalProperties: false,
+      },
+    },
+    improvements: {
+      type: 'array',
+      description: 'C. MAIN AREAS FOR IMPROVEMENT: the two or three highest-impact CONTROLLABLE improvements, each with a specific next-time action — fewer if fewer are warranted. No repetitive or minor criticisms, never an audio/transcription limitation.',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short label, e.g. "Make CEO buy-in more explicit".' },
+          detail: { type: 'string', description: 'One or two sentences: what happened and the specific next-time action, addressed to "you", e.g. "You asked whether the CEO liked the proposal, but did not follow up with a direct participation question."' },
+        },
+        required: ['title', 'detail'],
+        additionalProperties: false,
+      },
     },
     criteria: {
       type: 'array',
@@ -743,11 +1025,11 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
           verdict: { type: 'string', enum: VERDICTS },
           note: {
             type: 'string',
-            description: 'Short text after the verdict mark. For N/A: why it does not apply (e.g. "outcome is signed"). Empty string otherwise.',
+            description: 'Short text after the verdict mark. For N/A: why it does not apply (e.g. "outcome is signed", or which Project Prompt N/A condition is met). Empty string otherwise.',
           },
           evidence: {
             type: 'array',
-            description: 'Verbatim transcript evidence lines. Labels such as "Quote", "Offer quoted", "Leading question quoted", "Subsequent conduct". Empty array if none.',
+            description: 'The "Evidence:" line(s) — one, or two or three where the Project Prompt asks for more than one quote (the offer AND the closing question; your question AND the CEO\'s response). Each is a verbatim transcript quote in double quotes, or (where no single line captures it) a short factual description of conduct, e.g. "You presented two clearly defined options, their prices and a closing question." Label each by what it is: "Quote", "Your question", "CEO\'s response", "Offer quoted", "Closing question", "Subsequent conduct", "Conduct". Empty array if none.',
             items: {
               type: 'object',
               properties: {
@@ -758,15 +1040,19 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
               additionalProperties: false,
             },
           },
-          reason: { type: 'string', description: 'Why this verdict, in TRC coaching language. Empty string only for a self-explanatory N/A.' },
+          reason: { type: 'string', description: 'The "Assessment:" line — why this EXECUTION rating, in one or two sentences of TRC coaching language: the quality of the attempt, kept separate from the buyer\'s response, e.g. "You attempted to test interest but did not ask clearly for participation." Empty string only for a self-explanatory N/A.' },
+          commercial_reality: {
+            type: 'string',
+            description: 'The "Commercial reality:" line for criteria 4-9 — the buyer-controlled fact, stated SEPARATELY from the execution rating, short and plain, using the Project Prompt\'s status where it defines one: 4 buy-in confirmed / not confirmed / declined / unverifiable (e.g. "CEO interest, not confirmed buy-in."); 5 the option selected or none (e.g. "No option selected."); 6 the actual retorno basis (e.g. "No agreed space or price."); 7 the actual agreement (e.g. "Terms not agreed."); 8 what was confirmed about authority and the handoff; 9 the meeting status — CONFIRMED only with a fixed date and time / TENTATIVE / NOT SCHEDULED / DECLINED. Empty string for criteria 1-2 and for N/A.',
+          },
+          better_approach: {
+            type: 'string',
+            description: 'The "Better approach:" line — for a ⚠️ or ❌ where a different question or response is the fix: the exact TRC-consistent words you could have used, short enough to say to a CEO, in double quotes, e.g. "In principle, would you like your company to participate in this edition?". Empty string for ✅, N/A and UV, or when the fix is not a phrasing.',
+          },
         },
-        required: ['key', 'verdict', 'note', 'evidence', 'reason'],
+        required: ['key', 'verdict', 'note', 'evidence', 'reason', 'commercial_reality', 'better_approach'],
         additionalProperties: false,
       },
-    },
-    report_summary: {
-      type: 'string',
-      description: 'The SCORELINE report summary: 2-3 sentences on what was delivered and the one meaningful gap.',
     },
     objections: {
       type: 'array',
@@ -786,7 +1072,7 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
     },
     deeper_analysis: {
       type: 'array',
-      description: 'Zero to three further analysis sections with UPPER-CASE headings (e.g. "CONCISE CONFIRMATION APPLICATION", "RETORNO CONTROL"). Only when they add something the criteria did not.',
+      description: 'Zero to three further DEEPER COACHING sections on important missed opportunities the criteria did not already cover (e.g. a missed CEO emotional-close window, a delegation that should have been reconfirmed), each with concise alternative TRC wording. UPPER-CASE headings (e.g. "CEO EMOTIONAL CLOSE", "CONCISE CONFIRMATION APPLICATION", "RETORNO CONTROL"). Only when they add something.',
       items: {
         type: 'object',
         properties: {
@@ -799,12 +1085,25 @@ export const REPORT_CARD_OUTPUT_SCHEMA = {
     },
     coaching_question: {
       type: 'string',
-      description: 'Exactly ONE focused coaching question, addressed to the Sales Executive as "you", tied to the decisive moment.',
+      description: 'Exactly ONE tailored reflective question about the most important controllable MEETING-EXECUTION issue, addressed to the Sales Executive as "you". Never about an audio, transcription or metadata limitation.',
+    },
+    next_commercial_priority: {
+      type: 'string',
+      description: 'One short sentence: the grounded immediate commercial priority for THIS opportunity, from the recorded evidence and known facts only. Retorno: the conversion priority. Signed: a relevant contract/implementation item, or empty if none. Lost: a recovery route only if the evidence supports one credibly, otherwise empty. Never invent commitments, prices or approvals.',
+    },
+    submission_is_summary: {
+      type: 'boolean',
+      description: 'true ONLY when the submitted text is plainly a summary, notes or a description of the meeting rather than a transcript of the conversation itself (no actual exchange between the speakers). A partial transcript that still shows the planteo, the objection handling and the outcome is NOT a summary: score it and say in the summary that the evaluation is based on the available segment. When true, the card is not shown and the Sales Executive is asked for the complete transcript, per the Project Prompt.',
+    },
+    coaching_invitation: {
+      type: 'string',
+      description: 'The short two-track invitation that closes DEEPER COACHING, right before the final score: offer (a) practising the meeting skill behind the coaching question, OR (b) planning the next commercial action for this opportunity (naming the grounded priority for a retorno; implementation for a won deal; recovery only if credible for a lost one), and ask which would help most right now. 1-3 sentences, specific to this negotiation, no generic script. No score.',
     },
   },
   required: [
-    'headline', 'summary', 'criteria', 'report_summary',
+    'headline', 'summary', 'commercial_outcome_summary', 'strengths', 'improvements', 'criteria',
     'objections', 'deeper_analysis', 'coaching_question',
+    'next_commercial_priority', 'coaching_invitation', 'submission_is_summary',
   ],
   additionalProperties: false,
 } as const
@@ -822,9 +1121,17 @@ export const REPORT_CARD_CONTRACT = `=== REPORT CARD OUTPUT CONTRACT (fixed — 
 
 You are producing the TRC Sales Coach REPORT CARD for ONE negotiation, as a single JSON object matching the provided schema. No prose outside the JSON.
 
-HOW THIS CONTRACT RELATES TO THE PROJECT PROMPT: the Project Prompt (loaded above, highest authority) is where the real judgement lives — its CONFIRMED OUTCOME METADATA, OUTCOME STATUS VERSUS SUPPORTING METADATA, NON-VERBAL OUTCOME IS NOT A COACHING GAP and TRANSCRIPTION AND SPEAKER UNCERTAINTY rules govern exactly how to treat the declared outcome, the submitted details, and any garbled or ambiguous audio (mark UV rather than guessing or penalising). Follow those rules as written; this contract does not add to or override them. What this contract fixes is STRUCTURE only:
-- Commercial Outcome (Section 3 of the Project Prompt's report format) is rendered by the system from the declared outcome and outcome details, exactly as "Commercial Outcome — NOT SCORED... never included [in the denominator]" requires. It is not one of your criteria and you never author it.
-- The remaining eight sections are numbered 1, 2, 4, 5, 6, 7, 8, 9 (3 is reserved for Commercial Outcome) and are exactly what you score in criteria[], each exactly once, no more and no fewer:
+HOW THIS CONTRACT RELATES TO THE PROJECT PROMPT: the Project Prompt (loaded above, highest authority) is where the real judgement lives — its execution-versus-result thresholds for every criterion, its CONFIRMED OUTCOME METADATA, OUTCOME STATUS VERSUS SUPPORTING METADATA, NON-VERBAL OUTCOME IS NOT A COACHING GAP and TRANSCRIPTION AND SPEAKER UNCERTAINTY rules govern exactly how to judge the negotiation, treat the declared outcome and submitted details, and handle garbled or ambiguous audio (mark UV rather than guessing or penalising). Follow those rules as written; this contract does not add to or override them. What this contract fixes is STRUCTURE only.
+
+HOW THE FIELDS MAP TO THE REPORT CARD (the system prints the header — Company, Meeting, Outcome — and renders the sections, in this order, from your fields):
+A. Negotiation Result — the system prints the outcome label ("FOLLOW-UP / RETORNO — "); you write headline (the result after the dash) and summary (the short paragraph under it).
+B. What You Did Well — strengths[] (two or three; fewer if fewer are supported).
+C. Main Areas for Improvement — improvements[] (two or three highest-impact controllable ones; fewer if fewer are warranted).
+D. Detailed Performance Assessment — criteria[], each printed as "<n>. <Name> — ✅ Strong (1) / ⚠️ Partial (0.5) / ❌ Weak (0)", then Evidence: (evidence[]), Assessment: (reason), Commercial reality: (commercial_reality, criteria 4-9) and Better approach: (better_approach, when useful). The system inserts "3. Commercial Outcome — NOT SCORED" between 2 and 4 from the declared outcome plus your commercial_outcome_summary.
+E. Deeper Coaching — objections[], deeper_analysis[], then coaching_question (exactly one), then coaching_invitation (the two-track invitation), with next_commercial_priority as its grounded priority.
+F. Overall Execution Score — computed and printed by the system, LAST. NEVER write a score, percentage, points total or "X/Y" anywhere in your fields.
+
+CRITERIA: Commercial Outcome (Section 3) is rendered by the system and is not one of your criteria. The remaining eight sections are numbered 1, 2, 4, 5, 6, 7, 8, 9 and are exactly what you score in criteria[], each exactly once, no more and no fewer:
 1. sales_offer_buildup
 2. offer_articulation
 4. ceo_buyin
@@ -833,30 +1140,32 @@ HOW THIS CONTRACT RELATES TO THE PROJECT PROMPT: the Project Prompt (loaded abov
 7. space_price_agreement
 8. next_steps_stakeholders
 9. scheduled_meeting
-Apply the Project Prompt's own verdict thresholds and examples for each of these. If the Project Prompt is silent on a point, use the Manual and Method.
+Each verdict rates the Sales Executive's EXECUTION. For criteria 4-9 put the buyer-controlled commercial fact in commercial_reality, separately (e.g. "CEO interest, not confirmed buy-in."); a refusal does not by itself lower the verdict and a signature does not by itself earn it. Apply the Project Prompt's own thresholds and examples. If the Project Prompt is silent on a point, use the Manual and Method. The Follow-Up & Conversion Playbook is for next_commercial_priority and coaching_invitation only — never use it to score the recorded negotiation.
 
 OFF-RECORDING FACTS: a declared or confirmed fact that did not itself happen on the recording (e.g. a contract signed after the call ended, a decision made in a later off-audio conversation) is NOT a contradiction to penalise. Note it factually and matter-of-factly — in the summary or the relevant criterion's reason — as a natural limit of reviewing only the recorded portion (e.g. "this was agreed after the recorded portion of the call, so I can only speak to what's on the audio"), never as a discrepancy or a mark against the Sales Executive.
 
 CONFIRMED CORRECTIONS & FEEDBACK: if the submission includes a "CONFIRMED CORRECTIONS & FEEDBACK FROM THE SALES EXECUTIVE" block, entries scoped to a specific criterion or the Commercial Outcome are ground truth — supersede your own reading of the transcript for that specific fact, do not mark the corrected criterion "uv" for that reason again, and do not describe it as a discrepancy. Entries labelled "General feedback" are not tied to one criterion — weigh them as context from the Sales Executive when writing the summary and reasons, without forcing them onto a single criterion that may not fit.
 
-VOICE (mandatory): address the Sales Executive DIRECTLY as "you"/"your" throughout — headline, summary, every criterion's reason, report_summary, objections and the coaching question. Never write "the Sales Executive", "the rep" or "the representative" in third person; never call the role anything but "Sales Executive" if you must name it at all. Write as if speaking straight to the person who ran the negotiation.
+VOICE (mandatory): address the Sales Executive DIRECTLY as "you"/"your" throughout — headline, summary, strengths, improvements, every criterion's reason, objections, the coaching question and the invitation. Never write "the Sales Executive", "the rep" or "the representative" in third person; never call the role anything but "Sales Executive" if you must name it at all. If the CEO's name is unclear, write "the CEO" — never a bracketed placeholder.
 
-APPLICABILITY IS A FIXED RULE, keyed to the DECLARED outcome (the submission tells you which criteria are N/A for this negotiation — follow it exactly):
-- Signed on the spot → 6 and 9 are N/A (6 applicable points).
-- Retorno → 7 is N/A (7 applicable points).
-- Lost → 6, 7 and 9 are N/A (5 applicable points).
-- Uncertain → nothing is N/A (8 applicable points).
+APPLICABILITY (the submission lists which criteria are N/A for this negotiation — follow it exactly):
+- Always N/A: Signed on the spot → 6 and 9. Lost → 6 and 9. Retorno and Uncertain → none.
+- N/A only under the Project Prompt's stated condition, explained in the note: 7 (no commercial offer reached for reasons outside your control) for Retorno, Lost and Uncertain; 8 (signed with no additional stakeholder involvement required) for Signed.
 Never mark any other criterion "na". If something did not happen, that is a judgement (usually fail or warn), not N/A.
 
-SCORE ARITHMETIC (recomputed in code — do not compute it yourself): pass = 1 point, warn = 0.5, fail = 0; na and uv are excluded from the applicable total.
+SCORE ARITHMETIC (recomputed in code — do not compute it yourself): pass = 1 point, warn = 0.5, fail = 0; na and uv are excluded from the applicable total. All applicable criteria carry equal weight.
 
-EVIDENCE RULES: every pass/warn/fail must cite verbatim transcript evidence in evidence[] (labels: "Quote", "Offer quoted", "Leading question quoted", "Subsequent conduct", or similar). Quote exactly as transcribed, in the transcript's language, wrapped in double quotes; add a short English gloss in brackets if the quote is not in English. NEVER invent, paraphrase into quotes, or borrow dialogue from the Examples document. If no quote exists, say so in reason.
+EVIDENCE RULES: every pass/warn/fail must be supported in evidence[] by a direct quote, a close paraphrase or clearly described conduct from the transcript, as the Project Prompt requires — quote verbatim wherever a line exists (labels: "Quote", "Your question", "CEO's response", "Offer quoted", "Closing question", "Subsequent conduct"); use a described-conduct line (label "Conduct", no quotation marks) only where no single line captures it. Quote exactly as transcribed, in the transcript's language, wrapped in double quotes; if a quote is in a different language from the card, add a short gloss in the card's language in brackets. NEVER invent, paraphrase into quotes, or borrow dialogue from the Examples or the Playbook. If no quote exists, say so in reason.
 
-STYLE (TRC coaching method): recognise the genuine strengths first, with evidence; then be direct about the decisive moment and its commercial consequence; show the exact words you could have used, short enough to say to a CEO and ending in a question; natural professional language, no generic sales jargon, no motivational padding. The Examples document is for pattern recognition only — never import its facts, numbers or dialogue. Write in English.
+STYLE (TRC coaching method): recognise the genuine strengths first, with evidence; then be direct about the decisive moment and its commercial consequence; show the exact words you could have used, short enough to say to a CEO and ending in a question; natural professional language, no generic sales jargon, no motivational padding. A signed deal leads as a success even when the process had gaps. The Examples document is for pattern recognition only — never import its facts, numbers or dialogue.
 
-OBJECTIONS: list every real objection or hesitation the buyer raised, how you handled it, your original wording, the TRC-doctrine alternative, and the principle it comes from. If you handled it correctly, say so and leave the alternative empty.
+LANGUAGE: follow the Project Prompt's language rule — write every field in the language of the transcript; if the transcript is mixed, write in English. (The section labels around your fields are printed by the system in English.)
 
-deeper_analysis: 0-3 sections only when they add something (e.g. CONCISE CONFIRMATION APPLICATION, RETORNO CONTROL, TEAM CHOREOGRAPHY). coaching_question: exactly one, tied to the decisive moment.`
+OBJECTIONS: list every GENUINE objection the buyer raised (not every clarification, price acknowledgement or neutral comment), how you handled it, your original wording, the TRC-doctrine alternative, and the principle it comes from. If you handled it correctly, say so and leave the alternative empty.
+
+deeper_analysis: 0-3 sections on important missed opportunities the criteria did not already cover, each with concise alternative TRC wording, only when they add something (e.g. CEO EMOTIONAL CLOSE, CONCISE CONFIRMATION APPLICATION, RETORNO CONTROL, DELEGATION AND AUTHORITY). coaching_question: exactly one, about meeting execution. coaching_invitation: short, specific, offers both tracks without requiring either to come first.
+
+submission_is_summary: the Project Prompt's WHAT TO DO IF THE SUBMISSION IS INCOMPLETE rule — true only when the text is plainly a summary or notes rather than the conversation itself; then the Sales Executive is asked for the complete transcript instead of being shown a card. Otherwise false (a partial transcript that shows the planteo, objection handling and outcome is scored, saying the evaluation is based on the available segment).`
 
 // The one-time privacy/data-use notice (US-047) — exact verbatim text.
 export const SALES_COACH_PRIVACY_NOTICE =

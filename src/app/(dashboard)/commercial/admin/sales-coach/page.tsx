@@ -35,7 +35,7 @@ export default async function SalesCoachAdminPage() {
         <div className="mb-8">
           <h1 className="text-lg font-semibold text-gray-900">Sales Coach — Admin</h1>
           <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">
-            Manage the four TRC knowledge documents the coach reasons from.
+            Manage the five TRC knowledge documents the coach reasons from.
           </p>
         </div>
 
@@ -44,8 +44,9 @@ export default async function SalesCoachAdminPage() {
             <h2 className="text-sm font-semibold text-gray-900">Knowledge Documents</h2>
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
               Assembled in this fixed authority order for every Report Card and coaching turn — the Project Prompt
-              governs, then the Manual, then the Method. The Examples are for pattern recognition only. Every update
-              is versioned with full rollback.
+              governs, then the Manual, then the Method. The Examples are for pattern recognition only, and the
+              Follow-Up Playbook is used only when coaching the next commercial action, never for scoring. Every
+              update is versioned with full rollback.
             </p>
             <div className="flex flex-col gap-2 mt-4">
               {SALES_COACH_KNOWLEDGE_DOCS.map(({ key, label, description }, i) => (
