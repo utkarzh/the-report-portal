@@ -65,6 +65,10 @@ const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
   copywriting_revision: "Copywriting — revision",
   knowledge_base_query: "Knowledge Base — questions",
   knowledge_base_indexing: "Knowledge Base — indexing",
+  country_intel_context: "Country Intelligence — context",
+  country_intel_discovery: "Country Intelligence — discovery",
+  country_intel_profiles: "Country Intelligence — profiles",
+  country_intel_contacts: "Country Intelligence — contacts",
 };
 const WORKFLOW_ORDER: UsageWorkflow[] = [
   "research",
@@ -86,6 +90,10 @@ const WORKFLOW_ORDER: UsageWorkflow[] = [
   "sales_coach_coach",
   "knowledge_base_query",
   "knowledge_base_indexing",
+  "country_intel_context",
+  "country_intel_discovery",
+  "country_intel_profiles",
+  "country_intel_contacts",
   "finance_receipt_extraction",
   "finance_receipt_verification",
   "finance_audit_report",

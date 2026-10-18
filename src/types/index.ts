@@ -372,7 +372,11 @@ export type UsageWorkflow =
   | "copywriting_check"
   | "copywriting_revision"
   | "knowledge_base_query"
-  | "knowledge_base_indexing";
+  | "knowledge_base_indexing"
+  | "country_intel_context"
+  | "country_intel_discovery"
+  | "country_intel_profiles"
+  | "country_intel_contacts";
 
 export interface UsageEvent {
   id: string;

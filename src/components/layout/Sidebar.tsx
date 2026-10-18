@@ -21,6 +21,7 @@ import {
   Wallet,
   CalendarClock,
   Handshake,
+  Radar,
   Mail,
   PenLine,
   BookOpen,
@@ -274,6 +275,13 @@ export default function Sidebar({
             {canAccessSalesNegotiationCoach && (
               <NavLink
                 item={{ label: "Sales Coach", href: "/commercial/sales-coach", icon: Handshake, beta: true }}
+                collapsed={collapsed}
+                pathname={pathname}
+              />
+            )}
+            {role === "admin" && (
+              <NavLink
+                item={{ label: "Country Intelligence", href: "/commercial/country-intelligence", icon: Radar, beta: true }}
                 collapsed={collapsed}
                 pathname={pathname}
               />

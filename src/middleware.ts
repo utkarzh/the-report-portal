@@ -393,6 +393,11 @@ export async function middleware(request: NextRequest) {
     )
       ? !isSalesCoachAdminEmail(user.email)
       : pathname.startsWith("/commercial/admin") && access.role !== "admin";
+    // Country Intelligence is platform-admin only in v1 (every run spends money
+    // on Gemini); a per-user flag can follow the usual can_access_* pattern.
+    const blockedFromCountryIntel =
+      pathname.startsWith("/commercial/country-intelligence") &&
+      access.role !== "admin";
     const blockedFromCopywriting =
       pathname.startsWith("/copywriting") && !canAccessCopywritingTool(access);
     const blockedFromKnowledgeBase =
@@ -414,6 +419,7 @@ export async function middleware(request: NextRequest) {
       blockedFromInterviewLetters ||
       blockedFromSalesCoach ||
       blockedFromCommercialAdmin ||
+      blockedFromCountryIntel ||
       blockedFromCopywriting ||
       blockedFromKnowledgeBase ||
       blockedFromFinanceAdmin ||
