@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
-import { isInterviewLetterCompany } from '@/lib/interview-letters'
+import { isInterviewLetterCompany, isInterviewLetterVariant } from '@/lib/interview-letters'
 
 interface Params {
   params: { company: string }
@@ -21,18 +21,20 @@ async function requireAdmin() {
 // string per version — the structure JSONB is serialized to indented JSON at
 // this API boundary so the shared component can render/diff it as plain text
 // without needing to know this module stores a structured template.
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const admin = await requireAdmin()
   if (!admin.user) return admin.response
 
-  if (!isInterviewLetterCompany(params.company)) {
-    return NextResponse.json({ error: 'Invalid company' }, { status: 400 })
+  const variant = req.nextUrl.searchParams.get('variant')
+  if (!isInterviewLetterCompany(params.company) || !isInterviewLetterVariant(variant)) {
+    return NextResponse.json({ error: 'Invalid company or variant' }, { status: 400 })
   }
 
   const { data, error } = await supabaseAdmin
     .from('interview_letter_templates_versions')
     .select('id, structure, saved_by, created_at, profiles:saved_by(email)')
     .eq('company', params.company)
+    .eq('variant', variant)
     .order('created_at', { ascending: false })
     .limit(50)
 

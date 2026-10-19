@@ -7,17 +7,19 @@ import Input from '@/components/ui/Input'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import ResearchDocPicker from '@/components/research/ResearchDocPicker'
+import MediaSelect from '@/components/ui/MediaSelect'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { RESEARCH_DOCS_BUCKET } from '@/lib/research-docs'
-import type { Category } from '@/types'
+import type { Category, MediaOption } from '@/types'
 
 interface ResearchFormProps {
   categories: Category[]
+  media: MediaOption[]
   isAtLimit: boolean
   userId: string
 }
 
-export default function ResearchForm({ categories, isAtLimit, userId }: ResearchFormProps) {
+export default function ResearchForm({ categories, media, isAtLimit, userId }: ResearchFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -172,11 +174,13 @@ export default function ResearchForm({ categories, isAtLimit, userId }: Research
         required
       />
 
-      <Input
+      <MediaSelect
         label="Publication *"
-        placeholder="e.g. USA Today"
+        options={media}
         value={form.publication}
-        onChange={(e) => handleChange('publication', e.target.value)}
+        onChange={(name, option) =>
+          setForm((prev) => ({ ...prev, publication: name, mediaPartnerCountry: option?.country || prev.mediaPartnerCountry }))
+        }
         required
       />
 

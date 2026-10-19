@@ -2,10 +2,12 @@ import { redirect } from 'next/navigation'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import TranscriptionUploader from '@/components/transcriptions/TranscriptionUploader'
+import { listMediaOptions } from '@/lib/media-library-server'
 
-export default function NewTranscriptionPage() {
+export default async function NewTranscriptionPage() {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
+  const media = await listMediaOptions()
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
@@ -24,7 +26,7 @@ export default function NewTranscriptionPage() {
           </p>
         </div>
 
-        <TranscriptionUploader userId={profile.id} />
+        <TranscriptionUploader userId={profile.id} media={media} />
       </div>
     </div>
   )

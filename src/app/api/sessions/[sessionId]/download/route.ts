@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Packer } from 'docx'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { stripLeadingNarration } from '@/lib/research-narration'
+import { cleanOutline } from '@/lib/outline-cleanup'
 import { getApiUser } from '@/lib/auth/api-user'
 import { getTemplate } from '@/lib/download-templates/registry'
 import { buildTemplatedDocx } from '@/lib/download-templates/docx'
@@ -45,7 +47,12 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const markdown = type === 'questions' ? session.questions_output : session.initial_output
+  // What's exported is sent to interviewees as it is. Older outlines carry
+  // internal notes (an Action Note, risk flags) and older research opens with
+  // Claude's search commentary; neither goes into the file.
+  const markdown = type === 'questions'
+    ? session.questions_output && cleanOutline(session.questions_output)
+    : session.initial_output && stripLeadingNarration(session.initial_output)
   if (!markdown) {
     return NextResponse.json({ error: `${type} output not available` }, { status: 404 })
   }

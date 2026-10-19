@@ -13,7 +13,7 @@ export default async function CopywritingAdminPage() {
 
   const supabase = createSupabaseServerClient()
   const [{ count: pubCount }, { count: typeCount }, { count: guideCount }] = await Promise.all([
-    supabase.from('copywriting_publications').select('id', { count: 'exact', head: true }),
+    supabase.from('media_library').select('id', { count: 'exact', head: true }),
     supabase.from('copywriting_article_types').select('id', { count: 'exact', head: true }),
     supabase.from('copywriting_trc_guides').select('id', { count: 'exact', head: true }),
   ])
@@ -33,9 +33,9 @@ export default async function CopywritingAdminPage() {
         <div className="flex flex-col gap-6">
           <AdminCard
             title="Publication"
-            description="Publications, their country, style guides, and additional rules that apply on top of TRC house rules."
+            description="Publications are managed in the central Media Library, shared by every tool. Open a publication there to set its writing rules and style guides."
             count={`${pubCount ?? 0} publication${pubCount === 1 ? '' : 's'}`}
-            href="/copywriting/admin/publications"
+            href="/admin/media-library"
           />
           <AdminCard
             title="Article Type"

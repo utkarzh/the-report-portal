@@ -12,7 +12,8 @@ export default async function NewCopywritingProjectPage() {
 
   const supabase = createSupabaseServerClient()
   const [{ data: publications }, { data: articleTypes }] = await Promise.all([
-    supabase.from('copywriting_publications').select('id, name').order('name'),
+    // Publications are the central Media Library's entries (Admin → Media Library).
+    supabase.from('media_library').select('id, name').order('name'),
     supabase.from('copywriting_article_types').select('id, name').order('name'),
   ])
 

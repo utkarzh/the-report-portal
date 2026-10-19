@@ -1,16 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost, parseUsage, totalPromptTokens, GENERATION_TOKEN_RESERVE } from '@/lib/claude/tokens'
+import { CLAUDE_KEY_REJECTED_MESSAGE, getAnthropicClient, isClaudeKeyRejected } from '@/lib/claude/client'
+import { calculateCost, parseUsage, totalPromptTokens, GENERATION_TOKEN_RESERVE, type UsageBreakdown } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
 import { getApiUser } from '@/lib/auth/api-user'
+import { geminiConfigured } from '@/lib/gemini/grounding'
+import {
+  RESEARCH_GEMINI_MODEL,
+  emptySpend,
+  enforceSourcedUrls,
+  geminiResearchProblem,
+  geminiWriteUpRules,
+  getInterviewToolResearchProvider,
+  hostOf,
+  isMissingColumn,
+  renderWebResearch,
+  researchUrls,
+  runGeminiWebResearch,
+  urlsIn,
+  type GeminiWebResearch,
+} from '@/lib/research-engine'
+import { assembleResearch, looksLikeDocument, stripLeadingNarration, type TextSegment } from '@/lib/research-narration'
+import type { ResearchProvider } from '@/types'
+import type { TextBlockParam, WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
 // Long-running streamed generation — raise the serverless ceiling so the final
-// persist runs (300s = Vercel Pro max; Hobby still caps at 60s).
+// persist runs (300s is the Vercel maximum with fluid compute).
 export const maxDuration = 300
-import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
 // Capped to keep per-generation token usage in check. Each web search injects
 // its full result set back into the context window, so every extra search adds
@@ -22,6 +40,18 @@ const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
   name: 'web_search',
   max_uses: MAX_WEB_SEARCHES,
 }
+
+// The run must be saved and billed before Vercel kills the function at
+// maxDuration; a killed run stays "generating" for good. A Claude stream still
+// going at this point is stopped and the run marked failed (and billed).
+const SOFT_DEADLINE_MS = 288_000
+// Gemini planning + searching (typically ~25s) must leave Claude time to write.
+const GEMINI_PHASE_MS = 120_000
+// Falling back to Claude's own web search needs about this much time left.
+const CLAUDE_FALLBACK_MIN_MS = 170_000
+
+// The web research failed with no time left for the Claude fallback.
+class WebResearchFailed extends Error {}
 
 export async function POST(request: NextRequest) {
   const auth = await getApiUser()
@@ -38,10 +68,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
   }
 
-  // Profile and session are independent reads (neither depends on the
-  // other's result) — fetching them in parallel instead of one-after-the-
-  // other shaves a full network round trip off every click of Generate.
-  const [{ data: profile }, { data: session }] = await Promise.all([
+  // Profile, session and the engine setting are independent reads — fetching
+  // them in parallel instead of one-after-the-other shaves network round trips
+  // off every click of Generate.
+  const [{ data: profile }, { data: session }, configuredProvider] = await Promise.all([
     supabaseAdmin
       .from('profiles')
       .select('id, role, status, tokens_used, token_limit')
@@ -49,9 +79,10 @@ export async function POST(request: NextRequest) {
       .single(),
     supabaseAdmin
       .from('research_sessions')
-      .select('id, user_id, full_name, title_position, company_org, country_focus, publication, media_partner_country, general_prompt_snapshot, category_prompt_snapshot')
+      .select('id, user_id, category_name, full_name, title_position, company_org, country_focus, publication, media_partner_country, general_prompt_snapshot, category_prompt_snapshot')
       .eq('id', sessionId)
       .single(),
+    getInterviewToolResearchProvider(),
   ])
 
   if (!profile || profile.status === 'inactive') {
@@ -76,6 +107,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Admin setting (Interview Tool → Admin tools → Research engine). Without a
+  // Gemini key the research runs on Claude rather than failing every interview.
+  let provider: ResearchProvider = configuredProvider
+  if (provider === 'gemini' && !geminiConfigured()) {
+    console.warn('Interview research: GEMINI_API_KEY is not set — using Claude web search')
+    provider = 'claude'
+  }
+
   // Company documents attached to this interview — fed as supporting context.
   const { data: docRows } = await supabaseAdmin
     .from('research_documents')
@@ -96,6 +135,9 @@ Company / Organization / Ministry: ${session.company_org}
 Country in Focus: ${session.country_focus}
 Publication: ${session.publication}
 Media Partner Country: ${session.media_partner_country}`
+  const subjectText = extra
+    ? `\n\n${subjectDetails}\n\n--- ADDITIONAL CONTEXT FROM USER ---\n${extra}`
+    : `\n\n${subjectDetails}`
 
   // 1-hour TTL keeps the prefix hot across users for shared general/category prompts.
   // The cache invalidates naturally when an admin saves a new prompt version (the
@@ -140,18 +182,25 @@ OUTPUT RULES:
 - Every claim about the subject's CURRENT situation must be backed by a ${lastYear}–${currentYear} web_search result, not training data
 - If something cannot be verified, write N/A — never fall back to old training-data assumptions
 - A fact you mark UNCONFIRMED stays unconfirmed everywhere: never restate it elsewhere in the document as settled fact, and never derive anything from it (e.g. "approximately N years of tenure" from an unconfirmed start year)
-- Training data is acceptable ONLY for clearly-labelled pre-${lastYear} historical/biographical background`
+- Training data is acceptable ONLY for clearly-labelled pre-${lastYear} historical/biographical background
 
-  const systemBlocks = [
-    { type: 'text' as const, text: SEARCH_POLICY },
-    ...(systemPrompt
-      ? [{ type: 'text' as const, text: systemPrompt, cache_control: CACHE_1H }]
-      : []),
-  ]
+FINAL OUTPUT (MANDATORY — overrides any instruction above):
+- Everything you write is saved as the research document, which is downloaded and may be shared as it is. So write NOTHING except the research: no plan, progress notes or commentary before, between or after your searches ("I'll research…", "Let me search…", "I now have enough…"), and no introduction.
+- Start your reply directly with the research's first heading.`
 
-  const userContentBlocks = [
+  const generalBlock: TextBlockParam[] = systemPrompt
+    ? [{ type: 'text', text: systemPrompt, cache_control: CACHE_1H }]
+    : []
+
+  // Claude engine: Claude searches as it writes.
+  const searchSystemBlocks: TextBlockParam[] = [{ type: 'text', text: SEARCH_POLICY }, ...generalBlock]
+  // Gemini engine: Claude writes from Gemini's facts. Its rules go last so
+  // they override the General Prompt's own search/verify steps.
+  const writeUpSystemBlocks: TextBlockParam[] = [...generalBlock, { type: 'text', text: geminiWriteUpRules(now) }]
+
+  const contextBlocks: TextBlockParam[] = [
     {
-      type: 'text' as const,
+      type: 'text',
       text: categoryPrompt,
       cache_control: CACHE_1H,
     },
@@ -165,22 +214,14 @@ OUTPUT RULES:
           cache_control: CACHE_1H,
         }]
       : []),
-    {
-      type: 'text' as const,
-      text: extra
-        ? `\n\n${subjectDetails}\n\n--- ADDITIONAL CONTEXT FROM USER ---\n${extra}`
-        : `\n\n${subjectDetails}`,
-    },
   ]
 
   const anthropic = getAnthropicClient()
   const encoder = new TextEncoder()
+  const startedAt = Date.now()
 
   const stream = new ReadableStream({
     async start(controller) {
-      let fullText = ''
-      let seenToolUse = false
-      let webSearchCount = 0
       // Once the client navigates away the controller is closed and enqueue()
       // throws. We must NOT let that abort the run — the generation has to
       // finish and persist regardless, otherwise the work is lost forever.
@@ -195,6 +236,179 @@ OUTPUT RULES:
       }
       const send = (payload: unknown) => sendRaw(JSON.stringify(payload))
 
+      let aborted = false
+      let activeStream: { abort: () => void } | null = null
+      const deadlineTimer = setTimeout(() => {
+        aborted = true
+        try { activeStream?.abort() } catch {}
+      }, SOFT_DEADLINE_MS)
+      let heartbeat: ReturnType<typeof setInterval> | null = null
+
+      // Gemini's spend on this run, booked as soon as its phase ends.
+      const gemini = emptySpend()
+
+      async function billGemini(error: string | null) {
+        const tokens = gemini.promptTokens + gemini.outputTokens
+        if (tokens > 0) {
+          await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: tokens })
+        }
+        await logUsageEvent({
+          userId: user.id,
+          workflow: 'research_web_search',
+          sourceId: session!.id,
+          model: RESEARCH_GEMINI_MODEL,
+          tokensInput: gemini.promptTokens,
+          tokensOutput: gemini.outputTokens,
+          tokensTotal: tokens,
+          webSearches: gemini.searches,
+          costUsd: gemini.costUsd,
+          ...(error ? { status: 'error' as const, error } : {}),
+        })
+      }
+
+      // Streams one Claude call to the client. Usage comes from finalMessage()
+      // (exact, including the web-search result tokens) unless the soft
+      // deadline cut the stream: then output_tokens never arrived (it comes
+      // only at the end) and is recounted from the text received.
+      //
+      // Claude comments on its progress between searches; that commentary is
+      // never shown or saved (see research-narration.ts). Text is held back
+      // until the document itself starts, then streamed live. `text` is the
+      // assembled document, `streamed` exactly what the client has received.
+      async function streamClaude(opts: {
+        system: TextBlockParam[]
+        content: TextBlockParam[]
+        tools?: WebSearchTool20250305[]
+      }): Promise<{ text: string; streamed: string; usage: UsageBreakdown; cutShort: boolean }> {
+        let raw = ''
+        let segment = ''
+        const segments: TextSegment[] = []
+        let docStarted = false
+        let streamed = ''
+        const emit = (t: string) => {
+          if (!t) return
+          streamed += t
+          send({ text: t })
+        }
+        let seenToolUse = false
+        let webSearchCount = 0
+        let startUsage: Record<string, unknown> = {}
+        let cutShort = false
+        // For the waiting screen: each web_search's query (its input streams
+        // in as JSON) and the sites its results came from.
+        const searchInputs = new Map<number, string>()
+        const sendQuery = (json: string) => {
+          try {
+            const q = (JSON.parse(json) as { query?: unknown }).query
+            if (typeof q === 'string' && q.trim()) send({ query: q.trim() })
+          } catch {}
+        }
+
+        const claudeStream = anthropic.messages.stream({
+          model: CLAUDE_MODEL,
+          max_tokens: 8192,
+          system: opts.system,
+          messages: [{ role: 'user', content: opts.content }],
+          ...(opts.tools ? { tools: opts.tools } : {}),
+        })
+        activeStream = claudeStream
+
+        try {
+          for await (const event of claudeStream) {
+            if (event.type === 'message_start') {
+              startUsage = (event.message.usage ?? {}) as unknown as Record<string, unknown>
+            } else if (event.type === 'content_block_start') {
+              const block = event.content_block
+              // Web search is a server tool, so its blocks are server_tool_use.
+              if (block.type === 'server_tool_use' || block.type === 'tool_use') {
+                seenToolUse = true
+                if (block.name === 'web_search') {
+                  webSearchCount += 1
+                  const input = block.input as { query?: unknown } | undefined
+                  if (typeof input?.query === 'string') sendQuery(JSON.stringify(input))
+                  else searchInputs.set(event.index, '')
+                }
+                // Whatever was written since the last search ends here.
+                if (segment) segments.push({ text: segment, beforeSearch: true })
+                segment = ''
+                send({ status: 'web_search_start', searches: webSearchCount })
+              } else if (block.type === 'web_search_tool_result') {
+                const hosts = Array.isArray(block.content) ? [...new Set(block.content.map((r) => hostOf(r.url)))] : []
+                if (hosts.length) send({ sources: hosts })
+              } else if (block.type === 'text' && seenToolUse) {
+                send({ status: 'generating' })
+              }
+            } else if (event.type === 'content_block_delta' && event.delta.type === 'input_json_delta') {
+              const partial = searchInputs.get(event.index)
+              if (partial !== undefined) searchInputs.set(event.index, partial + event.delta.partial_json)
+            } else if (event.type === 'content_block_stop' && searchInputs.has(event.index)) {
+              sendQuery(searchInputs.get(event.index)!)
+              searchInputs.delete(event.index)
+            } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+              raw += event.delta.text
+              segment += event.delta.text
+              if (docStarted) {
+                emit(event.delta.text)
+              } else if (looksLikeDocument(segment)) {
+                docStarted = true
+                emit(stripLeadingNarration(segment))
+              }
+            }
+          }
+        } catch (e) {
+          if (!aborted) throw e
+          cutShort = true
+        } finally {
+          activeStream = null
+        }
+
+        if (segment) segments.push({ text: segment, beforeSearch: false })
+        const text = assembleResearch(segments)
+
+        if (!cutShort) {
+          try {
+            const finalMsg = await claudeStream.finalMessage()
+            // Prefer the server-reported web_search count when available; fall back to the
+            // count we tallied from stream events.
+            const reportedSearches =
+              (finalMsg.usage as { server_tool_use?: { web_search_requests?: number } })
+                .server_tool_use?.web_search_requests
+            return { text, streamed, usage: parseUsage(finalMsg.usage, reportedSearches ?? webSearchCount), cutShort }
+          } catch (e) {
+            if (!aborted) throw e
+            cutShort = true
+          }
+        }
+
+        let outputTokens = 0
+        if (raw.trim()) {
+          try {
+            const counted = await anthropic.messages.countTokens({
+              model: CLAUDE_MODEL,
+              messages: [{ role: 'user', content: raw }],
+            })
+            outputTokens = counted.input_tokens
+          } catch (countErr) {
+            console.error('Research output-token recount failed:', countErr)
+          }
+        }
+        return { text, streamed, usage: parseUsage({ ...startUsage, output_tokens: outputTokens }, webSearchCount), cutShort }
+      }
+
+      // research_provider needs migration 040; until it runs, save the rest.
+      async function saveSession(fields: Record<string, unknown>) {
+        const { error } = await supabaseAdmin.from('research_sessions').update(fields).eq('id', session!.id)
+        if (!error) return
+        if (isMissingColumn(error, 'research_provider')) {
+          const rest = { ...fields }
+          delete rest.research_provider
+          const retry = await supabaseAdmin.from('research_sessions').update(rest).eq('id', session!.id)
+          if (retry.error) console.error('Research session save failed:', retry.error)
+        } else {
+          console.error('Research session save failed:', error)
+        }
+      }
+
       try {
         // Mark as generating so a user who returns mid-run sees "Generating…".
         await supabaseAdmin
@@ -202,61 +416,123 @@ OUTPUT RULES:
           .update({ status: 'generating' })
           .eq('id', session!.id)
 
-        const claudeStream = anthropic.messages.stream({
-          model: CLAUDE_MODEL,
-          max_tokens: 8192,
-          system: systemBlocks,
-          messages: [{ role: 'user', content: userContentBlocks }],
-          tools: [WEB_SEARCH_TOOL],
-        })
+        let engine: ResearchProvider = provider
+        send({ engine })
 
-        for await (const event of claudeStream) {
-          if (event.type === 'content_block_start') {
-            if (event.content_block.type === 'tool_use') {
-              seenToolUse = true
-              if (event.content_block.name === 'web_search') webSearchCount += 1
-              send({ status: 'web_search_start' })
-            } else if (event.content_block.type === 'text' && seenToolUse) {
-              send({ status: 'generating' })
-            }
+        let web: GeminiWebResearch | null = null
+        if (provider === 'gemini') {
+          send({ status: 'web_search_start' })
+          // Gemini's phase sends nothing for ~25s; keep the connection warm.
+          heartbeat = setInterval(() => send({ ping: true }), 10_000)
+          let problem: string | null = null
+          try {
+            web = await runGeminiWebResearch({
+              subject: {
+                fullName: session!.full_name || '',
+                titlePosition: session!.title_position || '',
+                companyOrg: session!.company_org || '',
+                countryFocus: session!.country_focus || '',
+                publication: session!.publication || '',
+                mediaPartnerCountry: session!.media_partner_country || '',
+                categoryName: session!.category_name || '',
+              },
+              categoryPrompt,
+              extra,
+              deadline: startedAt + GEMINI_PHASE_MS,
+              spent: gemini,
+              // Feeds the waiting screen: the plan, then each lane's results.
+              onProgress: (p) => send(p.kind === 'plan' ? { plan: p.lanes } : { lane: p }),
+            })
+            problem = geminiResearchProblem(web)
+          } catch (e) {
+            problem = e instanceof Error ? e.message : 'Gemini web research failed'
+          } finally {
+            clearInterval(heartbeat)
+            heartbeat = null
           }
+          await billGemini(problem)
 
-          if (
-            event.type === 'content_block_delta' &&
-            event.delta.type === 'text_delta'
-          ) {
-            fullText += event.delta.text
-            send({ text: event.delta.text })
+          if (problem) {
+            web = null
+            if (SOFT_DEADLINE_MS - (Date.now() - startedAt) < CLAUDE_FALLBACK_MIN_MS) {
+              throw new WebResearchFailed(`Gemini web research failed: ${problem}`)
+            }
+            console.warn(`Interview research ${session!.id}: Gemini web research unusable (${problem}) — falling back to Claude web search`)
+            engine = 'claude'
+            send({ engine })
           }
         }
 
-        const finalMsg = await claudeStream.finalMessage()
-        // Prefer the server-reported web_search count when available; fall back to the
-        // count we tallied from stream events.
-        const reportedSearches =
-          (finalMsg.usage as { server_tool_use?: { web_search_requests?: number } })
-            .server_tool_use?.web_search_requests
-        const searches = reportedSearches ?? webSearchCount
+        let result: { text: string; streamed: string; usage: UsageBreakdown; cutShort: boolean }
+        let finalText: string
+        if (web) {
+          send({ status: 'generating', facts: web.factCount })
+          result = await streamClaude({
+            system: writeUpSystemBlocks,
+            content: [...contextBlocks, { type: 'text', text: `${subjectText}\n\n${renderWebResearch(web)}` }],
+          })
+          const checked = enforceSourcedUrls(result.text, [...researchUrls(web), ...urlsIn(docsText), ...urlsIn(extra)])
+          if (checked.removed || checked.restored) {
+            console.warn(`Interview research ${session!.id}: ${checked.removed} unsourced link(s) removed, ${checked.restored} truncated link(s) restored`)
+          }
+          finalText = checked.text
+        } else {
+          result = await streamClaude({
+            system: searchSystemBlocks,
+            content: [...contextBlocks, { type: 'text', text: subjectText }],
+            tools: [WEB_SEARCH_TOOL],
+          })
+          finalText = result.text
+        }
 
-        const usage = parseUsage(finalMsg.usage, searches)
+        const usage = result.usage
         const promptTokens = totalPromptTokens(usage)
         const totalTokens = promptTokens + usage.outputTokens
         const cost = calculateCost(usage)
+        const searches = usage.webSearches ?? 0
+
+        if (result.cutShort) {
+          // Cut off at the soft deadline: no partial save (US-018), but the
+          // spend is real, so bill it.
+          await saveSession({ status: 'failed' })
+          if (totalTokens > 0) {
+            await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
+          }
+          await logUsageEvent({
+            userId: user.id,
+            workflow: 'research',
+            sourceId: session!.id,
+            model: CLAUDE_MODEL,
+            tokensInput: promptTokens,
+            tokensOutput: usage.outputTokens,
+            tokensTotal: totalTokens,
+            webSearches: searches,
+            costUsd: cost,
+            status: 'error',
+            error: 'Stopped at the time limit before the research was finished',
+          })
+          send({ error: 'The research took too long and was stopped. Please try again.' })
+          return
+        }
+
+        // The session row carries this run's whole research spend (Gemini's
+        // searching + Claude's writing); the ledger keeps them as two rows.
+        const sessionTokens = totalTokens + gemini.promptTokens + gemini.outputTokens
+        const sessionCost = cost + gemini.costUsd
+        const sessionSearches = searches + gemini.searches
 
         // Persist FIRST — this is the part that must never be skipped, even if
         // the client is gone. The SSE events below are best-effort.
-        await supabaseAdmin
-          .from('research_sessions')
-          .update({
-            initial_output: fullText,
-            tokens_input: promptTokens,
-            tokens_output: usage.outputTokens,
-            tokens_total: totalTokens,
-            web_searches: searches,
-            cost_usd: cost,
-            status: 'complete',
-          })
-          .eq('id', session!.id)
+        await saveSession({
+          initial_output: finalText,
+          tokens_input: promptTokens + gemini.promptTokens,
+          tokens_output: usage.outputTokens + gemini.outputTokens,
+          tokens_total: sessionTokens,
+          web_searches: sessionSearches,
+          cost_usd: sessionCost,
+          status: 'complete',
+          research_provider: engine,
+        })
 
         await supabaseAdmin.rpc('increment_user_tokens', {
           p_user_id: user!.id,
@@ -278,31 +554,47 @@ OUTPUT RULES:
           costUsd: cost,
         })
 
+        // Swap in the saved version wherever it differs from what streamed:
+        // a remark dropped mid-document, or a link the citation check removed.
+        if (finalText.trim() !== result.streamed.trim()) send({ final: finalText })
+
         // Push the final usage so the live sidebar can update without a reload.
         send({
           usage: {
-            tokens_total: totalTokens,
-            web_searches: searches,
-            cost_usd: cost,
+            tokens_total: sessionTokens,
+            web_searches: sessionSearches,
+            cost_usd: sessionCost,
           },
+          engine,
         })
         sendRaw('[DONE]')
       } catch (err) {
-        console.error('Claude stream error:', err)
+        console.error('Research generation error:', err)
         await supabaseAdmin
           .from('research_sessions')
           .update({ status: 'failed' })
           .eq('id', session!.id)
-        await logUsageEvent({
-          userId: user!.id,
-          workflow: 'research',
-          sourceId: session!.id,
-          model: CLAUDE_MODEL,
-          status: 'error',
-          error: err instanceof Error ? err.message : 'Generation failed',
+        // A Gemini failure is already on the ledger, and Claude never ran.
+        if (!(err instanceof WebResearchFailed)) {
+          await logUsageEvent({
+            userId: user!.id,
+            workflow: 'research',
+            sourceId: session!.id,
+            model: CLAUDE_MODEL,
+            status: 'error',
+            error: err instanceof Error ? err.message : 'Generation failed',
+          })
+        }
+        send({
+          error: err instanceof WebResearchFailed
+            ? 'The web research did not complete. Please try again.'
+            : isClaudeKeyRejected(err)
+            ? CLAUDE_KEY_REJECTED_MESSAGE
+            : 'Generation failed',
         })
-        send({ error: 'Generation failed' })
       } finally {
+        clearTimeout(deadlineTimer)
+        if (heartbeat) clearInterval(heartbeat)
         try {
           controller.close()
         } catch {}

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { RESEARCH_DOCS_BUCKET } from '@/lib/research-docs'
+import { stripLeadingNarration } from '@/lib/research-narration'
+import { cleanOutline } from '@/lib/outline-cleanup'
 
 // GET /api/sessions/[sessionId] — lightweight status + output poll. Used when a
 // user returns to a session that is still generating (the original streaming
@@ -31,8 +33,8 @@ export async function GET(_request: NextRequest, { params }: { params: { session
 
   return NextResponse.json({
     status: row.status,
-    initial_output: row.initial_output,
-    questions_output: row.questions_output,
+    initial_output: row.initial_output && stripLeadingNarration(row.initial_output),
+    questions_output: row.questions_output && cleanOutline(row.questions_output),
     usage: {
       tokens_total: row.tokens_total || 0,
       web_searches: row.web_searches || 0,

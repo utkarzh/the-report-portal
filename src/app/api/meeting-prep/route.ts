@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { isInterviewType } from '@/lib/meeting-prep'
+import { findMediaEntry } from '@/lib/media-library-server'
+import { hasMeetingPrepProfile } from '@/lib/media-library'
 
 // POST /api/meeting-prep — Step 1 of the brief: captures interviewee/meeting
 // details + the optional advertiser-history check (auto-filled from the
@@ -57,16 +59,13 @@ export async function POST(request: NextRequest) {
   }
 
   // Step 1's media-profile gate: halt cleanly (no session, no API cost) if the
-  // selected publication has no Media Library entry yet.
-  const { data: media } = await supabaseAdmin
-    .from('meeting_prep_media_library')
-    .select('id, positioning_statement, audience_reach, editorial_narrative_focus')
-    .eq('publication_name', publication)
-    .maybeSingle()
+  // selected publication isn't in the central Media Library or has no Meeting
+  // Prep media profile filled in there.
+  const media = await findMediaEntry(publication)
 
-  if (!media) {
+  if (!media || !hasMeetingPrepProfile(media)) {
     return NextResponse.json(
-      { error: `No media profile exists for "${publication}" yet. Ask an admin to add one in the Meeting Preparation admin area before this can proceed.` },
+      { error: `No Meeting Prep media profile exists for "${publication}" yet. Ask an admin to fill one in under Admin → Media Library before this can proceed.` },
       { status: 422 },
     )
   }
@@ -80,7 +79,7 @@ export async function POST(request: NextRequest) {
       interviewee_type: intervieweeType,
       company_org: companyOrg,
       company_country: companyCountry,
-      publication,
+      publication: media.name,
       publication_country: publicationCountry,
       media_library_id: media.id,
       media_positioning_snapshot: media.positioning_statement,

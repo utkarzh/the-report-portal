@@ -336,15 +336,23 @@ export interface ResearchSession {
   general_prompt_snapshot: string | null;
   category_prompt_snapshot: string | null;
   status: ResearchStatus;
+  // Which engine did the web research behind initial_output (migration 040).
+  // Absent before 040 runs; NULL for research generated before it (Claude).
+  research_provider?: ResearchProvider | null;
   created_at: string;
   updated_at: string;
 }
 
 export type ResearchStatus = "pending" | "generating" | "complete" | "failed";
 
+// Who does the web research for the Interview Tool's Background Research
+// (research_settings, migration 040). Claude writes the research either way.
+export type ResearchProvider = "claude" | "gemini";
+
 // The distinct Claude-billed operations we log to the usage_events ledger.
 export type UsageWorkflow =
   | "research"
+  | "research_web_search"
   | "research_questions"
   | "transcript_refine"
   | "transcript_translate"
@@ -630,16 +638,33 @@ export interface MeetingPrepSession {
   updated_at: string;
 }
 
-export interface MeetingPrepMediaLibraryEntry {
+// One publication in the central Media Library (migration 039), shared by
+// every module that picks a media partner. Modules store the chosen NAME on
+// their own rows; the extra fields are used only by the module named.
+export interface MediaLibraryEntry {
   id: string;
-  publication_name: string;
+  name: string;
+  country: string | null;
+  // Meeting Preparation's media profile (a publication without one halts
+  // Meeting Prep at Step 1, US-022).
   positioning_statement: string;
   audience_reach: string;
   editorial_narrative_focus: string;
-  country_of_publication: string;
+  // Interview Letters: copied into the letter word for word.
+  letter_description: string;
+  // Copywriting: rules applied on top of TRC house rules.
+  writing_rules: string;
   created_by: string | null;
+  updated_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// What a dropdown needs.
+export interface MediaOption {
+  id: string;
+  name: string;
+  country: string;
 }
 
 export interface MeetingPrepPlanteoLibraryEntry {
@@ -679,6 +704,14 @@ export type InterviewLetterStage =
   | "complete"
   | "failed";
 
+// Two letter versions per company (migration 038): 'anchor' introduces an
+// event / publication occasion in the second paragraph; 'no_anchor' opens with
+// the report's purpose and gives publication timing later where relevant.
+export type InterviewLetterVariant = "anchor" | "no_anchor";
+
+// Engine for the research step only — every write-up stays on Claude.
+export type InterviewLetterResearchProvider = "gemini" | "claude";
+
 export type InterviewLetterParagraphType = "fixed" | "variable";
 
 // Shape of one slot inside a template's `structure` array.
@@ -702,6 +735,7 @@ export interface InterviewLetterParagraph extends InterviewLetterParagraphSlot {
 export interface InterviewLetterTemplate {
   id: string;
   company: InterviewLetterCompany;
+  variant: InterviewLetterVariant;
   structure: InterviewLetterParagraphSlot[];
   updated_by: string | null;
   updated_at: string;
@@ -721,11 +755,31 @@ export interface InterviewLetterProject {
   sender_name: string;
   sender_title: string;
   sender_contact: string;
+  letter_variant: InterviewLetterVariant;
+  anchor: string;
+  publication_timing: string;
+  report_sector: string;
+  // The Editorial Brief used as the research's primary context. The text is
+  // snapshotted at creation so the project stays reproducible if the brief is
+  // later regenerated or deleted.
+  editorial_brief_id: string | null;
+  editorial_brief_title: string | null;
+  editorial_brief_snapshot: string | null;
+  // Media library entry matched at creation; its description is copied into
+  // the letter word for word (see applyMediaDescription).
+  media_id: string | null;
+  media_description_snapshot: string | null;
+  research_provider: InterviewLetterResearchProvider | null;
   // Bullet strings, each already carrying its own inline "[Source, date](url)"
   // markdown citation — same convention as the rest of the app (meeting-prep,
   // documents): sources live inline in the text, not as a separate structured
   // field. See templateStructureToPrompt / research route.
   research: string[];
+  // What changed or is new compared with the Editorial Brief, and facts that
+  // must be qualified or left out — same inline-citation convention.
+  research_updates: string[];
+  research_cautions: string[];
+  samples_used: { id: string; title: string }[];
   hook_ai_suggestion: string | null;
   confirmed_hook: string | null;
   hook_source: "user" | "ai" | null;
@@ -745,6 +799,39 @@ export interface InterviewLetterProject {
   cost_usd: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface InterviewLetterMedia {
+  id: string;
+  publication_name: string;
+  country: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// List shape — extracted_text stays server-side.
+export interface InterviewLetterSample {
+  id: string;
+  title: string;
+  company: InterviewLetterCompany | "any";
+  variant: InterviewLetterVariant | "any";
+  sector: string;
+  notes: string;
+  filename: string;
+  size_bytes: number | null;
+  char_count: number;
+  truncated: boolean;
+  created_at: string;
+}
+
+// An Editorial Brief offered as research context on the setup form.
+export interface InterviewLetterBriefOption {
+  id: string;
+  title: string;
+  project_country: string | null;
+  media_partner: string | null;
+  created_at: string;
 }
 
 export interface InterviewLetterPersonalization {

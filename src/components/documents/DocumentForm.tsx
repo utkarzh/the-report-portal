@@ -5,18 +5,20 @@ import { useRouter } from 'next/navigation'
 import Input from '@/components/ui/Input'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
+import MediaSelect from '@/components/ui/MediaSelect'
 import { getDocConfig } from '@/lib/documents'
-import type { DocType } from '@/types'
+import type { DocType, MediaOption } from '@/types'
 
 interface Props {
   docType: DocType
+  media: MediaOption[]
   isAtLimit: boolean
 }
 
 // Create form for a document module. All three inputs are optional, plus an
 // optional Additional Context box. Mirrors ResearchForm: only creates the row,
 // then navigates — the output page opens the actual generation stream.
-export default function DocumentForm({ docType, isAtLimit }: Props) {
+export default function DocumentForm({ docType, media, isAtLimit }: Props) {
   const router = useRouter()
   const config = getDocConfig(docType)
   const [loading, setLoading] = useState(false)
@@ -80,12 +82,14 @@ export default function DocumentForm({ docType, isAtLimit }: Props) {
         onChange={(e) => handleChange('projectCountry', e.target.value)}
       />
 
-      <Input
-        label="Media Partner"
-        hint="optional"
-        placeholder="e.g. USA Today"
+      <MediaSelect
+        label="Media Partner (optional)"
+        options={media}
         value={form.mediaPartner}
-        onChange={(e) => handleChange('mediaPartner', e.target.value)}
+        onChange={(name, option) =>
+          setForm((prev) => ({ ...prev, mediaPartner: name, mediaCountry: option?.country || (name ? prev.mediaCountry : '') }))
+        }
+        placeholder="None"
       />
 
       <Input

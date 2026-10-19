@@ -54,7 +54,7 @@ async function loadContext(projectId: string) {
       supabaseAdmin.from('copywriting_project_documents').select('filename, extracted_text').eq('project_id', projectId).order('created_at').order('id'),
       supabaseAdmin.from('copywriting_research_entries').select('*').eq('project_id', projectId).eq('status', 'approved').order('created_at').order('id'),
       project.publication_id
-        ? supabaseAdmin.from('copywriting_publications').select('*').eq('id', project.publication_id).maybeSingle()
+        ? supabaseAdmin.from('media_library').select('country, writing_rules').eq('id', project.publication_id).maybeSingle()
         : Promise.resolve({ data: null }),
       project.article_type_id
         ? supabaseAdmin.from('copywriting_article_types').select('*').eq('id', project.article_type_id).maybeSingle()
@@ -69,8 +69,8 @@ async function loadContext(projectId: string) {
 
   const referenceBlock = buildReferenceBlock({
     publicationName: project.publication_name,
-    publicationCountry: publication?.country ?? null,
-    publicationRules: publication?.additional_rules ?? '',
+    publicationCountry: publication?.country || null,
+    publicationRules: publication?.writing_rules ?? '',
     publicationGuideTexts: (pubGuides || []).map((g: { extracted_text: string }) => g.extracted_text),
     articleTypeName: project.article_type_name,
     articleTypeInstructions: articleType?.additional_instructions ?? '',

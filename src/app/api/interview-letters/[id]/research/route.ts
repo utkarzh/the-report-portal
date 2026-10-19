@@ -4,12 +4,28 @@ import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, INTERVIEW_LETTER_RESEARCH_RESERVE, HAIKU_PRICING } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { parseResearchOutput, researchOutputComplete } from '@/lib/interview-letters'
+import { briefExcerpt, parseResearchOutput, researchOutputComplete } from '@/lib/interview-letters'
+import {
+  BRIEF_CHARS_FOR_CLAUDE,
+  BRIEF_CHARS_FOR_GEMINI,
+  GEMINI_RESEARCH_MODEL,
+  GeminiResearchError,
+  buildCheckPrompt,
+  buildClaudeResearchUserContent,
+  buildResearchSystem,
+  buildSynthesisUserContent,
+  geminiConfigured,
+  getResearchProvider,
+  linkFactTags,
+  runGeminiResearch,
+  type SourceLink,
+} from '@/lib/interview-letter-research'
+import type { InterviewLetterResearchProvider } from '@/types'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 const REPAIR_MODEL = 'claude-haiku-4-5'
-export const maxDuration = 120
+export const maxDuration = 180
 
 interface Params {
   params: { id: string }
@@ -19,30 +35,16 @@ interface Params {
 // much smaller budget than meeting-prep's 4-section research (US-051: "not a
 // general company/country dossier").
 const MAX_WEB_SEARCHES = 6
-const SOFT_DEADLINE_MS = 100_000
+// Everything (research, a possible reformat pass, saving and billing) must
+// finish inside maxDuration, so the research itself stops here.
+const SOFT_DEADLINE_MS = 150_000
 
-function searchPolicy() {
-  const now = new Date()
-  const currentYear = now.getFullYear()
-  const todayStr = now.toISOString().slice(0, 10)
-  return `--- WEB SEARCH POLICY (MANDATORY) ---
-TODAY'S DATE IS ${todayStr}. The current year is ${currentYear}. Your training data is OUT OF DATE.
+// "Run research again" from a later step (step navigation, 19 Oct 2026).
+// Only research is replaced; the letter and email stay, so the user can keep
+// them from the hook screen.
+const RERUN_STAGES = ['hook_review', 'letter_review', 'letter_approved', 'email_review', 'complete']
 
-You have a budget of up to ${MAX_WEB_SEARCHES} web searches. Spend them finding letter-relevant facts only — not a general company or country dossier. Append a recency qualifier ("${currentYear}", "latest") to queries chasing current facts. Cite the source as a markdown link inline in each bullet, e.g. "... [Source Name, ${currentYear}](https://...)". If something cannot be verified, omit it rather than guessing.
-
-Search silently — do not narrate your plan before searching. Go straight to searching, then straight to the markers and content.`
-}
-
-function subjectBlock(project: Record<string, unknown>) {
-  return `--- PROJECT DETAILS ---
-Company: ${project.company}
-Project Country: ${project.project_country}
-Media Partner: ${project.media_partner}
-Media Partner Country: ${project.media_partner_country || 'N/A'}
-User-supplied why-now hook (if any): ${project.hook_input || '(none supplied — propose the strongest option you find)'}`
-}
-
-export async function POST(_request: NextRequest, { params }: Params) {
+export async function POST(request: NextRequest, { params }: Params) {
   const auth = await getApiUser()
   if (!auth.user) return auth.response
   const user = auth.user
@@ -76,7 +78,9 @@ export async function POST(_request: NextRequest, { params }: Params) {
   if (project.user_id !== user.id && profile.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  if (project.stage !== 'input' && project.stage !== 'failed') {
+  const body = await request.json().catch(() => ({}))
+  const rerun = Boolean((body as { rerun?: boolean }).rerun) && RERUN_STAGES.includes(project.stage)
+  if (project.stage !== 'input' && project.stage !== 'failed' && !rerun) {
     return NextResponse.json({ error: 'Research already in progress or complete for this project' }, { status: 409 })
   }
 
@@ -89,8 +93,55 @@ export async function POST(_request: NextRequest, { params }: Params) {
     .maybeSingle()
   const researchPromptText = promptRow?.prompt_text || ''
 
+  // Admin setting (/admin/interview-letters). Without a Gemini key the
+  // research falls back to Claude rather than failing every project.
+  let provider: InterviewLetterResearchProvider = await getResearchProvider()
+  if (provider === 'gemini' && !geminiConfigured()) {
+    console.warn('Interview letter research: GEMINI_API_KEY is not set — falling back to Claude')
+    provider = 'claude'
+  }
+
+  const briefText: string = project.editorial_brief_snapshot || ''
+  const brief = briefText
+    ? {
+        title: project.editorial_brief_title || 'Editorial Brief',
+        text: briefExcerpt(briefText, provider === 'gemini' ? BRIEF_CHARS_FOR_GEMINI : BRIEF_CHARS_FOR_CLAUDE),
+      }
+    : null
+  // Claude: one call that searches as it goes. Gemini: a grounded CHECK, then
+  // a SYNTHESIS against the brief (see interview-letter-research.ts for why).
+  const systemBlocks = buildResearchSystem(researchPromptText, project, { provider, hasBrief: Boolean(brief) })
+  const claudeUserContent = provider === 'claude' ? buildClaudeResearchUserContent(project, brief) : ''
+  const checkPrompt = provider === 'gemini' ? buildCheckPrompt(project, brief) : null
+  const promptSnapshot = checkPrompt
+    ? `${systemBlocks.join('\n\n')}\n\n=== GEMINI RESEARCH CHECK ===\n${checkPrompt.system}\n\n${checkPrompt.user}`
+    : systemBlocks.join('\n\n')
+  const researchModel = provider === 'gemini' ? GEMINI_RESEARCH_MODEL : CLAUDE_MODEL
+
+  // A first run sets the project's totals; a re-run adds to what the letter
+  // and email already spent. A failed re-run returns the project to the step
+  // it was on (the research it replaced is only overwritten on success).
+  const failStage = rerun ? project.stage : 'failed'
+  const prior = rerun
+    ? {
+        input: project.tokens_input || 0,
+        output: project.tokens_output || 0,
+        total: project.tokens_total || 0,
+        searches: project.web_searches || 0,
+        cost: Number(project.cost_usd || 0),
+      }
+    : { input: 0, output: 0, total: 0, searches: 0, cost: 0 }
+  const totals = (p: number, o: number, w: number, c: number) => ({
+    tokens_input: prior.input + p,
+    tokens_output: prior.output + o,
+    tokens_total: prior.total + p + o,
+    web_searches: prior.searches + w,
+    cost_usd: prior.cost + c,
+  })
+
   const anthropic = getAnthropicClient()
   const encoder = new TextEncoder()
+  const startedAt = Date.now()
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -120,11 +171,14 @@ export async function POST(_request: NextRequest, { params }: Params) {
       async function repairFormat(rawText: string): Promise<string> {
         const message = await anthropic.messages.create({
           model: REPAIR_MODEL,
-          max_tokens: 2000,
-          system: `You reformat existing research text. Output the text below reorganised into EXACTLY these two sections, each introduced by its literal marker line on its own line, in this order and nothing else:
+          max_tokens: 3000,
+          system: `You reformat existing research text. Output the text below reorganised into these sections, each introduced by its literal marker line on its own line, in this order and nothing else:
 <<<HOOK>>>
 <<<BULLETS>>>
-Preserve ALL content, sources and wording exactly — do NOT research, add, remove or shorten anything. Only move the existing text under the correct marker; format bullets as lines starting with "- ".`,
+<<<UPDATES>>>
+<<<CAUTIONS>>>
+HOOK is the single recommended why-now hook paragraph. BULLETS are the verified facts. UPDATES are changes or new developments compared with an Editorial Brief (omit the section if the text has none). CAUTIONS are unverified, conflicting or forecast items (omit the section if the text has none).
+Preserve ALL content, sources, links and wording exactly — do NOT research, add, remove or shorten anything. Only move the existing text under the correct marker; format list items as lines starting with "- ".`,
           messages: [{ role: 'user', content: rawText }],
         })
         const usage = parseUsage(message.usage as unknown, 0)
@@ -134,13 +188,7 @@ Preserve ALL content, sources and wording exactly — do NOT research, add, remo
         return message.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
       }
 
-      try {
-        await supabaseAdmin
-          .from('interview_letter_projects')
-          .update({ stage: 'researching', research_prompt_snapshot: researchPromptText, error: null })
-          .eq('id', project.id)
-        send({ status: 'researching' })
-
+      async function runClaude(): Promise<string> {
         let fullText = ''
         let startUsage: Record<string, unknown> = {}
         let passOutputTokens = 0
@@ -150,12 +198,9 @@ Preserve ALL content, sources and wording exactly — do NOT research, add, remo
 
         const claudeStream = anthropic.messages.stream({
           model: CLAUDE_MODEL,
-          max_tokens: 4000,
-          system: [
-            { type: 'text', text: searchPolicy() },
-            ...(researchPromptText ? [{ type: 'text' as const, text: researchPromptText }] : []),
-          ],
-          messages: [{ role: 'user', content: subjectBlock(project) }],
+          max_tokens: 5000,
+          system: systemBlocks.map((text) => ({ type: 'text' as const, text })),
+          messages: [{ role: 'user', content: claudeUserContent }],
           tools,
         })
         activeStream = claudeStream
@@ -207,6 +252,69 @@ Preserve ALL content, sources and wording exactly — do NOT research, add, remo
         webSearches += usage.webSearches ?? 0
         cost += calculateCost(usage)
         activeStream = null
+        return fullText
+      }
+
+      async function bill(ok: boolean, errorMessage?: string) {
+        const totalTokens = promptTokens + outputTokens
+        if (totalTokens > 0) {
+          await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
+        }
+        await logUsageEvent({
+          userId: user.id,
+          workflow: 'interview_letter_research',
+          sourceId: project.id,
+          model: researchModel,
+          tokensInput: promptTokens,
+          tokensOutput: outputTokens,
+          tokensTotal: totalTokens,
+          webSearches,
+          costUsd: cost,
+          ...(ok ? {} : { status: 'error' as const, error: errorMessage || 'Research failed' }),
+        })
+        return totalTokens
+      }
+
+      try {
+        await supabaseAdmin
+          .from('interview_letter_projects')
+          .update({
+            stage: 'researching',
+            research_prompt_snapshot: promptSnapshot,
+            research_provider: provider,
+            error: null,
+          })
+          .eq('id', project.id)
+        send({ status: 'researching', provider })
+
+        let fullText = ''
+        let factLinks: Map<string, SourceLink[]> | null = null
+        if (checkPrompt) {
+          try {
+            const outcome = await runGeminiResearch({
+              check: checkPrompt,
+              synthesis: { system: systemBlocks.join('\n\n'), user: (facts) => buildSynthesisUserContent(project, brief, facts) },
+              deadline: startedAt + SOFT_DEADLINE_MS,
+              onStep: (step) => send({ status: step === 'searching' ? 'web_search_start' : 'synthesising' }),
+            })
+            promptTokens += outcome.promptTokens
+            outputTokens += outcome.outputTokens
+            webSearches += outcome.searches
+            cost += outcome.costUsd
+            fullText = outcome.text
+            factLinks = outcome.factLinks
+          } catch (e) {
+            if (e instanceof GeminiResearchError) {
+              promptTokens += e.spent.promptTokens
+              outputTokens += e.spent.outputTokens
+              webSearches += e.spent.searches
+              cost += e.spent.costUsd
+            }
+            throw e
+          }
+        } else {
+          fullText = await runClaude()
+        }
 
         let parsed = parseResearchOutput(fullText)
         if (!researchOutputComplete(parsed) && !aborted && fullText.trim()) {
@@ -216,60 +324,68 @@ Preserve ALL content, sources and wording exactly — do NOT research, add, remo
         }
 
         clearTimeout(deadlineTimer)
-
-        const totalTokens = promptTokens + outputTokens
         const ok = researchOutputComplete(parsed)
 
+        // Gemini cites its verified facts as [F#]; swap those for the real
+        // source links. The hook is letter-ready prose, so its tags just go.
+        if (ok && factLinks) {
+          const links = factLinks
+          const link = (lines: string[]) => lines.map((l) => linkFactTags(l, links))
+          parsed = {
+            hook: linkFactTags(parsed.hook, new Map()),
+            bullets: link(parsed.bullets),
+            updates: link(parsed.updates),
+            cautions: link(parsed.cautions),
+          }
+        }
+
+        const totalTokens = promptTokens + outputTokens
         await supabaseAdmin
           .from('interview_letter_projects')
           .update({
-            ...(ok ? { research: parsed.bullets, hook_ai_suggestion: parsed.hook } : {}),
-            stage: ok ? 'hook_review' : 'failed',
+            ...(ok
+              ? {
+                  research: parsed.bullets,
+                  research_updates: parsed.updates,
+                  research_cautions: parsed.cautions,
+                  hook_ai_suggestion: parsed.hook,
+                }
+              : {}),
+            stage: ok ? 'hook_review' : failStage,
             error: ok ? null : 'The research came back in an unexpected format. Please try again.',
-            tokens_input: promptTokens,
-            tokens_output: outputTokens,
-            tokens_total: totalTokens,
-            web_searches: webSearches,
-            cost_usd: cost,
+            ...totals(promptTokens, outputTokens, webSearches, cost),
           })
           .eq('id', project.id)
 
-        await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
-
-        await logUsageEvent({
-          userId: user.id,
-          workflow: 'interview_letter_research',
-          sourceId: project.id,
-          model: CLAUDE_MODEL,
-          tokensInput: promptTokens,
-          tokensOutput: outputTokens,
-          tokensTotal: totalTokens,
-          webSearches,
-          costUsd: cost,
-          ...(ok ? {} : { status: 'error' as const, error: 'Research returned incomplete output' }),
-        })
+        await bill(ok, 'Research returned incomplete output')
 
         if (ok) {
-          send({ done: true, research: parsed.bullets, hookAiSuggestion: parsed.hook, usage: { tokens_total: totalTokens, web_searches: webSearches, cost_usd: cost } })
+          send({
+            done: true,
+            research: parsed.bullets,
+            researchUpdates: parsed.updates,
+            researchCautions: parsed.cautions,
+            hookAiSuggestion: parsed.hook,
+            provider,
+            usage: { tokens_total: totalTokens, web_searches: webSearches, cost_usd: cost },
+          })
         } else {
           send({ error: 'The research came back incomplete. Please run it again.' })
         }
         sendRaw('[DONE]')
       } catch (err) {
         console.error('Interview letter research error:', err)
+        const message = err instanceof Error ? err.message : 'Research failed'
         await supabaseAdmin
           .from('interview_letter_projects')
-          .update({ stage: 'failed', error: err instanceof Error ? err.message : 'Research failed' })
+          .update({
+            stage: failStage,
+            error: message,
+            ...totals(promptTokens, outputTokens, webSearches, cost),
+          })
           .eq('id', project.id)
-        await logUsageEvent({
-          userId: user.id,
-          workflow: 'interview_letter_research',
-          sourceId: project.id,
-          model: CLAUDE_MODEL,
-          status: 'error',
-          error: err instanceof Error ? err.message : 'Research failed',
-        })
-        send({ error: 'Research failed' })
+        await bill(false, message)
+        send({ error: err instanceof GeminiResearchError ? message : 'Research failed' })
       } finally {
         clearTimeout(deadlineTimer)
         try {

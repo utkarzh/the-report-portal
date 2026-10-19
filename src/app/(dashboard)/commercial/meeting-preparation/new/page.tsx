@@ -3,22 +3,19 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { Sparkles, ClipboardList, MessageSquare, Info, Headphones } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { MEETING_PREP_SAMPLE_AUDIO_BUCKET, MEETING_PREP_SAMPLE_AUDIO_PATH } from '@/lib/meeting-prep'
 import MeetingPrepForm from '@/components/meeting-prep/MeetingPrepForm'
 import AudioPlayer from '@/components/transcriptions/AudioPlayer'
-import type { MeetingPrepMediaLibraryEntry } from '@/types'
+import { listMediaEntries } from '@/lib/media-library-server'
 
 export default async function NewMeetingPrepPage() {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
 
-  const supabase = createSupabaseServerClient()
-  const { data: mediaLibrary } = await supabase
-    .from('meeting_prep_media_library')
-    .select('*')
-    .order('publication_name', { ascending: true })
+  // The central Media Library (Admin → Media Library); only publications with
+  // a Meeting Prep media profile can be picked (see MeetingPrepForm).
+  const mediaLibrary = await listMediaEntries()
 
   // Short-lived signed URL for the reference planteo recording (private
   // bucket, service role). Missing file just means no player renders.
@@ -49,7 +46,7 @@ export default async function NewMeetingPrepPage() {
             </div>
           ) : (
             <MeetingPrepForm
-              mediaLibrary={(mediaLibrary || []) as MeetingPrepMediaLibraryEntry[]}
+              mediaLibrary={mediaLibrary}
               isAtLimit={isAtLimit}
             />
           )}

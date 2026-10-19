@@ -16,8 +16,16 @@ interface Props {
   onClose: () => void
   baseUrl: string
   extraParams?: Record<string, string>
-  /** Suggested download filename base (no extension). */
-  filenameBase?: string
+  /** Suggested download filename base (no extension); a function receives the `fields` values. */
+  filenameBase?: string | ((values: Record<string, string>) => string)
+  /**
+   * Optional text inputs shown above the format choice (e.g. an Interview
+   * Letter's recipient). Non-empty values are sent as query params under their
+   * `key`. Cleared every time the modal opens.
+   */
+  fields?: { key: string; label: string; placeholder?: string }[]
+  /** Short explanation shown above `fields`. */
+  fieldsHint?: string
   /** When set, the PDF option is disabled and shows this as its hint (e.g. a script the embedded PDF font can't render). Word is unaffected. */
   pdfDisabledReason?: string
   /** Initial template selection (e.g. guessed from a project's media_partner) when nothing's saved in localStorage yet. Falls back to DEFAULT_TEMPLATE_ID. */
@@ -41,14 +49,16 @@ interface Props {
 // Newsweek pick anywhere leaked into all future downloads everywhere.
 const LS_KEY_PREFIX = 'download-template:'
 
-export default function DownloadTemplateModal({ open, onClose, baseUrl, extraParams, filenameBase, pdfDisabledReason, defaultTemplateId, variantLabel, variantTone = 'default' }: Props) {
+export default function DownloadTemplateModal({ open, onClose, baseUrl, extraParams, filenameBase, fields, fieldsHint, pdfDisabledReason, defaultTemplateId, variantLabel, variantTone = 'default' }: Props) {
   const [step, setStep] = useState<'template' | 'format'>('template')
   const [templateId, setTemplateId] = useState<string>(defaultTemplateId ?? DEFAULT_TEMPLATE_ID)
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
   const lsKey = `${LS_KEY_PREFIX}${baseUrl}`
 
   useEffect(() => {
     if (!open) return
     setStep('template')
+    setFieldValues({})
     const fallback = defaultTemplateId ?? DEFAULT_TEMPLATE_ID
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem(lsKey)
@@ -70,11 +80,13 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
   }
 
   function download(format: 'pdf' | 'docx') {
-    const params = new URLSearchParams({ ...(extraParams ?? {}), template: templateId, format })
+    const filled = Object.fromEntries(Object.entries(fieldValues).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v))
+    const params = new URLSearchParams({ ...(extraParams ?? {}), ...filled, template: templateId, format })
     const url = `${baseUrl}?${params.toString()}`
     const a = document.createElement('a')
     a.href = url
-    if (filenameBase) a.download = `${filenameBase}.${format}`
+    const name = typeof filenameBase === 'function' ? filenameBase(filled) : filenameBase
+    if (name) a.download = `${name}.${format}`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -179,6 +191,25 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
                   ))}
                 </div>
               ) : (
+                <div className="flex flex-col gap-4">
+                {fields && fields.length > 0 && (
+                  <div className="rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-3.5">
+                    {fieldsHint && <p className="mb-3 text-[11px] leading-relaxed text-gray-500">{fieldsHint}</p>}
+                    <div className="flex flex-col gap-2">
+                      {fields.map((f) => (
+                        <label key={f.key} className="flex flex-col gap-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">{f.label}</span>
+                          <input
+                            value={fieldValues[f.key] || ''}
+                            onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                            placeholder={f.placeholder}
+                            className="rounded-lg border border-[#e5e3df] bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-black focus:outline-none"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <FormatCard
                     icon={<FileType2 size={22} />}
@@ -193,6 +224,7 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
                     hint="Editable .docx"
                     onClick={() => download('docx')}
                   />
+                </div>
                 </div>
               )}
             </div>

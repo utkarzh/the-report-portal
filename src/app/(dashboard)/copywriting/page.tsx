@@ -73,7 +73,7 @@ export default async function CopywritingHomePage({
     { data: articleTypes },
   ] = await Promise.all([
     query.order("updated_at", { ascending: false }).range(from, to),
-    supabase.from("copywriting_publications").select("name").order("name"),
+    supabase.from("media_library").select("name").order("name"),
     supabase.from("copywriting_article_types").select("name").order("name"),
   ]);
 

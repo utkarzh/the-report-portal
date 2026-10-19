@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getAnthropicClient } from '@/lib/claude/client'
+import { CLAUDE_KEY_REJECTED_MESSAGE, getAnthropicClient, isClaudeKeyRejected } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
 import { getApiUser } from '@/lib/auth/api-user'
+import { stripLeadingNarration } from '@/lib/research-narration'
+import { cleanOutline } from '@/lib/outline-cleanup'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
@@ -27,7 +29,15 @@ This will be exported as a one-page, fully formatted "Interview Outline" (Calibr
 - Output ONLY the theme headings and questions in this format — no numbering, no preamble, no closing commentary.
 
 --- SOURCE RULES (MANDATORY) ---
-You have NO web search or browsing in this step. Where the instructions above ask you to verify, check LinkedIn, or search, that already happened in the research step — the RESEARCH section and any user feedback are your only sources. Never claim to have checked, verified or searched anything here, and never cite a source that isn't in the RESEARCH. If the user's feedback corrects a fact in the research (e.g. an appointment date), the user's correction wins. If a fact the research marks UNCONFIRMED is needed, follow the General Prompt's unconfirmed-fact fallback instead of stating it as settled.`
+You have NO web search or browsing in this step. Where the instructions above ask you to verify, check LinkedIn, or search, that already happened in the research step — the RESEARCH section and any user feedback are your only sources. Never claim to have checked, verified or searched anything here, and never cite a source that isn't in the RESEARCH. If the user's feedback corrects a fact in the research (e.g. an appointment date), the user's correction wins. If a fact the research marks UNCONFIRMED is needed, follow the General Prompt's unconfirmed-fact fallback instead of stating it as settled.
+
+--- FINAL OUTPUT RULES (MANDATORY — these override the General Prompt and the category prompt) ---
+This outline is FINAL, client-ready material. It is downloaded and may be sent to the interviewee exactly as you write it, with no human editing. In this tool there is no separate "screen" for notes: every character you write goes into the document. Therefore:
+- Start with the first theme heading. Write NOTHING before it: no Action Note, no "Tip:", no "DELETE THIS ACTION NOTE BEFORE SENDING IT TO INTERVIEWEES!", no "PROCEED TO QUESTIONS", no title, no introduction ("Here is…"), no plan, no self-check, no verification notes. This overrides the General Prompt's Mandatory Action Note: editors see that guidance in the app instead.
+- End with the closing question(s) the instructions above require. Write NOTHING after them: no Editorial Risk Check or flag, no legal / sanctions / regulatory / reputational flag, no "N/A", no sources, no notes, no word counts, no closing remarks.
+- Never put working into the outline: no word counts, no S1/S2 breakdowns, no ticks, no drafts followed by a final version. Write the final version once.
+- If the user's feedback asks a question or corrects something, apply it silently in the questions. Never answer it, discuss it or explain your changes.
+- Never mention the research, verification, sources, unconfirmed facts or this process anywhere in the outline.`
 
 export async function POST(request: NextRequest) {
   const auth = await getApiUser()
@@ -117,7 +127,7 @@ Media Partner Country: ${session.media_partner_country}`
     : `Based on the research below, draft a thorough set of interview questions tailored to this subject. Group them by theme, order them from broad to specific, and make every question open-ended.`
 
   const previousAttemptBlock = isRegeneration
-    ? `\n\n--- PREVIOUS QUESTIONS (improve on these) ---\n${session.questions_output}`
+    ? `\n\n--- PREVIOUS QUESTIONS (improve on these) ---\n${cleanOutline(session.questions_output)}`
     : ''
 
   const feedbackBlock = extra
@@ -149,7 +159,7 @@ Media Partner Country: ${session.media_partner_country}`
       : []),
     {
       type: 'text' as const,
-      text: `\n\n${subjectDetails}\n\n${taskInstruction}\n\n--- RESEARCH ---\n${session.initial_output}${previousAttemptBlock}${feedbackBlock}`,
+      text: `\n\n${subjectDetails}\n\n${taskInstruction}\n\n--- RESEARCH ---\n${stripLeadingNarration(session.initial_output)}${previousAttemptBlock}${feedbackBlock}`,
     },
   ]
 
@@ -191,6 +201,8 @@ Media Partner Country: ${session.media_partner_country}`
         }
 
         const finalMsg = await claudeStream.finalMessage()
+        // Backstop for the FINAL OUTPUT RULES: nothing but the outline is saved.
+        const outline = cleanOutline(fullText)
         const usage = parseUsage(finalMsg.usage, 0)
         const promptTokens = totalPromptTokens(usage)
         const totalTokens = promptTokens + usage.outputTokens
@@ -211,7 +223,7 @@ Media Partner Country: ${session.media_partner_country}`
         await supabaseAdmin
           .from('research_sessions')
           .update({
-            questions_output: fullText,
+            questions_output: outline,
             tokens_input:  (current?.tokens_input  ?? 0) + promptTokens,
             tokens_output: (current?.tokens_output ?? 0) + usage.outputTokens,
             tokens_total:  newTotalTokens,
@@ -237,6 +249,10 @@ Media Partner Country: ${session.media_partner_country}`
           costUsd: cost,
         })
 
+        // The client streamed the raw text; swap in the saved outline if the
+        // backstop trimmed it.
+        if (outline !== fullText) send({ final: outline })
+
         // Push the combined session usage so the live sidebar reflects the
         // added questions spend without needing a page reload.
         send({
@@ -249,7 +265,7 @@ Media Partner Country: ${session.media_partner_country}`
         sendRaw('[DONE]')
       } catch (err) {
         console.error('Claude (questions) stream error:', err)
-        send({ error: 'Question generation failed' })
+        send({ error: isClaudeKeyRejected(err) ? CLAUDE_KEY_REJECTED_MESSAGE : 'Question generation failed' })
       } finally {
         try {
           controller.close()

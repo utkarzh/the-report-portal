@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import ResearchForm from '@/components/research/ResearchForm'
+import { listMediaOptions } from '@/lib/media-library-server'
 import { Sparkles, ClipboardList, MessageSquare, Info } from 'lucide-react'
 import type { Category } from '@/types'
 
@@ -17,6 +18,7 @@ export default async function ResearchPage() {
     .order('sort_order', { ascending: true })
 
   const isAtLimit = profile.role === 'user' && profile.tokens_used >= profile.token_limit
+  const media = await listMediaOptions()
 
   return (
     <div className="flex flex-col lg:flex-row h-full min-h-0">
@@ -39,6 +41,7 @@ export default async function ResearchPage() {
           ) : (
             <ResearchForm
               categories={(categories || []) as Category[]}
+              media={media}
               isAtLimit={isAtLimit}
               userId={profile.id}
             />

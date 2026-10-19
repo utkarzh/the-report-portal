@@ -30,7 +30,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ success: true })
 }
 
-// POST — restore a prior version. The version row carries its own company.
+// POST — restore a prior version. The version row carries its own company
+// and letter version (variant).
 // Returns `promptText` (indented JSON of the structure) to match the shared
 // PromptVersionHistory component's contract; the template editor JSON.parses
 // it back into structure state.
@@ -41,7 +42,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: version } = await supabaseAdmin
     .from('interview_letter_templates_versions')
-    .select('structure, company')
+    .select('structure, company, variant')
     .eq('id', params.versionId)
     .single()
 
@@ -51,13 +52,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
     .from('interview_letter_templates')
     .select('id, structure')
     .eq('company', version.company)
+    .eq('variant', version.variant)
     .single()
 
   if (!current) return NextResponse.json({ error: 'Current template not found' }, { status: 500 })
 
   await supabaseAdmin
     .from('interview_letter_templates_versions')
-    .insert({ company: version.company, structure: current.structure, saved_by: user.id })
+    .insert({ company: version.company, variant: version.variant, structure: current.structure, saved_by: user.id })
 
   const { error } = await supabaseAdmin
     .from('interview_letter_templates')

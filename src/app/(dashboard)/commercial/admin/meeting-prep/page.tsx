@@ -5,13 +5,17 @@ import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import { INTERVIEW_TYPES, MEETING_PREP_PROMPT_KEYS } from '@/lib/meeting-prep'
+import { MEDIA_LIBRARY_PATH, hasMeetingPrepProfile } from '@/lib/media-library'
 
 export default async function MeetingPrepAdminPage() {
   requireAdminHeader()
 
-  const { count } = await supabaseAdmin
-    .from('meeting_prep_media_library')
-    .select('id', { count: 'exact', head: true })
+  // Publications live in the central Media Library; Meeting Prep can use the
+  // ones with a media profile filled in.
+  const { data: media } = await supabaseAdmin
+    .from('media_library')
+    .select('positioning_statement, audience_reach, editorial_narrative_focus')
+  const count = (media || []).filter(hasMeetingPrepProfile).length
 
   const { count: trackerCount } = await supabaseAdmin
     .from('meeting_prep_advertiser_tracker')
@@ -40,13 +44,14 @@ export default async function MeetingPrepAdminPage() {
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Media Library</h2>
                 <p className="text-xs text-gray-500 mt-1 max-w-xl">
-                  One profile per TRC publication (positioning, audience &amp; reach, editorial narrative focus,
-                  country). A publication with no profile here halts the workflow at Step 1.
+                  Publications are managed in the central Media Library, shared by every tool. Meeting Preparation
+                  uses each one&apos;s media profile (positioning, audience &amp; reach, editorial narrative focus); a
+                  publication without one halts the workflow at Step 1.
                 </p>
-                <p className="text-[10px] text-gray-400 mt-2">{count ?? 0} publication{count === 1 ? '' : 's'}</p>
+                <p className="text-[10px] text-gray-400 mt-2">{count} publication{count === 1 ? '' : 's'} with a media profile</p>
               </div>
               <Link
-                href="/commercial/admin/meeting-prep/media-library"
+                href={MEDIA_LIBRARY_PATH}
                 className="text-xs font-medium tracking-wider uppercase bg-black text-white px-4 py-2.5 hover:bg-gray-900 transition-colors flex-shrink-0"
               >
                 Manage

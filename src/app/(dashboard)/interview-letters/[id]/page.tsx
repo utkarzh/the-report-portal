@@ -26,7 +26,8 @@ export default async function InterviewLetterDetailPage({ params, searchParams }
 
   return (
     <InterviewLetterWorkspace
-      project={project as InterviewLetterProject}
+      // The brief snapshot (~100k characters) is only ever used server-side.
+      project={{ ...(project as InterviewLetterProject), editorial_brief_snapshot: null }}
       isGenerating={searchParams.generating === 'true'}
       isAdmin={profile.role === 'admin'}
     />

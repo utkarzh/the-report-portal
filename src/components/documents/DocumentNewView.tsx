@@ -3,6 +3,7 @@ import { getProfileFromHeaders } from '@/lib/auth/session'
 import { Sparkles, ClipboardList, MessageSquare, Info } from 'lucide-react'
 import DocumentForm from '@/components/documents/DocumentForm'
 import { getDocConfig } from '@/lib/documents'
+import { listMediaOptions } from '@/lib/media-library-server'
 import type { DocType } from '@/types'
 
 // Shared "new document" view (form + empty-state hero). Mirrors research/page.tsx.
@@ -12,6 +13,7 @@ export default async function DocumentNewView({ docType }: { docType: DocType })
 
   const config = getDocConfig(docType)
   const isAtLimit = profile.role === 'user' && profile.tokens_used >= profile.token_limit
+  const media = await listMediaOptions()
 
   return (
     <div className="flex flex-col lg:flex-row h-full min-h-0">
@@ -30,7 +32,7 @@ export default async function DocumentNewView({ docType }: { docType: DocType })
               </p>
             </div>
           ) : (
-            <DocumentForm docType={docType} isAtLimit={isAtLimit} />
+            <DocumentForm docType={docType} media={media} isAtLimit={isAtLimit} />
           )}
         </div>
       </div>

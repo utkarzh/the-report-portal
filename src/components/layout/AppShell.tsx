@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 import FeedbackWidget from '@/components/feedback/FeedbackWidget'
+import { FEEDBACK_WIDGET_ENABLED } from '@/lib/feedback'
 import type { UserRole } from '@/types'
 
 interface Props {
@@ -95,7 +96,7 @@ export default function AppShell({
         {children}
       </main>
 
-      <FeedbackWidget />
+      {FEEDBACK_WIDGET_ENABLED && <FeedbackWidget />}
     </div>
   );
 }

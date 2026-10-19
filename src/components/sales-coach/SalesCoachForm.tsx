@@ -7,10 +7,11 @@ import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
+import MediaSelect from '@/components/ui/MediaSelect'
 import { getSupabaseBrowserClient, ensureFreshSession } from '@/lib/supabase/client'
 import { SALES_COACH_OUTCOMES } from '@/lib/sales-coach'
 import { postWithRetry } from '@/lib/post-with-retry'
-import type { SalesCoachOutcome, SalesCoachParticipant } from '@/types'
+import type { MediaOption, SalesCoachOutcome, SalesCoachParticipant } from '@/types'
 
 const AUDIO_BUCKET = 'sales-coach-audio'
 const MAX_BYTES = 500 * 1024 * 1024
@@ -20,7 +21,7 @@ type InputMode = 'audio' | 'transcript'
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'AED', 'other']
 
-export default function SalesCoachForm({ userId }: { userId: string }) {
+export default function SalesCoachForm({ userId, media }: { userId: string; media: MediaOption[] }) {
   const router = useRouter()
   const audioRef = useRef<HTMLInputElement>(null)
 
@@ -159,7 +160,7 @@ export default function SalesCoachForm({ userId }: { userId: string }) {
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Input label="Country *" value={ctx.country} onChange={(e) => setC('country', e.target.value)} placeholder="e.g. Italy" />
-          <Input label="Media / Publication *" value={ctx.mediaPublication} onChange={(e) => setC('mediaPublication', e.target.value)} placeholder="e.g. Die Welt" />
+          <MediaSelect label="Media / Publication *" options={media} value={ctx.mediaPublication} onChange={(name) => setC('mediaPublication', name)} />
           <Input label="Company *" value={ctx.company} onChange={(e) => setC('company', e.target.value)} placeholder="e.g. Acme Corp (or leave blank to use the recording's filename)" />
           <Input label="Interviewee name *" value={ctx.intervieweeName} onChange={(e) => setC('intervieweeName', e.target.value)} placeholder="e.g. Jane Doe" />
           <Input label="Interviewee position *" value={ctx.intervieweePosition} onChange={(e) => setC('intervieweePosition', e.target.value)} placeholder="e.g. CEO" />

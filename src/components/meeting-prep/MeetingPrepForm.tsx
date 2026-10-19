@@ -6,11 +6,13 @@ import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
+import MediaSelect from '@/components/ui/MediaSelect'
 import { INTERVIEW_TYPES } from '@/lib/meeting-prep'
-import type { MeetingPrepMediaLibraryEntry } from '@/types'
+import { hasMeetingPrepProfile, toMediaOption } from '@/lib/media-library'
+import type { MediaLibraryEntry } from '@/types'
 
 interface Props {
-  mediaLibrary: MeetingPrepMediaLibraryEntry[]
+  mediaLibrary: MediaLibraryEntry[]
   isAtLimit: boolean
 }
 
@@ -72,7 +74,13 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
     }
   }
 
-  const publicationOptions = mediaLibrary.map(m => ({ value: m.publication_name, label: m.publication_name }))
+  // Every publication is listed; one without a Meeting Prep media profile is
+  // shown but can't be picked (Step 1 would halt on it, US-022).
+  const publicationOptions = mediaLibrary.map(toMediaOption)
+  const withoutProfile = Object.fromEntries(
+    mediaLibrary.filter((m) => !hasMeetingPrepProfile(m)).map((m) => [m.name, 'no Meeting Prep profile yet']),
+  )
+  const usableCount = mediaLibrary.length - Object.keys(withoutProfile).length
 
   // A Government Official has no "company" — the entity is a ministry / body.
   // Wording adapts to the selected interviewee type.
@@ -114,10 +122,10 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
         <div className="p-3 bg-red-50 border border-red-200 text-xs text-red-700">{error}</div>
       )}
 
-      {mediaLibrary.length === 0 && (
+      {usableCount === 0 && (
         <div className="p-3 bg-amber-50 border border-amber-200 text-xs text-amber-700">
-          No publications are set up yet. Ask an admin to add one in the Meeting Preparation admin area
-          before starting a meeting prep.
+          No publication has a Meeting Prep media profile yet. Ask an admin to fill one in under
+          Admin → Media Library before starting a meeting prep.
         </div>
       )}
 
@@ -163,13 +171,16 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
         required
       />
 
-      <Select
+      <MediaSelect
         label="Publication *"
         options={publicationOptions}
         value={form.publication}
-        onChange={(e) => handleChange('publication', e.target.value)}
+        onChange={(name, option) =>
+          setForm((prev) => ({ ...prev, publication: name, publicationCountry: option?.country || prev.publicationCountry }))
+        }
+        unavailable={withoutProfile}
         required
-        disabled={mediaLibrary.length === 0}
+        disabled={usableCount === 0}
       />
 
       <Input
@@ -235,7 +246,7 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
       )}
 
       <div className="pt-2">
-        <Button type="submit" loading={loading} disabled={isAtLimit || mediaLibrary.length === 0} arrow>
+        <Button type="submit" loading={loading} disabled={isAtLimit || usableCount === 0} arrow>
           Start Research
         </Button>
       </div>

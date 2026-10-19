@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { TRANSCRIPTION_AUDIO_BUCKET } from '@/lib/openai/client'
+import { canonicalMediaName } from '@/lib/media-library-server'
 
 // POST /api/transcriptions — creates the transcription record for an audio file
 // the client has ALREADY uploaded directly to the private storage bucket. Does
@@ -100,7 +101,8 @@ export async function POST(request: NextRequest) {
       full_name: fullName.trim(),
       title_position: titlePosition.trim(),
       company_org: companyOrg.trim(),
-      publication: publication.trim(),
+      // Saved with the Media Library's own spelling (see canonicalMediaName).
+      publication: await canonicalMediaName(publication),
       status: 'uploaded',
     })
     .select('id')

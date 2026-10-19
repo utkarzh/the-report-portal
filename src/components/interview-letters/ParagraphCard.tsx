@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Lock, RotateCcw, Check, Loader2 } from 'lucide-react'
+import { Lock, RotateCcw, Check, Loader2, Pencil } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
 import { wordCount } from '@/lib/interview-letters'
 import type { InterviewLetterParagraph } from '@/types'
@@ -11,13 +11,16 @@ interface Props {
   disabled: boolean
   onApprove: () => Promise<void>
   onRegenerate: (feedback: string) => Promise<void>
+  // Puts an approved paragraph back to pending so it can be changed again.
+  onUnlock?: () => Promise<void>
 }
 
-export default function ParagraphCard({ paragraph, disabled, onApprove, onRegenerate }: Props) {
+export default function ParagraphCard({ paragraph, disabled, onApprove, onRegenerate, onUnlock }: Props) {
   const [feedback, setFeedback] = useState('')
   const [showFeedback, setShowFeedback] = useState(false)
   const [approving, setApproving] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
+  const [unlocking, setUnlocking] = useState(false)
 
   const isFixed = paragraph.type === 'fixed'
   const isLocked = paragraph.status === 'locked'
@@ -56,6 +59,20 @@ export default function ParagraphCard({ paragraph, disabled, onApprove, onRegene
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
               <Lock size={9} /> Locked
             </span>
+          )}
+          {!isFixed && isLocked && onUnlock && (
+            <button
+              type="button"
+              onClick={async () => {
+                setUnlocking(true)
+                await onUnlock()
+                setUnlocking(false)
+              }}
+              disabled={disabled || unlocking}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 transition-colors hover:bg-gray-100 hover:text-black disabled:opacity-50"
+            >
+              {unlocking ? <Loader2 size={9} className="animate-spin" /> : <Pencil size={9} />} Edit
+            </button>
           )}
         </div>
         {!isFixed && (

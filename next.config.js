@@ -14,6 +14,13 @@ const nextConfig = {
       // The Commercial hub page was removed; its three modules are listed
       // directly in the main Sidebar.
       { source: '/commercial', destination: '/dashboard', permanent: false },
+      // Every module's media list became the central Media Library (migration
+      // 039). Meeting Prep's ids were kept, so its edit links still resolve.
+      { source: '/commercial/admin/meeting-prep/media-library/new', destination: '/admin/media-library', permanent: false },
+      { source: '/commercial/admin/meeting-prep/media-library/:id', destination: '/admin/media-library/:id', permanent: false },
+      { source: '/commercial/admin/meeting-prep/media-library', destination: '/admin/media-library', permanent: false },
+      { source: '/copywriting/admin/publications', destination: '/admin/media-library', permanent: false },
+      { source: '/admin/interview-letters/media', destination: '/admin/media-library', permanent: false },
     ]
   },
 }

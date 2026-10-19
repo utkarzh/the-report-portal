@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Sparkles, Copy, Check, Download, UserPlus, RotateCcw, AlertTriangle,
-  ChevronDown, ChevronUp, Mail, Globe2, Newspaper, Loader2, AlertCircle,
+  ChevronDown, ChevronUp, Mail, Globe2, Newspaper, Loader2, AlertCircle, FileText, Anchor, Search, Pencil,
 } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
 import ParagraphCard from '@/components/interview-letters/ParagraphCard'
@@ -12,9 +12,9 @@ import InterviewLetterLoader from '@/components/interview-letters/InterviewLette
 import DownloadTemplateModal from '@/components/ui/DownloadTemplateModal'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { formatDayMonthYear } from '@/lib/date-format'
-import { wordCount, splitEmailSubject } from '@/lib/interview-letters'
+import { letterDownloadName, wordCount, splitEmailSubject, splitMarkdownLinks, variantLabel } from '@/lib/interview-letters'
 import { guessTemplateId } from '@/lib/download-templates/registry'
-import type { InterviewLetterProject, InterviewLetterPersonalization } from '@/types'
+import type { InterviewLetterProject, InterviewLetterPersonalization, InterviewLetterStage } from '@/types'
 
 interface Props {
   project: InterviewLetterProject
@@ -23,6 +23,18 @@ interface Props {
 }
 
 type StepState = 'done' | 'active' | 'error' | 'upcoming'
+
+// The four steps in the header. Any step that has content can be opened to
+// look at it; reopening it for changes is a separate, explicit action.
+type StepKey = 'research' | 'letter' | 'email' | 'send'
+const STEP_KEYS: StepKey[] = ['research', 'letter', 'email', 'send']
+
+function stepForStage(stage: InterviewLetterStage): StepKey {
+  if (stage === 'letter_generating' || stage === 'letter_review' || stage === 'letter_approved') return 'letter'
+  if (stage === 'email_generating' || stage === 'email_review') return 'email'
+  if (stage === 'complete') return 'send'
+  return 'research'
+}
 
 const STALL_THRESHOLD = 40 // ~2 min of 3s polls
 
@@ -101,6 +113,31 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">{children}</p>
 }
 
+// Research lines carry their sources as inline markdown links; render them
+// as real links (each one opens the page the fact came from).
+function ResearchLine({ text }: { text: string }) {
+  return (
+    <p className="text-sm leading-relaxed text-gray-700">
+      •{' '}
+      {splitMarkdownLinks(text).map((part, i) =>
+        part.type === 'text' ? (
+          <span key={i}>{part.value}</span>
+        ) : (
+          <a
+            key={i}
+            href={part.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mx-0.5 inline-block rounded bg-[#f0efec] px-1.5 py-0.5 align-baseline text-[11px] font-medium text-gray-600 no-underline transition-colors hover:bg-[#e5e3df] hover:text-black"
+          >
+            {part.label}
+          </a>
+        ),
+      )}
+    </p>
+  )
+}
+
 // Primary rounded action button, matching the pattern used across the other
 // multi-stage AI workflows (Sales Coach, Meeting Prep) rather than the
 // shared form <Button> (which is meant for uppercase form submits).
@@ -126,6 +163,18 @@ function PrimaryButton({
   )
 }
 
+function DownloadLetterButton({ onClick, label = 'Download Letter' }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-xl border border-[#e5e3df] bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+    >
+      <Download size={14} /> {label}
+    </button>
+  )
+}
+
 const STAGE_META: Record<string, { label: string; tone: string }> = {
   input: { label: 'Starting…', tone: 'bg-[#fbf7ed] text-[#a07530]' },
   researching: { label: 'Researching', tone: 'bg-[#fbf7ed] text-[#a07530]' },
@@ -139,11 +188,27 @@ const STAGE_META: Record<string, { label: string; tone: string }> = {
   failed: { label: 'Needs attention', tone: 'bg-red-50 text-red-700' },
 }
 
-function Stepper({ steps }: { steps: { label: string; sub: string; state: StepState }[] }) {
+function Stepper({
+  steps, selected, onSelect,
+}: {
+  steps: { label: string; sub: string; state: StepState; clickable: boolean }[]
+  selected: number
+  onSelect: (index: number) => void
+}) {
   return (
-    <ol className="grid grid-cols-2 gap-2 border-t border-[#eceae5] px-6 py-4 sm:grid-cols-4">
+    <ol className="grid grid-cols-2 gap-2 border-t border-[#eceae5] px-4 py-3 sm:grid-cols-4">
       {steps.map((s, i) => (
-        <li key={s.label} className="flex min-w-0 items-center gap-2.5">
+        <li key={s.label} className="min-w-0">
+          <button
+            type="button"
+            onClick={() => onSelect(i)}
+            disabled={!s.clickable}
+            aria-current={i === selected ? 'step' : undefined}
+            title={s.clickable ? `View ${s.label}` : undefined}
+            className={`flex w-full min-w-0 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${
+              i === selected ? 'bg-[#f7f6f3]' : s.clickable ? 'hover:bg-[#faf9f7]' : 'cursor-default'
+            }`}
+          >
           <span
             className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
               s.state === 'done' ? 'bg-black text-white'
@@ -158,9 +223,95 @@ function Stepper({ steps }: { steps: { label: string; sub: string; state: StepSt
             <span className={`block truncate text-xs font-semibold ${s.state === 'upcoming' ? 'text-gray-400' : 'text-gray-900'}`}>{s.label}</span>
             <span className={`block truncate text-[11px] ${s.state === 'active' ? 'text-[#a07530]' : 'text-gray-400'}`}>{s.sub}</span>
           </span>
+          </button>
         </li>
       ))}
     </ol>
+  )
+}
+
+// Research, updates since the brief and cautions — shown on the hook screen
+// and when looking back at the research step.
+function ResearchCards({ project }: { project: InterviewLetterProject }) {
+  return (
+    <>
+      <Card>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">Research</p>
+          {project.research_provider && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+              <Search size={11} />
+              {project.research_provider === 'gemini' ? 'Checked with Gemini + Google Search' : 'Checked with Claude web search'}
+              {project.editorial_brief_title ? ` against ${project.editorial_brief_title}` : ''}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col gap-2.5">
+          {project.research.length === 0 ? (
+            <p className="text-sm text-gray-400">No research bullets came back.</p>
+          ) : (
+            project.research.map((bullet, i) => <ResearchLine key={i} text={bullet} />)
+          )}
+        </div>
+      </Card>
+
+      {project.editorial_brief_title && (project.research_updates || []).length > 0 && (
+        <Card>
+          <SectionLabel>Updates since the Editorial Brief</SectionLabel>
+          <div className="flex flex-col gap-2.5">
+            {project.research_updates.map((line, i) => <ResearchLine key={i} text={line} />)}
+          </div>
+        </Card>
+      )}
+
+      {(project.research_cautions || []).length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm sm:p-6">
+          <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-700">
+            <AlertTriangle size={12} /> Cautions
+          </p>
+          <div className="flex flex-col gap-2.5">
+            {project.research_cautions.map((line, i) => <ResearchLine key={i} text={line} />)}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// The approved letter with its Copy and Download actions.
+function ApprovedLetterCard({ text, onDownload }: { text: string; onDownload: () => void }) {
+  return (
+    <Card tone="emerald">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <SectionLabel>Approved Letter</SectionLabel>
+        <div className="-mt-3 flex items-center gap-2">
+          <CopyButton text={text} />
+          <button
+            type="button"
+            onClick={onDownload}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
+          >
+            <Download size={13} /> Download
+          </button>
+        </div>
+      </div>
+      <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{text}</div>
+    </Card>
+  )
+}
+
+// Secondary action button used in the step views.
+function SecondaryButton({ onClick, disabled, children, icon }: { onClick: () => void; disabled?: boolean; children: React.ReactNode; icon?: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-2 rounded-xl border border-[#e5e3df] bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+    >
+      {icon}
+      {children}
+    </button>
   )
 }
 
@@ -170,13 +321,20 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
   const [runError, setRunError] = useState<string | null>(null)
   const [stalled, setStalled] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [hook, setHook] = useState(project.confirmed_hook || project.hook_input || project.hook_ai_suggestion || '')
+  // The editor's "additional context" (hook_input) is research input, not a
+  // hook, so it never pre-fills the box.
+  const [hook, setHook] = useState(project.confirmed_hook || project.hook_ai_suggestion || '')
   const [emailFeedback, setEmailFeedback] = useState('')
   const [personalizeOpen, setPersonalizeOpen] = useState(false)
-  const [exportOpen, setExportOpen] = useState(false)
+  // Which letter the download dialog is for: the master (null personalization)
+  // or one recipient's personalized letter.
+  const [download, setDownload] = useState<{ personalization: InterviewLetterPersonalization | null } | null>(null)
   const [personalizations, setPersonalizations] = useState<InterviewLetterPersonalization[]>([])
   const [expandedPersonalizationId, setExpandedPersonalizationId] = useState<string | null>(null)
   const [personalizationView, setPersonalizationView] = useState<'email' | 'letter'>('email')
+  // A step opened from the header to look at; null follows the project's
+  // current step.
+  const [viewStep, setViewStep] = useState<StepKey | null>(null)
   const pollCountRef = useRef(0)
   const startedRef = useRef(false)
 
@@ -193,33 +351,51 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
     return () => clearInterval(ticker)
   }, [busy])
 
-  const startResearch = useCallback(async () => {
+  // `rerun` refreshes the research from a later step; the letter and email
+  // stay, and a failed re-run leaves the project on the step it was on.
+  const startResearch = useCallback(async (rerun = false) => {
     setBusy(true)
     setRunError(null)
     setStalled(false)
     setStatusText('Researching…')
+    setViewStep(null)
+    if (rerun) setProject((p) => ({ ...p, stage: 'researching' }))
+    let finished = false
     try {
-      const res = await fetch(`/api/interview-letters/${project.id}/research`, { method: 'POST' })
+      const res = await fetch(`/api/interview-letters/${project.id}/research`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rerun }),
+      })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setRunError(data.error || 'Research failed')
         setBusy(false)
+        if (rerun) await refreshProject()
         return
       }
       await readSSE(res, (data) => {
-        const d = data as { status?: string; error?: string; done?: boolean; research?: string[]; hookAiSuggestion?: string }
-        if (d.status === 'web_search_start') setStatusText('Searching…')
-        else if (d.status === 'researching') setStatusText('Researching…')
+        const d = data as {
+          status?: string; error?: string; done?: boolean; provider?: 'gemini' | 'claude'
+          research?: string[]; researchUpdates?: string[]; researchCautions?: string[]; hookAiSuggestion?: string
+        }
+        if (d.status === 'web_search_start') setStatusText('Checking the latest sources…')
+        else if (d.status === 'researching') setStatusText(project.editorial_brief_title ? 'Reading the Editorial Brief…' : 'Researching…')
         else if (d.status === 'refining') setStatusText('Refining…')
+        else if (d.status === 'synthesising') setStatusText(project.editorial_brief_title ? 'Comparing with the Editorial Brief…' : 'Summarising the research…')
         else if (d.error) setRunError(d.error)
         else if (d.done) {
           setProject((p) => ({
             ...p,
             stage: 'hook_review',
             research: d.research || [],
+            research_updates: d.researchUpdates || [],
+            research_cautions: d.researchCautions || [],
+            research_provider: d.provider || p.research_provider,
             hook_ai_suggestion: d.hookAiSuggestion || null,
           }))
-          setHook((prev) => prev || d.hookAiSuggestion || '')
+          setHook(rerun ? d.hookAiSuggestion || '' : (prev) => prev || d.hookAiSuggestion || '')
+          finished = true
         }
       })
     } catch {
@@ -227,8 +403,39 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
     } finally {
       setBusy(false)
       setStatusText(null)
+      if (rerun && !finished) await refreshProject()
     }
-  }, [project.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id, project.editorial_brief_title])
+
+  // Re-reads the project (e.g. after a failed re-run put it back on its step).
+  async function refreshProject() {
+    const res = await fetch(`/api/interview-letters/${project.id}`)
+    if (res.ok) setProject(await res.json())
+  }
+
+  async function reopenStep(step: 'hook' | 'letter' | 'email') {
+    setBusy(true)
+    setRunError(null)
+    const res = await fetch(`/api/interview-letters/${project.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reopen: step }),
+    })
+    const data = await res.json().catch(() => ({}))
+    setBusy(false)
+    if (!res.ok) {
+      setRunError(data.error || 'Could not reopen that step.')
+      return
+    }
+    setProject((p) => ({ ...p, stage: data.stage }))
+    setViewStep(null)
+  }
+
+  function handleRerunResearch() {
+    if (!window.confirm('Run the research again? It replaces the current research and costs a little more. Your letter and email are kept.')) return
+    startResearch(true)
+  }
 
   // Auto-start research once, right after project creation.
   useEffect(() => {
@@ -269,7 +476,8 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
       body: JSON.stringify({ resetStalledStage: true }),
     })
     setProject((p) => ({ ...p, stage: 'input' }))
-    startedRef.current = false
+    startedRef.current = true
+    startResearch()
   }
 
   async function handleConfirmHook() {
@@ -290,7 +498,14 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
       setRunError(data.error || 'Failed to generate the letter.')
       return
     }
-    setProject((p) => ({ ...p, stage: 'letter_review', paragraphs: data.paragraphs, confirmed_hook: hook, hook_source: hookSource }))
+    setProject((p) => ({
+      ...p,
+      stage: 'letter_review',
+      paragraphs: data.paragraphs,
+      samples_used: data.samplesUsed || [],
+      confirmed_hook: hook,
+      hook_source: hookSource,
+    }))
   }
 
   async function handleApproveParagraph(key: string) {
@@ -301,6 +516,17 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
     })
     const data = await res.json().catch(() => ({}))
     if (res.ok) setProject((p) => ({ ...p, paragraphs: data.paragraphs }))
+  }
+
+  async function handleUnlockParagraph(key: string) {
+    const res = await fetch(`/api/interview-letters/${project.id}/letter/unlock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.ok) setProject((p) => ({ ...p, paragraphs: data.paragraphs }))
+    else setRunError(data.error || 'Could not unlock this paragraph.')
   }
 
   async function handleRegenerateParagraph(key: string, feedback: string) {
@@ -403,12 +629,23 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
     : 'upcoming'
   const doneStep: StepState = project.stage === 'complete' ? 'done' : 'upcoming'
 
+  const currentStep = stepForStage(project.stage)
+  // Steps there is something to look at (never while an AI call is running).
+  const hasContent: Record<StepKey, boolean> = {
+    research: project.research.length > 0,
+    letter: Boolean(project.master_letter) || (project.paragraphs || []).length > 0,
+    email: Boolean(project.master_email),
+    send: project.stage === 'complete',
+  }
+  const reviewing = viewStep && viewStep !== currentStep ? viewStep : null
+  const shownStep = reviewing || currentStep
+
   const steps = [
     { label: 'Research & Hook', sub: project.stage === 'researching' || project.stage === 'input' ? (statusText || 'Working…') : 'Why-now hook', state: researchStep },
     { label: 'Letter', sub: project.stage === 'letter_review' ? `${totalLetterWords} words` : 'Paragraph by paragraph', state: letterStep },
     { label: 'Email', sub: 'General cover email', state: emailStep },
     { label: 'Send', sub: 'Export & personalize', state: doneStep },
-  ]
+  ].map((step, i) => ({ ...step, clickable: !busy && (STEP_KEYS[i] === currentStep || hasContent[STEP_KEYS[i]]) }))
 
   const stageMeta = STAGE_META[project.stage] || { label: project.stage, tone: 'bg-gray-100 text-gray-600' }
 
@@ -428,6 +665,10 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                   {project.media_partner_country && (
                     <span className="inline-flex items-center gap-1.5"><Newspaper size={12} />{project.media_partner_country}</span>
                   )}
+                  <span className="inline-flex items-center gap-1.5"><Anchor size={12} />{variantLabel(project.letter_variant)}</span>
+                  {project.editorial_brief_title && (
+                    <span className="inline-flex items-center gap-1.5"><FileText size={12} />{project.editorial_brief_title}</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -435,7 +676,11 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
               {stageMeta.label}
             </span>
           </div>
-          <Stepper steps={steps} />
+          <Stepper
+            steps={steps}
+            selected={STEP_KEYS.indexOf(shownStep)}
+            onSelect={(i) => setViewStep(STEP_KEYS[i] === currentStep ? null : STEP_KEYS[i])}
+          />
         </div>
 
         {runError && (
@@ -458,268 +703,388 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
           </div>
         )}
 
-        {(project.stage === 'input' || project.stage === 'researching') && !stalled && (
-          <InterviewLetterLoader label={statusText || 'Starting research…'} elapsedSecs={elapsedSecs} variant="research" />
-        )}
-
-        {project.stage === 'failed' && (
-          <div className="flex flex-col items-start gap-4 rounded-2xl border border-[#e5e3df] bg-white p-8 shadow-sm">
-            <div className="rounded-full bg-red-50 p-3 text-red-600">
-              <AlertCircle size={20} />
-            </div>
-            <p className="text-sm text-gray-600">{project.error || 'Something went wrong.'}</p>
-            <PrimaryButton onClick={startResearch} loading={busy} icon={<RotateCcw size={15} />}>
-              Retry Research
-            </PrimaryButton>
-          </div>
-        )}
-
-        {project.stage === 'hook_review' && busy && (
-          <InterviewLetterLoader label="Generating the letter…" elapsedSecs={elapsedSecs} variant="letter" />
-        )}
-
-        {project.stage === 'hook_review' && !busy && (
+        {reviewing && (
           <div className="flex flex-col gap-5">
-            <Card>
-              <SectionLabel>Research</SectionLabel>
-              <div className="flex flex-col gap-2.5">
-                {project.research.length === 0 ? (
-                  <p className="text-sm text-gray-400">No research bullets came back.</p>
-                ) : (
-                  project.research.map((bullet, i) => (
-                    <p key={i} className="text-sm leading-relaxed text-gray-700">• {bullet}</p>
-                  ))
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 shadow-sm">
+              <span>You’re looking back at an earlier step. Nothing changes unless you reopen it.</span>
+              <button
+                type="button"
+                onClick={() => setViewStep(null)}
+                className="text-xs font-medium underline underline-offset-2 hover:text-black"
+              >
+                Back to current step
+              </button>
+            </div>
+
+            {reviewing === 'research' && (
+              <>
+                <ResearchCards project={project} />
+                {project.confirmed_hook && (
+                  <Card>
+                    <SectionLabel>{project.letter_variant === 'anchor' ? 'Confirmed anchor & hook' : 'Confirmed purpose & hook'}</SectionLabel>
+                    <p className="text-sm leading-relaxed text-gray-800">{project.confirmed_hook}</p>
+                  </Card>
                 )}
-              </div>
-            </Card>
-
-            <Card>
-              <Textarea
-                label="Why-Now Hook"
-                value={hook}
-                onChange={(e) => setHook(e.target.value)}
-                rows={3}
-              />
-              <p className="mt-1.5 text-xs text-gray-400">
-                {project.hook_input ? 'Your original hook takes priority — edit freely, or use the AI suggestion below.' : 'AI-proposed based on the research above. Edit, replace, or accept it.'}
-              </p>
-              {project.hook_ai_suggestion && project.hook_ai_suggestion !== hook && (
-                <button
-                  type="button"
-                  onClick={() => setHook(project.hook_ai_suggestion || '')}
-                  className="mt-1.5 text-xs text-gray-500 underline underline-offset-2 hover:text-black"
-                >
-                  Use AI suggestion: “{project.hook_ai_suggestion}”
-                </button>
-              )}
-            </Card>
-
-            <PrimaryButton onClick={handleConfirmHook} loading={busy} disabled={!hook.trim()} icon={<Sparkles size={15} />}>
-              Generate Letter
-            </PrimaryButton>
-          </div>
-        )}
-
-        {project.stage === 'letter_review' && (
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">Letter Paragraphs</h2>
-              <span className="text-xs text-gray-400">{totalLetterWords} words total</span>
-            </div>
-            {project.paragraphs.map((p) => (
-              <ParagraphCard
-                key={p.key}
-                paragraph={p}
-                disabled={busy}
-                onApprove={() => handleApproveParagraph(p.key)}
-                onRegenerate={(feedback) => handleRegenerateParagraph(p.key, feedback)}
-              />
-            ))}
-            <PrimaryButton onClick={handleFinalApprove} loading={busy} disabled={unlockedCount > 0} icon={<Check size={15} />}>
-              {unlockedCount > 0 ? `${unlockedCount} paragraph${unlockedCount === 1 ? '' : 's'} left to approve` : 'Final Approve'}
-            </PrimaryButton>
-          </div>
-        )}
-
-        {project.stage === 'letter_approved' && busy && (
-          <InterviewLetterLoader label="Generating the general email…" elapsedSecs={elapsedSecs} variant="email" />
-        )}
-
-        {project.stage === 'letter_approved' && !busy && (
-          <div className="flex flex-col gap-5">
-            <Card tone="emerald">
-              <SectionLabel>Approved Letter</SectionLabel>
-              <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
-                {project.master_letter}
-              </div>
-            </Card>
-            {project.sender_name && (
-              <p className="text-xs text-gray-400">
-                The cover email will be signed by {project.sender_name}
-                {project.sender_title ? `, ${project.sender_title}` : ''}.
-              </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <PrimaryButton onClick={() => reopenStep('hook')} loading={busy} icon={<Pencil size={15} />}>
+                    Edit hook &amp; redraft letter
+                  </PrimaryButton>
+                  <SecondaryButton onClick={handleRerunResearch} disabled={busy} icon={<RotateCcw size={14} />}>
+                    Run research again
+                  </SecondaryButton>
+                </div>
+              </>
             )}
-            <PrimaryButton onClick={handleGenerateEmail} loading={busy} icon={<Sparkles size={15} />}>
-              Generate General Email
-            </PrimaryButton>
+
+            {reviewing === 'letter' && (
+              <>
+                {project.master_letter ? (
+                  <ApprovedLetterCard text={project.master_letter} onDownload={() => setDownload({ personalization: null })} />
+                ) : (
+                  <Card>
+                    <SectionLabel>Letter draft</SectionLabel>
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+                      {(project.paragraphs || []).map((p) => p.content).join('\n\n')}
+                    </div>
+                  </Card>
+                )}
+                <div>
+                  <PrimaryButton onClick={() => reopenStep('letter')} loading={busy} icon={<Pencil size={15} />}>
+                    {currentStep === 'research' ? 'Keep this letter' : 'Edit letter'}
+                  </PrimaryButton>
+                </div>
+              </>
+            )}
+
+            {reviewing === 'email' && (
+              <>
+                <Card>
+                  <div className="mb-3 flex items-center justify-between">
+                    <SectionLabel>{project.stage === 'complete' ? 'Approved General Email' : 'General Email'}</SectionLabel>
+                    <CopyButton text={project.master_email || ''} />
+                  </div>
+                  <EmailPreview text={project.master_email || ''} />
+                </Card>
+                {(project.stage === 'complete' || project.stage === 'letter_approved') && (
+                  <div>
+                    <PrimaryButton onClick={() => reopenStep('email')} loading={busy} icon={<Pencil size={15} />}>
+                      {project.stage === 'letter_approved' ? 'Keep this email' : 'Edit email'}
+                    </PrimaryButton>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
-        {(project.stage === 'email_review' || project.stage === 'complete') && (
-          <div className="flex flex-col gap-5">
-            <Card>
-              <div className="mb-3 flex items-center justify-between">
-                <SectionLabel>
-                  {project.stage === 'complete' ? 'Approved General Email' : 'General Email Draft'}
-                </SectionLabel>
-                <CopyButton text={project.master_email || ''} />
-              </div>
-              <EmailPreview text={project.master_email || ''} />
-            </Card>
+        {!reviewing && (
+          <>
+          {(project.stage === 'input' || project.stage === 'researching') && !stalled && (
+            <InterviewLetterLoader label={statusText || 'Starting research…'} elapsedSecs={elapsedSecs} variant="research" />
+          )}
 
-            {project.stage === 'email_review' && (
+          {project.stage === 'failed' && (
+            <div className="flex flex-col items-start gap-4 rounded-2xl border border-[#e5e3df] bg-white p-8 shadow-sm">
+              <div className="rounded-full bg-red-50 p-3 text-red-600">
+                <AlertCircle size={20} />
+              </div>
+              <p className="text-sm text-gray-600">{project.error || 'Something went wrong.'}</p>
+              <PrimaryButton onClick={() => startResearch()} loading={busy} icon={<RotateCcw size={15} />}>
+                Retry Research
+              </PrimaryButton>
+            </div>
+          )}
+
+          {project.stage === 'hook_review' && busy && (
+            <InterviewLetterLoader label="Generating the letter…" elapsedSecs={elapsedSecs} variant="letter" />
+          )}
+
+          {project.stage === 'hook_review' && !busy && (
+            <div className="flex flex-col gap-5">
+              <ResearchCards project={project} />
+
               <Card>
                 <Textarea
-                  label="Feedback"
-                  value={emailFeedback}
-                  onChange={(e) => setEmailFeedback(e.target.value)}
-                  placeholder="Feedback for regenerating the email (optional)"
-                  rows={2}
+                  label={project.letter_variant === 'anchor' ? 'Anchor & Why-Now Hook' : 'Report Purpose & Why-Now Hook'}
+                  value={hook}
+                  onChange={(e) => setHook(e.target.value)}
+                  rows={3}
                 />
-                <div className="mt-3 flex items-center gap-3">
-                  <PrimaryButton onClick={handleApproveEmail} loading={busy} icon={<Check size={15} />}>
-                    Approve Email
-                  </PrimaryButton>
+                <p className="mt-1.5 text-xs text-gray-400">
+                  {project.letter_variant === 'anchor'
+                    ? `Built on your anchor${project.anchor ? ` (${project.anchor})` : ''}: how it connects to the report. Edit, replace, or accept it.`
+                    : 'The report’s purpose and why it is timely now, proposed from the research above. Edit, replace, or accept it.'}
+                </p>
+                {project.hook_ai_suggestion && project.hook_ai_suggestion !== hook && (
                   <button
                     type="button"
-                    onClick={handleRegenerateEmail}
-                    disabled={busy}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-black disabled:opacity-50"
+                    onClick={() => setHook(project.hook_ai_suggestion || '')}
+                    className="mt-1.5 text-xs text-gray-500 underline underline-offset-2 hover:text-black"
                   >
-                    <RotateCcw size={12} /> Regenerate
+                    Use AI suggestion: “{project.hook_ai_suggestion}”
                   </button>
-                </div>
+                )}
               </Card>
-            )}
-          </div>
-        )}
 
-        {project.stage === 'complete' && (
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setExportOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
-              >
-                <Download size={14} /> Export Letter
-              </button>
-              <button
-                type="button"
-                onClick={() => setPersonalizeOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-[#e5e3df] bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
-              >
-                <UserPlus size={14} /> Personalize for a Recipient
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <PrimaryButton onClick={handleConfirmHook} loading={busy} disabled={!hook.trim()} icon={<Sparkles size={15} />}>
+                  {(project.paragraphs || []).length > 0 ? 'Redraft Letter' : 'Generate Letter'}
+                </PrimaryButton>
+                {(project.paragraphs || []).length > 0 && (
+                  <SecondaryButton onClick={() => reopenStep('letter')} disabled={busy}>
+                    Keep the current letter
+                  </SecondaryButton>
+                )}
+              </div>
             </div>
+          )}
 
-            {personalizations.length > 0 && (
-              <div>
-                <h2 className="mb-3 text-sm font-semibold text-gray-900">Personalized Outputs</h2>
-                <div className="flex flex-col gap-3">
-                  {personalizations.map((p) => {
-                    const isOpen = expandedPersonalizationId === p.id
-                    return (
-                      <Card key={p.id} className="!p-4 sm:!p-5">
-                        <div className="mb-2 flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-800">
-                            {p.recipient_name || 'Unnamed recipient'}
-                            {p.recipient_title ? ` — ${p.recipient_title}` : ''}
-                          </span>
-                          <span className="text-xs text-gray-400">{formatDayMonthYear(p.created_at)}</span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isOpen) {
-                                setExpandedPersonalizationId(null)
-                              } else {
-                                setExpandedPersonalizationId(p.id)
-                                setPersonalizationView('email')
-                              }
-                            }}
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 transition-colors hover:text-black"
-                          >
-                            {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                            {isOpen ? 'Hide' : 'View'}
-                          </button>
-                          <div className="flex items-center gap-2">
-                            <CopyButton text={p.email_text} label="Copy email" />
-                            <CopyButton text={p.letter_text} label="Copy letter" />
+          {project.stage === 'letter_review' && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-900">Letter Paragraphs</h2>
+                <span className="text-xs text-gray-400">{totalLetterWords} words total</span>
+              </div>
+              {(project.samples_used || []).length > 0 && (
+                <p className="-mt-2 text-xs text-gray-400">
+                  Style references: {project.samples_used.map((s) => s.title).join(', ')}
+                </p>
+              )}
+              {project.paragraphs.map((p) => (
+                <ParagraphCard
+                  key={p.key}
+                  paragraph={p}
+                  disabled={busy}
+                  onApprove={() => handleApproveParagraph(p.key)}
+                  onRegenerate={(feedback) => handleRegenerateParagraph(p.key, feedback)}
+                  onUnlock={() => handleUnlockParagraph(p.key)}
+                />
+              ))}
+              <PrimaryButton onClick={handleFinalApprove} loading={busy} disabled={unlockedCount > 0} icon={<Check size={15} />}>
+                {unlockedCount > 0 ? `${unlockedCount} paragraph${unlockedCount === 1 ? '' : 's'} left to approve` : 'Final Approve'}
+              </PrimaryButton>
+            </div>
+          )}
+
+          {project.stage === 'letter_approved' && busy && (
+            <InterviewLetterLoader label="Generating the general email…" elapsedSecs={elapsedSecs} variant="email" />
+          )}
+
+          {project.stage === 'letter_approved' && !busy && (
+            <div className="flex flex-col gap-5">
+              <ApprovedLetterCard text={project.master_letter || ''} onDownload={() => setDownload({ personalization: null })} />
+              {project.sender_name && (
+                <p className="text-xs text-gray-400">
+                  The cover email will be signed by {project.sender_name}
+                  {project.sender_title ? `, ${project.sender_title}` : ''}.
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-3">
+                <PrimaryButton onClick={handleGenerateEmail} loading={busy} icon={<Sparkles size={15} />}>
+                  {project.master_email ? 'Regenerate General Email' : 'Generate General Email'}
+                </PrimaryButton>
+                {project.master_email && (
+                  <SecondaryButton onClick={() => reopenStep('email')} disabled={busy}>
+                    Keep the current email
+                  </SecondaryButton>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(project.stage === 'email_review' || project.stage === 'complete') && (
+            <div className="flex flex-col gap-5">
+              <Card>
+                <div className="mb-3 flex items-center justify-between">
+                  <SectionLabel>
+                    {project.stage === 'complete' ? 'Approved General Email' : 'General Email Draft'}
+                  </SectionLabel>
+                  <CopyButton text={project.master_email || ''} />
+                </div>
+                <EmailPreview text={project.master_email || ''} />
+              </Card>
+
+              {project.stage === 'email_review' && (
+                <Card>
+                  <Textarea
+                    label="Feedback"
+                    value={emailFeedback}
+                    onChange={(e) => setEmailFeedback(e.target.value)}
+                    placeholder="Feedback for regenerating the email (optional)"
+                    rows={2}
+                  />
+                  <div className="mt-3 flex items-center gap-3">
+                    <PrimaryButton onClick={handleApproveEmail} loading={busy} icon={<Check size={15} />}>
+                      Approve Email
+                    </PrimaryButton>
+                    <button
+                      type="button"
+                      onClick={handleRegenerateEmail}
+                      disabled={busy}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-black disabled:opacity-50"
+                    >
+                      <RotateCcw size={12} /> Regenerate
+                    </button>
+                  </div>
+                </Card>
+              )}
+
+              {project.stage === 'email_review' && (
+                <div>
+                  <DownloadLetterButton onClick={() => setDownload({ personalization: null })} label="Download Approved Letter" />
+                </div>
+              )}
+            </div>
+          )}
+
+          {project.stage === 'complete' && (
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDownload({ personalization: null })}
+                  className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
+                >
+                  <Download size={14} /> Download Letter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPersonalizeOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[#e5e3df] bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+                >
+                  <UserPlus size={14} /> Personalize for a Recipient
+                </button>
+              </div>
+
+              {personalizations.length > 0 && (
+                <div>
+                  <h2 className="mb-3 text-sm font-semibold text-gray-900">Personalized Outputs</h2>
+                  <div className="flex flex-col gap-3">
+                    {personalizations.map((p) => {
+                      const isOpen = expandedPersonalizationId === p.id
+                      return (
+                        <Card key={p.id} className="!p-4 sm:!p-5">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-800">
+                              {p.recipient_name || 'Unnamed recipient'}
+                              {p.recipient_title ? ` — ${p.recipient_title}` : ''}
+                            </span>
+                            <span className="text-xs text-gray-400">{formatDayMonthYear(p.created_at)}</span>
                           </div>
-                        </div>
-
-                        {isOpen && (
-                          <div className="mt-4 flex flex-col gap-3 border-t border-[#e5e3df] pt-4">
-                            <div className="inline-flex self-start overflow-hidden rounded-lg border border-[#e5e3df]">
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isOpen) {
+                                  setExpandedPersonalizationId(null)
+                                } else {
+                                  setExpandedPersonalizationId(p.id)
+                                  setPersonalizationView('email')
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 transition-colors hover:text-black"
+                            >
+                              {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                              {isOpen ? 'Hide' : 'View'}
+                            </button>
+                            <div className="flex items-center gap-2">
+                              <CopyButton text={p.email_text} label="Copy email" />
+                              <CopyButton text={p.letter_text} label="Copy letter" />
                               <button
                                 type="button"
-                                onClick={() => setPersonalizationView('email')}
-                                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                                  personalizationView === 'email' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
-                                }`}
+                                onClick={() => setDownload({ personalization: p })}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
                               >
-                                Email
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setPersonalizationView('letter')}
-                                className={`border-l border-[#e5e3df] px-3 py-1.5 text-xs font-medium transition-colors ${
-                                  personalizationView === 'letter' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
-                                }`}
-                              >
-                                Letter
+                                <Download size={13} /> Download letter
                               </button>
                             </div>
-
-                            {personalizationView === 'email' ? (
-                              <EmailPreview text={p.email_text} />
-                            ) : (
-                              <div className="rounded-xl border border-[#e5e3df] px-4 py-4 text-sm leading-relaxed text-gray-800 sm:px-5">
-                                <div className="whitespace-pre-wrap">{p.letter_text}</div>
-                              </div>
-                            )}
                           </div>
-                        )}
-                      </Card>
-                    )
-                  })}
+
+                          {isOpen && (
+                            <div className="mt-4 flex flex-col gap-3 border-t border-[#e5e3df] pt-4">
+                              <div className="inline-flex self-start overflow-hidden rounded-lg border border-[#e5e3df]">
+                                <button
+                                  type="button"
+                                  onClick={() => setPersonalizationView('email')}
+                                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    personalizationView === 'email' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
+                                  }`}
+                                >
+                                  Email
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPersonalizationView('letter')}
+                                  className={`border-l border-[#e5e3df] px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    personalizationView === 'letter' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
+                                  }`}
+                                >
+                                  Letter
+                                </button>
+                              </div>
+
+                              {personalizationView === 'email' ? (
+                                <EmailPreview text={p.email_text} />
+                              ) : (
+                                <div className="rounded-xl border border-[#e5e3df] px-4 py-4 text-sm leading-relaxed text-gray-800 sm:px-5">
+                                  <div className="whitespace-pre-wrap">{p.letter_text}</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </Card>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <PersonalizeModal
-              open={personalizeOpen}
-              onClose={() => setPersonalizeOpen(false)}
-              onCreated={(p) => {
-                setPersonalizations((prev) => [p, ...prev])
-                setExpandedPersonalizationId(p.id)
-                setPersonalizationView('email')
-              }}
-              projectId={project.id}
-            />
-
-            <DownloadTemplateModal
-              open={exportOpen}
-              onClose={() => setExportOpen(false)}
-              baseUrl={`/api/interview-letters/${project.id}/export`}
-              filenameBase={`${project.company} — ${project.media_partner} — Interview Letter`}
-              defaultTemplateId={guessTemplateId(project.company, project.media_partner)}
-            />
-          </div>
+              <PersonalizeModal
+                open={personalizeOpen}
+                onClose={() => setPersonalizeOpen(false)}
+                onCreated={(p) => {
+                  setPersonalizations((prev) => [p, ...prev])
+                  setExpandedPersonalizationId(p.id)
+                  setPersonalizationView('email')
+                }}
+                projectId={project.id}
+              />
+            </div>
+          )}
+          </>
         )}
       </div>
+
+      {download?.personalization ? (
+        <DownloadTemplateModal
+          open
+          onClose={() => setDownload(null)}
+          baseUrl={`/api/interview-letters/${project.id}/export`}
+          extraParams={{ personalization: download.personalization.id }}
+          filenameBase={letterDownloadName(project.project_country, {
+            name: download.personalization.recipient_name,
+            title: download.personalization.recipient_title,
+            organisation: download.personalization.recipient_organisation,
+          })}
+          variantLabel={download.personalization.recipient_name || 'Personalized'}
+          variantTone="final"
+          defaultTemplateId={guessTemplateId(project.company, project.media_partner)}
+        />
+      ) : (
+        <DownloadTemplateModal
+          open={Boolean(download)}
+          onClose={() => setDownload(null)}
+          baseUrl={`/api/interview-letters/${project.id}/export`}
+          fields={[
+            { key: 'recipientName', label: 'Recipient name', placeholder: 'e.g. Jane Doe' },
+            { key: 'recipientTitle', label: 'Designation', placeholder: 'e.g. Minister of Finance' },
+            { key: 'recipientOrganisation', label: 'Company / Ministry', placeholder: 'e.g. Ministry of Finance' },
+          ]}
+          fieldsHint="Optional. Fill these in to address the letter: they go into the header, the “Dear …,” line and the file name. Leave them blank to get the letter with highlighted placeholders."
+          filenameBase={(v) => letterDownloadName(project.project_country, { name: v.recipientName, title: v.recipientTitle, organisation: v.recipientOrganisation })}
+          defaultTemplateId={guessTemplateId(project.company, project.media_partner)}
+        />
+      )}
     </div>
   )
 }

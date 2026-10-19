@@ -8,6 +8,7 @@ import type {
   InterviewType,
   MeetingPrepPromptKey,
   InterviewLetterCompany,
+  InterviewLetterVariant,
   SalesCoachKnowledgeKey,
   CopywritingPromptKey,
 } from "@/types";
@@ -37,6 +38,8 @@ interface Props {
   promptKey?: MeetingPrepPromptKey;
   // Required when type === 'interview_letter_template', 'interview_letter_research_prompt', or 'interview_letter_email_prompt'.
   company?: InterviewLetterCompany;
+  // Required when type === 'interview_letter_template' — which letter version.
+  letterVariant?: InterviewLetterVariant;
   // Required when type === 'sales_coach_knowledge'.
   docKey?: SalesCoachKnowledgeKey;
   // Required when type === 'copywriting_prompt'.
@@ -57,6 +60,7 @@ export default function PromptVersionHistory({
   variant,
   promptKey,
   company,
+  letterVariant,
   docKey,
   copywritingPromptKey,
   currentPromptText,
@@ -77,7 +81,7 @@ export default function PromptVersionHistory({
             : type === "meeting_prep_prompt"
               ? `/api/meeting-prep/prompts/${promptKey}/versions`
               : type === "interview_letter_template"
-                ? `/api/interview-letters/templates/${company}/versions`
+                ? `/api/interview-letters/templates/${company}/versions?variant=${letterVariant}`
                 : type === "interview_letter_research_prompt"
                   ? `/api/interview-letters/research-prompt/${company}/versions`
                   : type === "interview_letter_email_prompt"

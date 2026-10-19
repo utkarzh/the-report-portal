@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { GENERATION_TOKEN_RESERVE } from '@/lib/claude/tokens'
+import { canonicalMediaName } from '@/lib/media-library-server'
 
 // POST /api/sessions — creates the research session record and returns its ID.
 // Does NOT call Claude. The client navigates to the session page, which then
@@ -39,6 +40,8 @@ export async function POST(request: NextRequest) {
   if (!categoryId || !fullName || !titlePosition || !companyOrg || !countryFocus || !publication || !mediaPartnerCountry) {
     return NextResponse.json({ error: 'All fields are required' }, { status: 400 })
   }
+  // Saved with the Media Library's own spelling (see canonicalMediaName).
+  const publicationName = await canonicalMediaName(publication)
 
   const { data: category } = await supabaseAdmin
     .from('categories')
@@ -64,7 +67,7 @@ export async function POST(request: NextRequest) {
       title_position: titlePosition,
       company_org: companyOrg,
       country_focus: countryFocus,
-      publication,
+      publication: publicationName,
       media_partner_country: mediaPartnerCountry,
       general_prompt_snapshot: generalPromptData?.prompt_text || '',
       category_prompt_snapshot: category.prompt_text,

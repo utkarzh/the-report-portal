@@ -2,10 +2,12 @@ import { redirect } from 'next/navigation'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import SalesCoachForm from '@/components/sales-coach/SalesCoachForm'
+import { listMediaOptions } from '@/lib/media-library-server'
 
-export default function NewNegotiationPage() {
+export default async function NewNegotiationPage() {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
+  const media = await listMediaOptions()
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
@@ -17,7 +19,7 @@ export default function NewNegotiationPage() {
             Add the context, upload the recording (or paste a transcript), and declare the outcome. The coach transcribes it and produces your Report Card.
           </p>
         </div>
-        <SalesCoachForm userId={profile.id} />
+        <SalesCoachForm userId={profile.id} media={media} />
       </div>
     </div>
   )

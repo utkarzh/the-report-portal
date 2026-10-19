@@ -36,6 +36,7 @@ type RangeKey = (typeof RANGES)[number]["key"];
 
 const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
   research: "Research",
+  research_web_search: "Research — Gemini web search",
   research_questions: "Interview questions",
   transcript_refine: "Transcript refine",
   transcript_translate: "Transcript translate",
@@ -72,6 +73,7 @@ const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
 };
 const WORKFLOW_ORDER: UsageWorkflow[] = [
   "research",
+  "research_web_search",
   "research_questions",
   "transcript_refine",
   "transcript_translate",

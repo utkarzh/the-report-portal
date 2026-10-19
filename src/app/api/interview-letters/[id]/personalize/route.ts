@@ -4,7 +4,7 @@ import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, INTERVIEW_LETTER_PERSONALIZE_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { parseLetterEmailSections } from '@/lib/interview-letters'
+import { applyMediaDescription, parseLetterEmailSections, tokenizeMediaDescription, MEDIA_DESCRIPTION_TOKEN } from '@/lib/interview-letters'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 export const maxDuration = 60
@@ -73,8 +73,16 @@ export async function POST(request: NextRequest, { params }: Params) {
     recipientContext && `Additional context: ${recipientContext}`,
   ].filter(Boolean).join('\n') || '(No recipient details supplied — personalize generically while keeping the letter and email natural to send.)'
 
+  // The approved media description travels as its placeholder and is put
+  // back afterwards, so personalizing can never reword it.
+  const mediaDescription: string | null = project.media_description_snapshot
+  const masterLetter = tokenizeMediaDescription(project.master_letter || '', mediaDescription)
+  const mediaNote = masterLetter.includes(MEDIA_DESCRIPTION_TOKEN)
+    ? `\n\nThe letter contains the placeholder ${MEDIA_DESCRIPTION_TOKEN}. Keep it exactly as written, in the same place: the approved description of the publication is inserted there afterwards.`
+    : ''
+
   const userContent = `--- APPROVED LETTER (master) ---
-${project.master_letter}
+${masterLetter}
 
 --- APPROVED EMAIL (master) ---
 ${project.master_email}
@@ -82,7 +90,7 @@ ${project.master_email}
 --- RECIPIENT ---
 ${recipientBlock}
 
-Personalize both now.`
+Personalize both now.${mediaNote}`
 
   const anthropic = getAnthropicClient()
 
@@ -95,7 +103,9 @@ Personalize both now.`
     })
 
     const text = message.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
-    const { letter, email } = parseLetterEmailSections(text)
+    const sections = parseLetterEmailSections(text)
+    const letter = applyMediaDescription(sections.letter, mediaDescription)
+    const email = sections.email
     const usage = parseUsage(message.usage as unknown, 0)
     const promptTokens = totalPromptTokens(usage)
     const totalTokens = promptTokens + usage.outputTokens

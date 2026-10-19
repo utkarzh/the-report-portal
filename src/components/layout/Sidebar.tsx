@@ -15,6 +15,7 @@ import {
   BarChart3,
   ScrollText,
   Inbox,
+  Newspaper,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -322,6 +323,7 @@ export default function Sidebar({
             </div>
             <NavLink item={{ label: 'Users', href: '/admin/users', icon: Users }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Analytics', href: '/admin/analytics', icon: BarChart3 }} collapsed={collapsed} pathname={pathname} />
+            <NavLink item={{ label: 'Media Library', href: '/admin/media-library', icon: Newspaper }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Feedback', href: '/admin/feedback', icon: Inbox }} collapsed={collapsed} pathname={pathname} />
           </>

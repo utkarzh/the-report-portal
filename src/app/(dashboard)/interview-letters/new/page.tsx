@@ -3,7 +3,12 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { Sparkles, ClipboardList, MessageSquare, Info } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import ProjectSetupForm from '@/components/interview-letters/ProjectSetupForm'
+import { toMediaOption } from '@/lib/media-library'
+import type { InterviewLetterBriefOption } from '@/types'
+
+const DEFAULT_SECTORS = ['Business & Investment', 'Tourism', 'Security', 'Energy', 'Infrastructure', 'Technology', 'Healthcare', 'Agriculture', 'Finance']
 
 export default async function NewInterviewLetterPage() {
   const profile = getProfileFromHeaders()
@@ -11,14 +16,36 @@ export default async function NewInterviewLetterPage() {
 
   const isAtLimit = profile.role === 'user' && profile.tokens_used >= profile.token_limit
 
+  // Reference content for the form: the central Media Library (with each
+  // publication's verbatim letter description),
+  // every complete Editorial Brief (matched to the typed country in the
+  // browser; only titles are sent) and the sectors sample letters are tagged with.
+  const [{ data: media }, { data: briefs }, { data: sampleSectors }] = await Promise.all([
+    supabaseAdmin.from('media_library').select('id, name, country, letter_description').order('name'),
+    supabaseAdmin
+      .from('document_sessions')
+      .select('id, title, project_country, media_partner, created_at')
+      .eq('doc_type', 'editorial_brief')
+      .eq('status', 'complete')
+      .not('output', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(300),
+    supabaseAdmin.from('interview_letter_samples').select('sector'),
+  ])
+  const sectorSuggestions = [...new Set([
+    ...DEFAULT_SECTORS,
+    ...(sampleSectors || []).flatMap((r) => String(r.sector || '').split(',').map((s) => s.trim()).filter(Boolean)),
+  ])]
+
   return (
     <div className="flex flex-col lg:flex-row h-full min-h-0">
       <div className="w-full lg:w-96 bg-white border-b lg:border-b-0 lg:border-r border-[#e5e3df] flex-shrink-0 overflow-y-auto order-1">
         <div className="p-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-1">New Interview Letter Project</h2>
           <p className="text-xs text-gray-500 mb-6">
-            Enter the project details below. The AI researches a why-now hook, then walks you through building
-            the letter paragraph by paragraph, the reusable general email, and optional per-recipient personalization.
+            Enter the project details below. The research builds on the country&apos;s Editorial Brief and checks it
+            against the latest sources. Then you build the letter paragraph by paragraph, followed by the reusable
+            general email and optional per-recipient personalization.
           </p>
 
           {isAtLimit ? (
@@ -29,7 +56,12 @@ export default async function NewInterviewLetterPage() {
               </p>
             </div>
           ) : (
-            <ProjectSetupForm isAtLimit={isAtLimit} />
+            <ProjectSetupForm
+              isAtLimit={isAtLimit}
+              media={(media || []).map((m) => ({ ...toMediaOption(m), letter_description: m.letter_description || '' }))}
+              briefs={(briefs || []) as InterviewLetterBriefOption[]}
+              sectorSuggestions={sectorSuggestions}
+            />
           )}
         </div>
       </div>

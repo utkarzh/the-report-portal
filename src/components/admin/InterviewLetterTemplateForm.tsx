@@ -8,10 +8,12 @@ import Select from '@/components/ui/Select'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import PromptVersionHistory from '@/components/admin/PromptVersionHistory'
-import type { InterviewLetterCompany, InterviewLetterParagraphSlot } from '@/types'
+import { MEDIA_DESCRIPTION_TOKEN } from '@/lib/interview-letters'
+import type { InterviewLetterCompany, InterviewLetterParagraphSlot, InterviewLetterVariant } from '@/types'
 
 interface Props {
   company: InterviewLetterCompany
+  variant: InterviewLetterVariant
   label: string
   initialStructure: InterviewLetterParagraphSlot[]
 }
@@ -22,7 +24,7 @@ function emptySlot(): InterviewLetterParagraphSlot {
   return { key: '', type: 'variable', label: '', instructions: '', wordBudget: 60 }
 }
 
-export default function InterviewLetterTemplateForm({ company, label, initialStructure }: Props) {
+export default function InterviewLetterTemplateForm({ company, variant, label, initialStructure }: Props) {
   const router = useRouter()
   const [structure, setStructure] = useState<InterviewLetterParagraphSlot[]>(initialStructure)
   const [savedStructure, setSavedStructure] = useState<InterviewLetterParagraphSlot[]>(initialStructure)
@@ -105,7 +107,7 @@ export default function InterviewLetterTemplateForm({ company, label, initialStr
     }
 
     setLoading(true)
-    const res = await fetch(`/api/interview-letters/templates/${company}`, {
+    const res = await fetch(`/api/interview-letters/templates/${company}?variant=${variant}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ structure }),
@@ -157,6 +159,13 @@ export default function InterviewLetterTemplateForm({ company, label, initialStr
           />
         </label>
       </div>
+
+      <p className="text-xs text-gray-500 leading-relaxed">
+        To use a publication&apos;s approved description from the Media library, write{' '}
+        <code className="bg-[#f0efec] px-1 py-0.5 text-[11px] text-gray-700">{MEDIA_DESCRIPTION_TOKEN}</code> in a
+        paragraph&apos;s instructions or fixed wording. The description is inserted there word for word after the
+        paragraph is drafted. If the publication isn&apos;t in the library, that part is left out.
+      </p>
 
       <div className="flex flex-col gap-4">
         {structure.map((slot, i) => (
@@ -249,6 +258,7 @@ export default function InterviewLetterTemplateForm({ company, label, initialStr
       <PromptVersionHistory
         type="interview_letter_template"
         company={company}
+        letterVariant={variant}
         currentPromptText={JSON.stringify(structure, null, 2)}
         refreshKey={versionRefreshKey}
         onRestore={(text) => {

@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { canAccessSalesNegotiationCoach } from '@/lib/access'
 import { deriveCompanyFromFilename, isSalesCoachOutcome } from '@/lib/sales-coach'
+import { canonicalMediaName } from '@/lib/media-library-server'
 import type { SalesCoachParticipant } from '@/types'
 
 export const runtime = 'nodejs'
@@ -101,7 +102,8 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       submitted_by_name: profile.full_name || '',
       country: str(country),
-      media_publication: str(mediaPublication),
+      // Saved with the Media Library's own spelling (see canonicalMediaName).
+      media_publication: await canonicalMediaName(str(mediaPublication)),
       company: resolvedCompany,
       interviewee_name: str(intervieweeName),
       interviewee_position: str(intervieweePosition),

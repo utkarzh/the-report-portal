@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
   }
 
   const [{ data: publication }, { data: articleType }] = await Promise.all([
-    supabaseAdmin.from('copywriting_publications').select('id, name').eq('id', publicationId).maybeSingle(),
+    supabaseAdmin.from('media_library').select('id, name').eq('id', publicationId).maybeSingle(),
     supabaseAdmin.from('copywriting_article_types').select('id, name').eq('id', articleTypeId).maybeSingle(),
   ])
   if (!publication) return NextResponse.json({ error: 'Publication not found' }, { status: 400 })

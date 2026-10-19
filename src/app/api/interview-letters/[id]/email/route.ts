@@ -70,7 +70,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
 Company: ${project.company}
 Project country: ${project.project_country}
 Media partner: ${project.media_partner}${project.media_partner_country ? ` (${project.media_partner_country})` : ''}
-
+${project.media_description_snapshot ? `\n--- MEDIA PARTNER DESCRIPTION (approved wording: if the email describes the publication, use this word for word and add no audience or reach claims of your own) ---\n${project.media_description_snapshot}\n` : ''}
 --- SENDER (who this email is from) ---
 Name: ${project.sender_name || '(not supplied)'}
 Title: ${project.sender_title || '(not supplied)'}

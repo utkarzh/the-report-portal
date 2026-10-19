@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getDocConfig, isDocType } from '@/lib/documents'
 import { validateDocumentInputs } from '@/lib/claude/validate-inputs'
 import { getApiUser } from '@/lib/auth/api-user'
+import { canonicalMediaName } from '@/lib/media-library-server'
 
 // POST /api/documents — creates a document_sessions row (Business Case /
 // Editorial Brief). Mirrors /api/sessions: this route does NOT call Claude; it
@@ -82,7 +83,8 @@ export async function POST(request: NextRequest) {
       doc_type: docType,
       title,
       project_country: (projectCountry || '').trim() || null,
-      media_partner: (mediaPartner || '').trim() || null,
+      // Saved with the Media Library's own spelling (see canonicalMediaName).
+      media_partner: (await canonicalMediaName(mediaPartner)) || null,
       media_country: (mediaCountry || '').trim() || null,
       additional_context: (additionalContext || '').trim() || null,
       prompt_snapshot: promptRow?.prompt_text || '',

@@ -5,12 +5,11 @@ import { useRouter } from 'next/navigation'
 import { Upload, FileAudio, X, Loader2, ChevronUp, ChevronDown, FileText } from 'lucide-react'
 import { getSupabaseBrowserClient, ensureFreshSession } from '@/lib/supabase/client'
 import Input from '@/components/ui/Input'
-import Select from '@/components/ui/Select'
 import { TRANSCRIPTION_AUDIO_BUCKET, TRANSCRIPTION_PROVIDER } from '@/lib/transcriptions'
 import { OUTLINE_ACCEPT, OUTLINE_EXT_RE, extractOutlineText } from '@/lib/outline-extract'
-import { PARTNER_NAMES } from '@/lib/download-templates/registry'
+import MediaSelect from '@/components/ui/MediaSelect'
+import type { MediaOption } from '@/types'
 
-const PUBLICATION_OPTIONS = PARTNER_NAMES.map((name) => ({ value: name, label: name }))
 
 type Phase = 'idle' | 'preparing' | 'transcoding' | 'uploading' | 'creating' | 'error'
 
@@ -24,7 +23,7 @@ const MAX_FILES = 5
 
 const AUDIO_EXT_RE = /\.(mp3|wav|m4a|mp4|mpeg|mpga|webm|ogg|oga|flac|aac|aiff?)$/i
 
-export default function TranscriptionUploader({ userId }: { userId: string }) {
+export default function TranscriptionUploader({ userId, media }: { userId: string; media: MediaOption[] }) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const outlineInputRef = useRef<HTMLInputElement>(null)
@@ -293,12 +292,12 @@ export default function TranscriptionUploader({ userId }: { userId: string }) {
           onChange={(e) => setInterviewee((p) => ({ ...p, companyOrg: e.target.value }))}
           disabled={busy}
         />
-        <Select
+        <MediaSelect
           label="Publication *"
+          options={media}
           value={interviewee.publication}
-          onChange={(e) => setInterviewee((p) => ({ ...p, publication: e.target.value }))}
+          onChange={(name) => setInterviewee((p) => ({ ...p, publication: name }))}
           disabled={busy}
-          options={PUBLICATION_OPTIONS}
           placeholder="Select publication…"
         />
       </div>

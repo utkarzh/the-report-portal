@@ -5,6 +5,11 @@ import type { FeedbackType } from '@/types'
 
 export const FEEDBACK_MAX_MESSAGE_LENGTH = 4000
 
+// The floating "Feedback" button on every page. Hidden for now (client
+// request, 19 Oct 2026); set back to true to show it again. Past submissions
+// stay readable at /admin/feedback either way.
+export const FEEDBACK_WIDGET_ENABLED = false
+
 export const RATING_EMOJI: Record<number, string> = {
   1: '😞',
   2: '🙁',

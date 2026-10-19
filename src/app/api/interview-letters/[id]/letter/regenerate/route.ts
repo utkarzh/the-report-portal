@@ -4,7 +4,16 @@ import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, INTERVIEW_LETTER_LETTER_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/interview-letters'
+import {
+  NO_PREAMBLE_INSTRUCTION,
+  applyMediaDescription,
+  extractAfterMarker,
+  hasMediaToken,
+  letterVersionBlock,
+  mediaDescriptionInstruction,
+  researchContextBlock,
+  tokenizeMediaDescription,
+} from '@/lib/interview-letters'
 import type { InterviewLetterParagraph } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -63,21 +72,42 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This paragraph is already locked and cannot be regenerated.' }, { status: 409 })
   }
 
+  // The approved media description is swapped back to its placeholder before
+  // the model sees it and re-applied to the reply, so a rewrite can never
+  // paraphrase it.
+  const mediaDescription: string | null = project.media_description_snapshot
   const lockedContext = paragraphs
     .filter((p) => p.status === 'locked' && p.key !== key)
-    .map((p) => `--- ${p.label.toUpperCase()} (${p.type === 'fixed' ? 'fixed template wording' : 'already approved — do not contradict'}) ---\n${p.content}`)
+    .map((p) => `--- ${p.label.toUpperCase()} (${p.type === 'fixed' ? 'fixed template wording' : 'already approved — do not contradict'}) ---\n${tokenizeMediaDescription(p.content, mediaDescription)}`)
     .join('\n\n')
+  const currentText = tokenizeMediaDescription(target.content, mediaDescription)
+  const usesMedia = hasMediaToken(target.instructions) || hasMediaToken(currentText)
 
   const system = `You are revising ONE variable paragraph of an Interview Request Letter for The Report Company, per the editor's feedback. Rewrite ONLY the "${target.label}" paragraph — do not restate the other paragraphs shown below, they are context only and already final.
 
 Instructions for this paragraph: ${target.instructions || ''}
 Word budget: ${target.wordBudget || 80} words — stay within it.
 
+Use only facts from the research context below (or ones already in the letter); never invent figures, dates or events.
+${usesMedia ? `\n${mediaDescriptionInstruction(Boolean(mediaDescription))}\n` : ''}
 Your reply is not a comment or a diff — it is the ENTIRE, FINAL, ONLY text this paragraph will contain afterward. Write only the paragraph prose itself, nothing else.
 
 ${NO_PREAMBLE_INSTRUCTION}`
 
-  const userContent = `${lockedContext}\n\n--- CURRENT "${target.label.toUpperCase()}" (to be replaced) ---\n${target.content}\n\n--- EDITOR'S FEEDBACK ---\n${(feedback || '').trim() || 'Improve this paragraph.'}`
+  const userContent = `${letterVersionBlock(project)}
+
+--- CONFIRMED WHY-NOW HOOK ---
+${project.confirmed_hook || '(none)'}
+
+${researchContextBlock(project)}
+
+${lockedContext}
+
+--- CURRENT "${target.label.toUpperCase()}" (to be replaced) ---
+${currentText}
+
+--- EDITOR'S FEEDBACK ---
+${(feedback || '').trim() || 'Improve this paragraph.'}`
 
   const anthropic = getAnthropicClient()
 
@@ -89,7 +119,10 @@ ${NO_PREAMBLE_INSTRUCTION}`
       messages: [{ role: 'user', content: userContent }],
     })
 
-    const replacementText = extractAfterMarker(message.content.map((b) => (b.type === 'text' ? b.text : '')).join(''))
+    const replacementText = applyMediaDescription(
+      extractAfterMarker(message.content.map((b) => (b.type === 'text' ? b.text : '')).join('')),
+      mediaDescription,
+    )
     const usage = parseUsage(message.usage as unknown, 0)
     const promptTokens = totalPromptTokens(usage)
     const totalTokens = promptTokens + usage.outputTokens

@@ -4,13 +4,14 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { marked } from 'marked'
-import { Download, MessagesSquare, FileText, ListChecks, Sparkles, WandSparkles, Copy, Check, ArrowLeft, Paperclip } from 'lucide-react'
+import { Download, MessagesSquare, FileText, ListChecks, Sparkles, WandSparkles, Copy, Check, ArrowLeft, Paperclip, Info } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DownloadTemplateModal from '@/components/ui/DownloadTemplateModal'
 import DeleteInterviewButton from '@/components/research/DeleteInterviewButton'
+import ResearchProgress, { DraftingPlaceholder, applyProgressEvent, emptyProgress, type ResearchProgressState } from '@/components/research/ResearchProgress'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
-import type { ResearchSession } from '@/types'
+import type { ResearchProvider, ResearchSession } from '@/types'
 
 marked.use({ gfm: true, breaks: true })
 
@@ -50,6 +51,13 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
     web_searches: session.web_searches || 0,
     cost_usd: Number(session.cost_usd) || 0,
   })
+
+  // Who did the web research (admin setting; the server reports it per run).
+  const [engine, setEngine] = useState<ResearchProvider | null>(session.research_provider ?? null)
+  // Gemini runs: how many sourced facts Claude is writing from.
+  const [writingFrom, setWritingFrom] = useState<number | null>(null)
+  // What the waiting screen shows: real searches, sources and facts.
+  const [progress, setProgress] = useState<ResearchProgressState>(emptyProgress)
 
   // Research regenerate state (mirror of the questions flow)
   const [researchExtra, setResearchExtra] = useState('')
@@ -93,6 +101,8 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
     setError(null)
     setStreamStatus('generating')
     setOutput('')
+    setWritingFrom(null)
+    setProgress(emptyProgress())
     setShowResearchForm(false)
     setResearchExtra('')
 
@@ -119,13 +129,17 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
       let accumulated = ''
+      // An event can arrive split across network chunks (the final cleaned
+      // text is one large event), so keep any trailing partial line.
+      let buffer = ''
 
       while (reader) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
@@ -139,10 +153,17 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
               setStreamStatus('idle')
               return
             }
+            if (parsed.engine === 'claude' || parsed.engine === 'gemini') setEngine(parsed.engine)
+            setProgress((p) => applyProgressEvent(p, parsed))
             if (parsed.status === 'web_search_start') {
               setStreamStatus('searching')
             } else if (parsed.status === 'generating') {
               setStreamStatus('generating')
+              if (typeof parsed.facts === 'number') setWritingFrom(parsed.facts)
+            } else if (typeof parsed.final === 'string') {
+              // The saved version, after the server's citation check.
+              accumulated = parsed.final
+              setOutput(accumulated)
             } else if (parsed.usage) {
               setUsage(parsed.usage)
             } else if (parsed.text) {
@@ -225,13 +246,17 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
       let accumulated = ''
+      // Same as the research stream: keep a partial line for the next chunk
+      // (the final cleaned outline arrives as one large event).
+      let buffer = ''
 
       while (reader) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
@@ -245,7 +270,11 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
               setQuestionsStreaming(false)
               return
             }
-            if (parsed.usage) {
+            if (typeof parsed.final === 'string') {
+              // The saved outline, after the server removed any internal notes.
+              accumulated = parsed.final
+              setQuestions(accumulated)
+            } else if (parsed.usage) {
               setUsage(parsed.usage)
             } else if (parsed.text) {
               accumulated += parsed.text
@@ -274,7 +303,7 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
   const streamingLabel = reconnecting
     ? 'Generating…'
     : streamStatus === 'searching'
-    ? 'Searching…'
+    ? engine === 'gemini' ? 'Searching Google…' : 'Searching…'
     : 'Generating…'
 
   return (
@@ -352,6 +381,13 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
                     <span className="font-medium tabular-nums text-gray-700">${usage.cost_usd.toFixed(4)}</span>
                   </div>
                 )}
+                {/* Which engine searched — lets admins compare the two. */}
+                {isAdmin && engine && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">Web research</span>
+                    <span className="font-medium text-gray-700">{engine === 'gemini' ? 'Gemini' : 'Claude'}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -421,16 +457,13 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
                 {isProcessing && <span className="cursor-blink select-none text-gray-300">▋</span>}
               </>
             ) : isProcessing ? (
-              <div className="flex items-center gap-2 py-6 text-sm text-gray-400">
-                {reconnecting ? (
-                  <span>This research is generating in the background — it will appear here automatically…</span>
-                ) : streamStatus === 'searching' ? (
-                  <span>Searching the web for the latest information…</span>
-                ) : (
-                  <span>Researching the interviewee…</span>
-                )}
-                <span className="cursor-blink select-none">▋</span>
-              </div>
+              <ResearchProgress
+                engine={engine}
+                progress={progress}
+                searching={streamStatus === 'searching'}
+                writingFrom={writingFrom}
+                background={reconnecting}
+              />
             ) : (
               <div className="flex flex-col items-center gap-4 py-10 text-center">
                 <div className="rounded-full bg-[#f7f6f3] p-3 text-gray-400">
@@ -544,6 +577,19 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
             <div className="mt-4">
               {hasQuestions ? (
                 <>
+                  {/* The guidance the General Prompt used to write into the
+                      outline itself; it lives here so the document stays
+                      ready to send. Not part of Copy or Download. */}
+                  {!questionsStreaming && (
+                    <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-[#c8973f]/25 bg-[#fbf7ed] px-4 py-3">
+                      <Info size={14} className="mt-0.5 flex-shrink-0 text-[#a07530]" />
+                      <p className="text-[11px] leading-relaxed text-gray-600">
+                        <span className="font-semibold text-gray-800">Before sending:</span> keep one of the two closing
+                        questions and make sure the outline fits on one A4 page. Unless the interviewee is an energy company,
+                        sustainability questions tend to be the weakest, so consider cutting one if space is tight.
+                      </p>
+                    </div>
+                  )}
                   <div
                     className="prose-research text-sm text-gray-800"
                     dangerouslySetInnerHTML={{ __html: marked.parse(questions) as string }}
@@ -551,10 +597,10 @@ export default function ResearchOutput({ session, documents = [], isGenerating, 
                   {questionsStreaming && <span className="cursor-blink select-none text-gray-300">▋</span>}
                 </>
               ) : questionsStreaming ? (
-                <div className="flex items-center gap-2 py-6 text-sm text-gray-400">
-                  <span>Drafting interview questions…</span>
-                  <span className="cursor-blink select-none">▋</span>
-                </div>
+                <DraftingPlaceholder
+                  title="Drafting the interview questions"
+                  detail="One sharp question per theme, built on the verified research above."
+                />
               ) : null}
 
               {!questionsStreaming && (

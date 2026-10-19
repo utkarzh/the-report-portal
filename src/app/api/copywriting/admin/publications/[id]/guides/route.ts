@@ -23,7 +23,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const admin = await requireAdmin()
   if (!admin.user) return admin.response
 
-  const { data: publication } = await supabaseAdmin.from('copywriting_publications').select('id').eq('id', params.id).maybeSingle()
+  // Publications are the central Media Library's entries (migration 039).
+  const { data: publication } = await supabaseAdmin.from('media_library').select('id').eq('id', params.id).maybeSingle()
   if (!publication) return NextResponse.json({ error: 'Publication not found' }, { status: 404 })
 
   // The browser has already uploaded each file straight to the private
