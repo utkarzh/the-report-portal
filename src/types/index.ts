@@ -379,6 +379,7 @@ export type UsageWorkflow =
   | "copywriting_draft"
   | "copywriting_check"
   | "copywriting_revision"
+  | "copywriting_image_search"
   | "knowledge_base_query"
   | "knowledge_base_indexing"
   | "country_intel_context"
@@ -1096,6 +1097,36 @@ export interface CopywritingPublicationGuide {
   created_at: string;
 }
 
+// One entry in the admin-managed section library (migration 041) — a label
+// and its definition for the AI ("TEXT" = the article's body); each article
+// sets its own length for it.
+export interface CopywritingLibrarySection {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CopywritingLengthUnit = "characters" | "words";
+
+// One section of an article's configured structure — a snapshot taken at
+// Configure time, so library edits never change an existing article.
+export interface CopywritingProjectSection {
+  /** Stable per-article id (the same library section can appear twice). */
+  key: string;
+  section_id: string | null;
+  name: string;
+  /** What the section label means, from the library (may be empty; absent on early snapshots). */
+  description?: string;
+  /** How this section's length is measured; absent = characters. */
+  unit?: CopywritingLengthUnit;
+  /** Target length in `unit`. */
+  target?: number;
+  /** Early snapshots (characters only) stored the target here. Read through sectionTarget(). */
+  target_chars?: number;
+}
+
 export interface CopywritingArticleType {
   id: string;
   name: string;
@@ -1157,15 +1188,27 @@ export type CopywritingStage =
   | "failed";
 
 // One analysis sub-section as produced by the Analyze Sources & Styles stage.
-// style_theme has no approve/reject gate (per the brief — every OTHER section
-// does); the rest carry an independent approved flag so a writer can approve
-// them one at a time.
 export interface CopywritingAnalysisSection {
   text: string;
   approved?: boolean;
 }
 
+// One section of an analysis, in the order the model wrote it. Sections are
+// defined by the admin's Analyze prompt: every "<<<SECTION:{name}>>>" marker
+// in it becomes one (the 5 defaults when it has none). STYLE_THEME has no
+// approve gate (per the brief); every other section does, and GAPS also
+// offers its lines for research.
+export interface CopywritingAnalysisEntry extends CopywritingAnalysisSection {
+  /** The marker's name as written in the prompt, e.g. "STYLE_THEME", "MARKET_CONTEXT". */
+  key: string;
+  label: string;
+}
+
+// New analyses are stored as { sections: [...] }. Analyses saved before
+// sections became prompt-defined use the fixed fields below; readers go
+// through analysisSectionList(), which handles both.
 export interface CopywritingAnalysis {
+  sections?: CopywritingAnalysisEntry[];
   style_theme?: CopywritingAnalysisSection;
   rules?: CopywritingAnalysisSection;
   quotable_lines?: CopywritingAnalysisSection;
@@ -1186,6 +1229,8 @@ export interface CopywritingResearchEntry {
   caveats: string | null;
   placement: string | null;
   status: CopywritingResearchStatus;
+  /** The exact claim/gap text sent to research (migration 041); null on older rows. */
+  requested_claim?: string | null;
   checked_at: string;
   created_at: string;
   updated_at: string;
@@ -1215,7 +1260,14 @@ export interface CopywritingCheckItem {
 }
 
 export interface CopywritingChecks {
+  /** Items measured in code (section lengths, quotes), plus the model's own
+   *  items when it reports in "LABEL :: PASS|FAIL|WARNING :: detail" lines. */
   items: CopywritingCheckItem[];
+  /** The model's check report exactly as written (Markdown), when it reports
+   *  in its own format — the admin's Check prompt decides the layout. */
+  report?: string;
+  /** True when the report was cut short by the step's time or output limit. */
+  report_incomplete?: boolean;
 }
 
 export interface CopywritingProject {
@@ -1227,9 +1279,14 @@ export interface CopywritingProject {
   article_type_id: string | null;
   article_type_name: string;
   editorial_objective: string;
+  /** Legacy (before migration 041): free-text structure / word target / quote count. */
   section_structure: string;
   target_length: number | null;
   quotes_required: number | null;
+  /** Ordered section structure with per-section character targets (migration 041). */
+  sections: CopywritingProjectSection[];
+  direct_quotes: number | null;
+  pull_quotes: number | null;
   image_count: number | null;
   stage: CopywritingStage;
   error: string | null;

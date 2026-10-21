@@ -1,4 +1,4 @@
-import type { CopywritingAnalysis, CopywritingPromptKey } from "@/types";
+import type { CopywritingAnalysis, CopywritingAnalysisEntry, CopywritingCheckItem, CopywritingLengthUnit, CopywritingProjectSection, CopywritingPromptKey } from "@/types";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Shared config + parsing helpers for the AI Copywriting Tool. Pure data +
@@ -36,7 +36,7 @@ export const COPYWRITING_PROMPT_KEYS: {
     key: "analyze_sources_styles",
     label: "Analyze Sources & Styles",
     description:
-      "Reads every uploaded source plus the TRC guides/examples and publication guide, and extracts style & theme, rules, quotable lines, facts, and information gaps.",
+      "Reads every uploaded source plus the TRC guides/examples and publication guide, and extracts style & theme, rules, quotable lines, facts, and information gaps. Each <<<SECTION:NAME>>> marker in this prompt becomes its own section to review (approve or regenerate); with no markers, the five default sections are used.",
   },
   {
     key: "research",
@@ -128,97 +128,169 @@ export function extractAfterMarker(text: string): string {
   return text.slice(idx + OUTPUT_MARKER.length).trim();
 }
 
-// ── Analyze Sources & Styles: marker-delimited section parsing ────────────
+// ── Analyze Sources & Styles: prompt-defined, marker-delimited sections ───
 // Same technique as parseResearchSections in lib/meeting-prep.ts — long,
-// citation-heavy bodies are fragile to escape into JSON, so a unique literal
-// marker per section is used instead.
-const ANALYSIS_SECTION_KEYS = [
-  "STYLE_THEME",
-  "RULES",
-  "QUOTABLE_LINES",
-  "FACTS",
-  "GAPS",
-] as const;
-type AnalysisField =
-  | "style_theme"
-  | "rules"
-  | "quotable_lines"
-  | "facts"
-  | "gaps";
+// citation-heavy bodies are fragile to escape into JSON, so a literal marker
+// per section is used instead. The SECTIONS themselves are defined by the
+// admin's Analyze prompt: every "<<<SECTION:{name}>>>" marker in it becomes a
+// section of the review screen, in the order the model writes them. A prompt
+// with no markers gets DEFAULT_ANALYSIS_FORMAT appended (the original 5).
+// Two keys keep their special behaviour: STYLE_THEME needs no approval (per
+// the brief), and GAPS offers its lines for research.
+const SECTION_MARKER_RE = /<<<SECTION:\s*([^>\n]+?)\s*>>>/g;
 
-const ANALYSIS_KEY_TO_FIELD: Record<
-  (typeof ANALYSIS_SECTION_KEYS)[number],
-  AnalysisField
-> = {
-  STYLE_THEME: "style_theme",
-  RULES: "rules",
-  QUOTABLE_LINES: "quotable_lines",
-  FACTS: "facts",
-  GAPS: "gaps",
-};
+export const DEFAULT_ANALYSIS_SECTIONS: { key: string; label: string; instruction: string }[] = [
+  {
+    key: "STYLE_THEME",
+    label: "Style & Theme",
+    instruction:
+      "Describe the tone, structure and stylistic approach this article should follow, drawing on the TRC guides/examples for this article type and the publication's own rules.",
+  },
+  {
+    key: "RULES",
+    label: "Rules",
+    instruction:
+      "List the concrete editorial rules that apply (publication additional rules, TRC guide rules, banned words/phrases, formatting requirements) as a bullet list.",
+  },
+  {
+    key: "QUOTABLE_LINES",
+    label: "Quotable Lines",
+    instruction: "Extract the strongest directly quotable lines from the source material, verbatim, each with its speaker/source noted.",
+  },
+  {
+    key: "FACTS",
+    label: "Facts",
+    instruction: "List the key verified facts extracted from the source material, each with its source noted.",
+  },
+  {
+    key: "GAPS",
+    label: "Gaps",
+    instruction:
+      "List every information gap: a fact the article will need that is NOT present or NOT sufficiently supported in the uploaded sources. Be specific about what is missing and why it matters for this article.",
+  },
+];
 
-export function parseAnalysisSections(text: string): CopywritingAnalysis {
-  const result: CopywritingAnalysis = {};
-  const markerRe =
-    /<<<SECTION:(STYLE_THEME|RULES|QUOTABLE_LINES|FACTS|GAPS)>>>/g;
-  const matches = [...text.matchAll(markerRe)];
+export const ANALYSIS_UNGATED_KEY = "STYLE_THEME";
+export const ANALYSIS_GAPS_KEY = "GAPS";
+// Used when the model's reply has no markers at all, so nothing is lost.
+const ANALYSIS_FALLBACK_KEY = "ANALYSIS";
+
+// Code-owned, appended to the Analyze prompt only when it defines no
+// sections of its own.
+export const DEFAULT_ANALYSIS_FORMAT = `Produce your analysis as clearly separated sections, each introduced by its own marker line on its own line (no other text on that line):
+
+${DEFAULT_ANALYSIS_SECTIONS.map((d) => `<<<SECTION:${d.key}>>>\n${d.instruction}`).join("\n\n")}
+
+End your response immediately after the last section with no further commentary.`;
+
+function sameKey(a: string, b: string): boolean {
+  return a.trim().toUpperCase() === b.trim().toUpperCase();
+}
+
+// "MARKET_CONTEXT" → "Market Context"; a name written in normal case
+// ("Key People") is kept as written. The defaults keep their labels.
+export function analysisSectionLabel(key: string): string {
+  const known = DEFAULT_ANALYSIS_SECTIONS.find((d) => sameKey(d.key, key));
+  if (known) return known.label;
+  if (sameKey(key, ANALYSIS_FALLBACK_KEY)) return "Analysis";
+  const words = key.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (words !== words.toUpperCase()) return words;
+  return words.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+}
+
+// The section names the Analyze prompt defines, in order, without repeats.
+export function analysisSectionKeysFromPrompt(promptText: string): string[] {
+  const keys: string[] = [];
+  for (const m of promptText.matchAll(SECTION_MARKER_RE)) {
+    const key = m[1].trim();
+    if (key && !keys.some((k) => sameKey(k, key))) keys.push(key);
+  }
+  return keys;
+}
+
+// The Analyze prompt as sent: the admin's prompt, plus the default section
+// format when the prompt defines no sections of its own.
+export function analyzeSystemPrompt(promptText: string): string {
+  return analysisSectionKeysFromPrompt(promptText).length ? promptText : `${promptText}\n\n${DEFAULT_ANALYSIS_FORMAT}`;
+}
+
+// Splits the model's reply on its section markers. A marker written in a
+// different case from the prompt's ("Gaps" for "GAPS") is filed under the
+// prompt's spelling; a repeated marker adds to the same section. A reply with
+// no markers becomes one "Analysis" section, so nothing silently disappears.
+export function parseAnalysisSections(text: string, promptText = ""): CopywritingAnalysis {
+  const declared = analysisSectionKeysFromPrompt(promptText);
+  const sections: CopywritingAnalysisEntry[] = [];
+  const matches = [...text.matchAll(SECTION_MARKER_RE)];
   for (let i = 0; i < matches.length; i++) {
-    const key = matches[i][1] as (typeof ANALYSIS_SECTION_KEYS)[number];
+    const raw = matches[i][1].trim();
+    const key = declared.find((k) => sameKey(k, raw)) ?? DEFAULT_ANALYSIS_SECTIONS.find((d) => sameKey(d.key, raw))?.key ?? raw;
     const start = matches[i].index! + matches[i][0].length;
     const end = i + 1 < matches.length ? matches[i + 1].index! : text.length;
     const body = text.slice(start, end).trim();
-    if (body) result[ANALYSIS_KEY_TO_FIELD[key]] = { text: body };
+    if (!body) continue;
+    const existing = sections.find((s) => sameKey(s.key, key));
+    if (existing) existing.text = `${existing.text}\n\n${body}`;
+    else sections.push({ key, label: analysisSectionLabel(key), text: body, approved: false });
   }
-  // Fallback: no markers found at all — put everything under gaps so nothing
-  // silently disappears, and the writer can still see and regenerate it.
-  if (Object.keys(result).length === 0 && text.trim()) {
-    result.gaps = { text: text.trim() };
+  if (sections.length === 0 && text.trim()) {
+    sections.push({ key: ANALYSIS_FALLBACK_KEY, label: analysisSectionLabel(ANALYSIS_FALLBACK_KEY), text: text.trim(), approved: false });
   }
-  return result;
+  return { sections };
 }
 
-export function analysisSectionsToPrompt(
-  a: CopywritingAnalysis | null,
-): string {
-  if (!a) return "(no analysis available)";
-  return `--- STYLE & THEME ---
-${a.style_theme?.text || "(missing)"}
-
---- RULES ---
-${a.rules?.text || "(missing)"}
-
---- QUOTABLE LINES ---
-${a.quotable_lines?.text || "(missing)"}
-
---- VERIFIED FACTS ---
-${a.facts?.text || "(missing)"}
-
---- IDENTIFIED GAPS ---
-${a.gaps?.text || "(none)"}`;
-}
-
-export const ANALYSIS_SECTION_LABELS: Record<AnalysisField, string> = {
-  style_theme: "Style & Theme",
-  rules: "Rules",
-  quotable_lines: "Quotable Lines",
-  facts: "Facts",
-  gaps: "Identified Gaps",
-};
-
-export const ANALYSIS_SECTION_ORDER: AnalysisField[] = [
-  "style_theme",
-  "rules",
-  "quotable_lines",
-  "facts",
-  "gaps",
+const LEGACY_ANALYSIS_FIELDS: [field: "style_theme" | "rules" | "quotable_lines" | "facts" | "gaps", key: string][] = [
+  ["style_theme", "STYLE_THEME"],
+  ["rules", "RULES"],
+  ["quotable_lines", "QUOTABLE_LINES"],
+  ["facts", "FACTS"],
+  ["gaps", "GAPS"],
 ];
 
-// Every section except style_theme carries an individual approve gate (per
+// Every reader goes through this: an analysis's sections in order, whether
+// it was saved in the current shape or the original fixed 5 fields.
+export function analysisSectionList(a: CopywritingAnalysis | null | undefined): CopywritingAnalysisEntry[] {
+  if (!a) return [];
+  if (Array.isArray(a.sections)) return a.sections;
+  return LEGACY_ANALYSIS_FIELDS.flatMap(([field, key]) => {
+    const sec = a[field];
+    return sec?.text ? [{ key, label: analysisSectionLabel(key), text: sec.text, approved: !!sec.approved }] : [];
+  });
+}
+
+export function findAnalysisSection(a: CopywritingAnalysis | null | undefined, key: string): CopywritingAnalysisEntry | undefined {
+  return analysisSectionList(a).find((s) => sameKey(s.key, key));
+}
+
+// A copy with one section changed, always in the current shape (so a legacy
+// analysis is converted the first time a section is approved or regenerated).
+export function updateAnalysisSection(
+  a: CopywritingAnalysis | null | undefined,
+  key: string,
+  change: Partial<Pick<CopywritingAnalysisEntry, "text" | "approved">>,
+): CopywritingAnalysis {
+  return { sections: analysisSectionList(a).map((s) => (sameKey(s.key, key) ? { ...s, ...change } : s)) };
+}
+
+export function isGatedAnalysisSection(key: string): boolean {
+  return !sameKey(key, ANALYSIS_UNGATED_KEY);
+}
+
+export function isGapsAnalysisSection(key: string): boolean {
+  return sameKey(key, ANALYSIS_GAPS_KEY);
+}
+
+export function analysisSectionsToPrompt(a: CopywritingAnalysis | null): string {
+  const list = analysisSectionList(a);
+  if (!list.length) return "(no analysis available)";
+  return list.map((s) => `--- ${s.label.toUpperCase()} ---\n${s.text}`).join("\n\n");
+}
+
+// Every section except STYLE_THEME carries an individual approve gate (per
 // the brief). "All approved" means every OTHER section is approved.
 export function analysisAllApproved(a: CopywritingAnalysis | null): boolean {
-  if (!a) return false;
-  const gated: AnalysisField[] = ["rules", "quotable_lines", "facts", "gaps"];
-  return gated.every((f) => a[f] === undefined || a[f]?.approved);
+  const list = analysisSectionList(a);
+  return list.length > 0 && list.every((s) => !isGatedAnalysisSection(s.key) || s.approved);
 }
 
 // ── Stage machine (11-step brief flow condensed to the state-machine column
@@ -273,6 +345,52 @@ export const FLOW_STEPS = [
 // ([IMAGE: …] / [PHOTO: …]), links/source lines or rules. A bullet is kept
 // whole (it's one gap); a prose paragraph is split into sentences so each
 // claim can be picked individually.
+// ── Gaps ↔ Research Ledger ───────────────────────────────────────────────
+// Each ledger entry records the exact claim/gap text that was sent to
+// research (copywriting_research_entries.requested_claim, migration 041), so
+// the analysis screen can drop a gap once its finding is approved or
+// discarded. Compared ignoring case, punctuation and spacing.
+export function gapKey(text: string): string {
+  return (text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+// Which requested claim each finding answers. Gemini returns one block per
+// claim, in order, so equal counts map by position; otherwise each finding is
+// matched to the claim it shares the most word stems with (first 5 letters,
+// so "appointed" matches "appointment").
+export function matchFindingsToClaims(findingClaims: string[], claims: string[]): (string | null)[] {
+  if (findingClaims.length === claims.length) return claims.slice();
+  if (claims.length === 1) return findingClaims.map(() => claims[0]);
+  const words = (t: string) => new Set(gapKey(t).split(" ").filter((w) => w.length > 2).map((w) => w.slice(0, 5)));
+  const claimWords = claims.map(words);
+  return findingClaims.map((f) => {
+    const fw = words(f);
+    let best = -1;
+    let bestScore = 0;
+    claimWords.forEach((cw, i) => {
+      const shared = [...fw].filter((w) => cw.has(w)).length;
+      const score = shared / Math.max(1, Math.min(fw.size, cw.size));
+      if (score > bestScore) {
+        best = i;
+        bestScore = score;
+      }
+    });
+    return best >= 0 && bestScore >= 0.2 ? claims[best] : null;
+  });
+}
+
+// A gap line's research state: none yet, researched and awaiting review, or
+// decided (a finding for it was approved or discarded → the gap is resolved).
+export function gapResearchState(
+  gap: string,
+  entries: { requested_claim?: string | null; status: string }[],
+): "open" | "pending" | "resolved" {
+  const key = gapKey(gap);
+  const mine = entries.filter((e) => e.requested_claim && gapKey(e.requested_claim) === key);
+  if (!mine.length) return "open";
+  return mine.some((e) => e.status === "approved" || e.status === "rejected") ? "resolved" : "pending";
+}
+
 export function splitGapLines(gapsText: string | undefined): string[] {
   if (!gapsText) return [];
   const out: string[] = [];
@@ -414,6 +532,9 @@ export function buildRequestBlock(project: {
   section_structure: string;
   target_length: number | null;
   quotes_required: number | null;
+  sections?: CopywritingProjectSection[] | null;
+  direct_quotes?: number | null;
+  pull_quotes?: number | null;
   image_count?: number | null;
 }): string {
   const n = project.image_count;
@@ -423,11 +544,26 @@ export function buildRequestBlock(project: {
       : n === 0
         ? "\nImages: none"
         : `\nImages: ${n} (the article carries exactly ${n} numbered photo placeholder${n === 1 ? "" : "s"}; plan where each one goes)`;
-  return `--- ARTICLE REQUEST ---
+  const sections = project.sections || [];
+  // Projects configured before migration 041 keep their original free-text
+  // structure / word target / single quote count.
+  if (!sections.length) {
+    return `--- ARTICLE REQUEST ---
 Editorial objective: ${project.editorial_objective || "(not specified)"}
 Section structure: ${project.section_structure || "(not specified — propose a sensible structure)"}
 Target length: ${project.target_length ? `${project.target_length} words` : "(not specified)"}
 Quotes required: ${project.quotes_required ?? "(not specified)"}${images}`;
+  }
+  const totals = sectionTotals(sections);
+  const direct = project.direct_quotes ?? 0;
+  const pull = project.pull_quotes ?? 0;
+  return `--- ARTICLE REQUEST ---
+Editorial objective: ${project.editorial_objective || "(not specified)"}
+Section structure (fixed by the writer, in this order — target length of each section in characters (spaces included) or in words, as stated):
+${sections.map((sec, i) => `${i + 1}. ${sec.name} — ${formatLength(sectionTarget(sec).value, sectionTarget(sec).unit)}${sectionDescriptionSuffix(sec)}`).join("\n")}
+Total: ${totals.label}
+Direct quotes: ${direct} (exact words of a person or source, word for word from the uploaded sources, in quotation marks)
+Pull quotes: ${pull} (short attention-grabbing excerpts copied word for word from the uploaded sources, shown as highlights)${images}`;
 }
 
 // ── Image slots ──────────────────────────────────────────────────────────
@@ -482,6 +618,541 @@ ${examples}
 Never add more or fewer than ${count}, never repeat a number, and never write anything else inside the brackets. When revising, keep every placeholder and its number (you may move it or reword its description).`;
 }
 
+// ── Section structure & quotes (migration 041) ───────────────────────────
+// The writer builds the article from admin-managed section names and gives
+// each one a length in characters (spaces included); they also set how many
+// direct quotes and pull quotes it carries. The model marks where each
+// section starts with a "[SECTION n: Name]" line and writes each pull quote
+// as a "[PULL QUOTE: …]" line. Both are structure, not article text: the UI
+// and the Word/PDF exports never print the section markers, and render pull
+// quotes as highlights. Lengths and quote counts are MEASURED IN CODE from
+// those markers — never asked of the model, which can't count characters.
+export const MAX_ARTICLE_SECTIONS = 20;
+// No length limit: the writer decides how long each section is. A draft
+// longer than one step can write in time is saved as far as it got, and its
+// check report says it's incomplete (see the run route's streamWriter).
+export const MAX_QUOTES = 20;
+// For the "about N words" hint only (English averages ~6 characters a word
+// with its space).
+export const CHARS_PER_WORD = 6;
+// A section is on target within ±10% (or ±25 characters / ±2 words for very
+// short ones — a headline set in words needs to be close).
+const SECTION_TOLERANCE = 0.1;
+const SECTION_TOLERANCE_MIN: Record<CopywritingLengthUnit, number> = { characters: 25, words: 2 };
+
+export const MAX_SECTION_NAME_LENGTH = 80;
+export const MAX_SECTION_DESCRIPTION_LENGTH = 600;
+
+// A section description from a request body: trimmed, inner line breaks kept.
+export function normalizeSectionDescription(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n") : "";
+}
+
+// Same rule as the table's unique index: surrounding and repeated spaces
+// don't make a different section.
+export function normalizeSectionName(name: unknown): string {
+  return typeof name === "string" ? name.trim().replace(/\s+/g, " ") : "";
+}
+
+// The admin's definition of a section label ("TEXT" → "the article's main
+// body…"), after the section in the request/structure lists, so the model
+// knows what each label stands for. One line, so the list stays readable.
+function sectionDescriptionSuffix(sec: { description?: string }): string {
+  const d = (sec.description || "").replace(/\s+/g, " ").trim();
+  return d ? `. What this section is: ${d}` : "";
+}
+
+export function formatChars(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+// Each section's length is set in characters (spaces included) or in words,
+// chosen per section on the Configure form; characters by default. Early
+// snapshots stored only `target_chars`.
+export function sectionTarget(sec: { unit?: CopywritingLengthUnit; target?: number; target_chars?: number }): { value: number; unit: CopywritingLengthUnit } {
+  const unit: CopywritingLengthUnit = sec.unit === "words" ? "words" : "characters";
+  return { value: Math.max(0, Number(sec.target ?? sec.target_chars) || 0), unit };
+}
+
+// "600 characters", "1 word".
+export function formatLength(value: number, unit: CopywritingLengthUnit): string {
+  return `${formatChars(value)} ${unit === "words" ? (value === 1 ? "word" : "words") : value === 1 ? "character" : "characters"}`;
+}
+
+// A section's target in characters (words × CHARS_PER_WORD) — for sizing the
+// output budget and the "about N words / characters" hints only.
+export function approxSectionChars(sec: { unit?: CopywritingLengthUnit; target?: number; target_chars?: number }): number {
+  const t = sectionTarget(sec);
+  return t.unit === "words" ? t.value * CHARS_PER_WORD : t.value;
+}
+
+// Totals per unit: "3,000 characters + 400 words" when sections mix units.
+export function sectionTotals(sections: { unit?: CopywritingLengthUnit; target?: number; target_chars?: number }[]): {
+  characters: number;
+  words: number;
+  approxChars: number;
+  label: string;
+} {
+  let characters = 0;
+  let words = 0;
+  for (const sec of sections) {
+    const t = sectionTarget(sec);
+    if (t.unit === "words") words += t.value;
+    else characters += t.value;
+  }
+  const parts = [characters ? formatLength(characters, "characters") : "", words ? formatLength(words, "words") : ""].filter(Boolean);
+  return { characters, words, approxChars: characters + words * CHARS_PER_WORD, label: parts.join(" + ") || formatLength(0, "characters") };
+}
+
+// Output budget for a draft or a full revision: the configured length plus
+// room for markers, gap list and headings (~3 characters per token, which
+// errs high for English), up to the model's 64k output maximum. The calls
+// are streamed, so a large budget is fine; the time limit is enforced by the
+// route's soft deadline instead.
+export function draftMaxTokens(sections: CopywritingProjectSection[] | null | undefined): number {
+  const total = sectionTotals(sections || []).approxChars;
+  if (!total) return 8000;
+  return Math.min(64_000, Math.max(8000, Math.ceil(total / 3) + 3000));
+}
+
+const SECTION_LINE_RE = /^\s*\[\s*SECTION\s*#?\s*(\d+)?\s*[:\-–]\s*([^\]]*?)\s*\]\s*$/i;
+// Put between sections by labelSectionsForOutput(): two blank lines in the
+// final article view, Copy, Word and PDF.
+export const SECTION_BREAK_LINE = "[SECTION BREAK]";
+const SECTION_BREAK_RE = /^\s*\[SECTION BREAK\]\s*$/;
+const PULL_QUOTE_LINE_RE = /^\s*\[\s*PULL[\s-]*QUOTE\s*#?\s*\d*\s*[:\-–]\s*([\s\S]*?)\s*\]\s*$/i;
+
+function quoteRule(direct: number, pull: number): string {
+  const directRule =
+    direct > 0
+      ? `DIRECT QUOTES: Include exactly ${direct} direct quote${direct === 1 ? "" : "s"} — the exact words a person or source said or wrote, reproduced word for word from the uploaded sources, inside quotation marks and attributed to the speaker or source in the sentence. Never paraphrase or tidy anything inside quotation marks, never invent a quote, and don't use quotation marks for anything else (titles go in italics).`
+      : "DIRECT QUOTES: Include no direct quotes — report what people said in your own words, without quotation marks.";
+  const pullRule =
+    pull > 0
+      ? `PULL QUOTES: Include exactly ${pull} pull quote${pull === 1 ? "" : "s"} — each a short, attention-grabbing excerpt (one or two sentences, at most about 30 words) copied word for word from the uploaded source documents. Put each one on its own line, separated from the text by blank lines, inside the section it belongs to, in exactly this form:
+[PULL QUOTE: the excerpt, word for word]
+No quotation marks or attribution inside the brackets. Pull quotes are displayed as highlights beside the text and don't count toward a section's length.`
+      : "PULL QUOTES: Include no pull quotes and no [PULL QUOTE: …] lines.";
+  return `${directRule}\n\n${pullRule}`;
+}
+
+// Code-owned, appended last to the drafting and revision calls (so it wins
+// over the admin prompt). Only for projects configured with a structure.
+export function structureInstruction(project: {
+  sections?: CopywritingProjectSection[] | null;
+  direct_quotes?: number | null;
+  pull_quotes?: number | null;
+}): string {
+  const sections = project.sections || [];
+  if (!sections.length) return "";
+  const list = sections
+    .map((sec, i) => `[SECTION ${i + 1}: ${sec.name}] — about ${formatLength(sectionTarget(sec).value, sectionTarget(sec).unit)}${sectionDescriptionSuffix(sec)}`)
+    .join("\n");
+  const described = sections.some((sec) => sec.description?.trim());
+  return `ARTICLE STRUCTURE (set by the writer — follow it exactly):
+The article has exactly ${sections.length} section${sections.length === 1 ? "" : "s"}, in this order. Start each section with its marker line, on its own line with a blank line before and after, written exactly as shown:
+${list}
+The markers are not article text: the system hides them and measures each section from them.${described ? " A section's name is a label; where it is followed by \"What this section is:\", that definition says what the label means for this article (for example, which part of the article it is and what kind of text goes in it). Write exactly that kind of text in that section, and nothing that belongs to another section." : ""} Write each section to its target length, in the unit stated for it — characters (spaces included) or words — counting only that section's own text (±10% is fine). If the article has a headline and no section is defined as the headline, put it before the first marker. Don't print the section names as headings: add a heading inside a section only when the section's definition, the publication or the article type calls for one, worded for the reader.
+Never add, drop, merge, rename, reorder or renumber sections. When revising, keep every marker exactly as it is, even when the writer asks you to change what a section says.
+
+${quoteRule(project.direct_quotes ?? 0, project.pull_quotes ?? 0)}`;
+}
+
+// Appended to the planning calls: the plan follows the fixed structure.
+export function planStructureInstruction(project: {
+  sections?: CopywritingProjectSection[] | null;
+  direct_quotes?: number | null;
+  pull_quotes?: number | null;
+}): string {
+  const sections = project.sections || [];
+  if (!sections.length) return "";
+  const direct = project.direct_quotes ?? 0;
+  const pull = project.pull_quotes ?? 0;
+  return `ARTICLE STRUCTURE: The writer has fixed the article's sections and their lengths (see the ARTICLE REQUEST). Plan section by section, in that order, using exactly those sections: give each its name and target length (in the unit stated for it), what it covers (as the section's definition says, where it has one — \"What this section is: …\"), and which direct quotes and pull quotes go in it. Don't add, drop, merge or reorder sections. Plan exactly ${direct} direct quote${direct === 1 ? "" : "s"} (the exact words of a person or source, word for word from the uploaded sources, with the speaker) and exactly ${pull} pull quote${pull === 1 ? "" : "s"} (short, attention-grabbing excerpts copied word for word from the uploaded sources), quoting each one in full in the plan.`;
+}
+
+// How the writer's brief and the TRC references divide the work. Code-owned
+// and appended after the structure instruction on Plan/Replan (stage
+// "plan") and Draft/Revision ("write"), so an admin prompt edit can't lose it:
+//   • the writer's section structure decides WHAT the article contains, and
+//     always wins;
+//   • the TRC guides and worked examples decide HOW each part is written;
+//   • with no section structure (projects configured before migration 041),
+//     the worked examples also serve as the model for the article's shape;
+//   • facts only ever come from the sources and the approved research.
+// Empty when the article type has no TRC guides or examples.
+export function referenceUsageInstruction(opts: {
+  hasSections: boolean;
+  hasTrcReferences: boolean;
+  stage: "plan" | "write";
+}): string {
+  if (!opts.hasTrcReferences) return "";
+  const how =
+    "how the opening hooks the reader, paragraph rhythm, how quotes are introduced, transitions, tone, and how the closing lands";
+  const lines = opts.hasSections
+    ? [
+        "- WHAT the article contains — its sections, their order, their length and the quotes it must carry — is decided by the writer's section structure and settings in the ARTICLE REQUEST. It always wins.",
+        `- HOW each section is written — ${how} — follows the TRC guides and approved worked examples for this article type. Match their standard.`,
+        "- When an example is organised differently from the writer's structure, keep the writer's structure and apply the example's way of writing inside it.",
+      ]
+    : [
+        "- No section structure was set for this article, so take its shape — how many parts, their order and the proportions between them — from the TRC worked examples and guides for this article type, adapted to this material.",
+        `- Write each part to their standard: ${how}.`,
+      ];
+  lines.push(
+    "- Facts, names, figures and quotes come only from the uploaded sources and the approved research — never from the TRC guides or examples.",
+  );
+  lines.push(
+    opts.stage === "plan"
+      ? "- For each section of the plan, note in a few words which TRC technique it uses (for example: \"opens with a scene, then the key figure, as in the worked examples\")."
+      : "- Where the approved plan names a TRC technique for a section, use it.",
+  );
+  return `HOW TO USE THE WRITER'S BRIEF AND THE TRC REFERENCES:\n${lines.join("\n")}`;
+}
+
+// Characters a reader sees: markdown syntax removed, every run of
+// whitespace (line breaks included) counted as one space.
+export function plainCharCount(markdown: string): number {
+  const text = markdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*(?:[-*+•]|\d+[.)])\s+/gm, "")
+    .replace(/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/gm, " ")
+    .replace(/(\*\*\*|\*\*|\*|__|_|`)(.+?)\1/g, "$2")
+    .replace(/\s+/g, " ")
+    .trim();
+  return Array.from(text).length;
+}
+
+// Words a reader sees: the same plain text, split on whitespace.
+export function plainWordCount(markdown: string): number {
+  const text = markdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*(?:[-*+•]|\d+[.)])\s+/gm, "")
+    .replace(/(\*\*\*|\*\*|\*|__|_|`)(.+?)\1/g, "$2");
+  return text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+}
+
+export interface SectionMeasure {
+  key: string;
+  name: string;
+  unit: CopywritingLengthUnit;
+  target: number;
+  /** Length measured in the draft, in `unit`; null when its marker is missing. */
+  actual: number | null;
+}
+
+interface DraftParts {
+  markers: { number: number | null; name: string; text: string }[];
+  pullQuotes: string[];
+  /** Article text outside markers, image slots and pull quotes. */
+  body: string;
+}
+
+function splitDraftParts(markdown: string): DraftParts {
+  const markers: DraftParts["markers"] = [];
+  const sectionLines: string[][] = [];
+  const pullQuotes: string[] = [];
+  const bodyLines: string[] = [];
+  for (const line of (markdown || "").replace(/\r\n/g, "\n").split("\n")) {
+    const sec = SECTION_LINE_RE.exec(line);
+    if (sec) {
+      markers.push({ number: sec[1] ? Number(sec[1]) : null, name: sec[2].trim(), text: "" });
+      sectionLines.push([]);
+      continue;
+    }
+    const pq = PULL_QUOTE_LINE_RE.exec(line);
+    if (pq) {
+      pullQuotes.push(pq[1].trim());
+      continue;
+    }
+    if (IMAGE_LINE_RE.test(line)) continue;
+    bodyLines.push(line);
+    sectionLines[sectionLines.length - 1]?.push(line);
+  }
+  markers.forEach((m, i) => (m.text = sectionLines[i].join("\n")));
+  return { markers, pullQuotes, body: bodyLines.join("\n") };
+}
+
+// Each configured section's measured length, matched to the draft's markers
+// by number (falling back to position when a marker has no number).
+export function measureSections(markdown: string, sections: CopywritingProjectSection[]): SectionMeasure[] {
+  const { markers } = splitDraftParts(markdown);
+  return sections.map((sec, i) => {
+    const marker = markers.find((m) => m.number === i + 1) ?? (markers[i] && markers[i].number === null ? markers[i] : undefined);
+    const { value, unit } = sectionTarget(sec);
+    const actual = marker ? (unit === "words" ? plainWordCount(marker.text) : plainCharCount(marker.text)) : null;
+    return { key: sec.key, name: sec.name, unit, target: value, actual };
+  });
+}
+
+export function sectionLengthStatus(target: number, actual: number | null, unit: CopywritingLengthUnit = "characters"): "ok" | "near" | "off" | "missing" {
+  if (actual === null) return "missing";
+  const diff = Math.abs(actual - target);
+  const tolerance = Math.max(target * SECTION_TOLERANCE, SECTION_TOLERANCE_MIN[unit]);
+  if (diff <= tolerance) return "ok";
+  if (diff <= tolerance * 2) return "near";
+  return "off";
+}
+
+function signedPercent(target: number, actual: number): string {
+  const pct = Math.round(((actual - target) / target) * 100);
+  return `${pct > 0 ? "+" : pct < 0 ? "−" : "±"}${Math.abs(pct)}%`;
+}
+
+// Word-for-word comparison that ignores case, punctuation, curly vs straight
+// quotes and spacing — the differences a faithful quote may still have.
+function normalizeForQuote(text: string): string {
+  return ` ${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+}
+
+// Each piece of a quote between ellipses / [inserted words] must appear in
+// the sources; pieces under three words are too short to judge.
+function foundInSources(quote: string, normalizedSources: string): boolean {
+  const pieces = quote
+    .split(/\.{3}|…|\[[^\]]*\]/)
+    .map((p) => normalizeForQuote(p))
+    .filter((p) => p.trim().split(" ").length >= 3);
+  if (!pieces.length) return true;
+  return pieces.every((p) => normalizedSources.includes(p));
+}
+
+// Quoted passages of four words or more: shorter ones are usually scare
+// quotes or names ("smart city"), not someone's words.
+function findDirectQuotes(body: string): string[] {
+  const text = body.replace(/^\s{0,3}#{1,6}\s+.*$/gm, " ");
+  const quotes: string[] = [];
+  const re = /[“"]([^“”"\n]+?)[”"]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const q = m[1].trim();
+    if (q.split(/\s+/).length >= 4) quotes.push(q);
+  }
+  return quotes;
+}
+
+function clip(text: string, max = 70): string {
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+// The structure items of the check report, measured in code and shown
+// alongside the model's own checks: section order, section lengths, and
+// the number and source-fidelity of direct and pull quotes.
+export function structureCheckItems(
+  draft: string,
+  project: { sections?: CopywritingProjectSection[] | null; direct_quotes?: number | null; pull_quotes?: number | null },
+  sourceTexts: string[],
+): CopywritingCheckItem[] {
+  const sections = project.sections || [];
+  if (!sections.length) return [];
+  const items: CopywritingCheckItem[] = [];
+  const parts = splitDraftParts(draft);
+  const measures = measureSections(draft, sections);
+
+  const missing = measures.filter((m) => m.actual === null);
+  const extra = parts.markers.length - (sections.length - missing.length);
+  items.push(
+    missing.length
+      ? { label: "Section structure", result: "fail", detail: `Missing section marker${missing.length === 1 ? "" : "s"}: ${missing.map((m) => m.name).join(", ")}.` }
+      : extra > 0
+        ? { label: "Section structure", result: "warning", detail: `All ${sections.length} sections are present, plus ${extra} extra section marker${extra === 1 ? "" : "s"}.` }
+        : { label: "Section structure", result: "pass", detail: `All ${sections.length} sections present, in order.` },
+  );
+
+  const measured = measures.filter((m) => m.actual !== null) as (SectionMeasure & { actual: number })[];
+  const off = measured.filter((m) => sectionLengthStatus(m.target, m.actual, m.unit) === "off");
+  const near = measured.filter((m) => sectionLengthStatus(m.target, m.actual, m.unit) === "near");
+  const describe = (list: typeof measured) =>
+    list.map((m) => `${m.name} ${formatChars(m.actual)} / ${formatLength(m.target, m.unit)} (${signedPercent(m.target, m.actual)})`).join("; ");
+  const actualTotals = sectionTotals(measured.map((m) => ({ unit: m.unit, target: m.actual })));
+  if (measured.length) {
+    items.push(
+      off.length
+        ? { label: "Section lengths", result: "fail", detail: describe([...off, ...near]) }
+        : near.length
+          ? { label: "Section lengths", result: "warning", detail: describe(near) }
+          : {
+              label: "Section lengths",
+              result: "pass",
+              detail: `Every section within ±10% of its target (${actualTotals.label} written, against ${sectionTotals(sections).label}).`,
+            },
+    );
+  }
+
+  const normalizedSources = normalizeForQuote(sourceTexts.join("\n"));
+  // A wrong count of pull quotes is exact (they're marked lines); direct
+  // quotes are found by quotation marks, so a count mismatch is only a
+  // warning. A quote that isn't word for word in the sources always fails.
+  const quoteItem = (label: string, wanted: number, found: string[], exactCount: boolean): CopywritingCheckItem => {
+    const notInSources = found.filter((q) => !foundInSources(q, normalizedSources));
+    const fidelity = notInSources.length
+      ? ` Not found word for word in the sources: ${notInSources.map((q) => `“${clip(q)}”`).join("; ")}.`
+      : found.length
+        ? " All found word for word in the sources."
+        : "";
+    const result: CopywritingCheckItem["result"] = notInSources.length
+      ? "fail"
+      : found.length === wanted
+        ? "pass"
+        : exactCount
+          ? "fail"
+          : "warning";
+    return { label, result, detail: `${found.length} of ${wanted} required.${fidelity}` };
+  };
+  items.push(quoteItem("Direct quotes", project.direct_quotes ?? 0, findDirectQuotes(parts.body), false));
+  items.push(quoteItem("Pull quotes", project.pull_quotes ?? 0, parts.pullQuotes, true));
+  return items;
+}
+
+// The measurements handed to the Check model under "MEASURED BY THE
+// SYSTEM", so its own report (length tables, quote checks) uses real numbers
+// instead of the model's estimates — a model can't count characters. Same
+// numbers as structureCheckItems() shows on screen.
+export function structureMeasurementsForCheck(
+  draft: string,
+  project: { sections?: CopywritingProjectSection[] | null; direct_quotes?: number | null; pull_quotes?: number | null },
+  sourceTexts: string[],
+): string {
+  const sections = project.sections || [];
+  if (!sections.length) return "";
+  const parts = splitDraftParts(draft);
+  const measures = measureSections(draft, sections);
+  const normalizedSources = normalizeForQuote(sourceTexts.join("\n"));
+  const lines = [
+    "--- MEASURED BY THE SYSTEM (exact — use these numbers; never count characters yourself) ---",
+    "Section lengths, each in its own unit — characters (spaces included) or words — counting only that section's own text (markers, image slots and pull quotes excluded). ±10% of the target counts as on target:",
+    ...measures.map((m, i) => {
+      if (m.actual === null) return `${i + 1}. ${m.name}: MISSING (no [SECTION ${i + 1}: …] marker in the draft) — target ${formatLength(m.target, m.unit)}`;
+      const diff = m.actual - m.target;
+      return `${i + 1}. ${m.name}: ${formatChars(m.actual)} of ${formatLength(m.target, m.unit)} (${diff >= 0 ? "+" : "−"}${formatChars(Math.abs(diff))}, ${signedPercent(m.target, m.actual)})`;
+    }),
+    `Total: ${sectionTotals(measures.map((m) => ({ unit: m.unit, target: m.actual ?? 0 }))).label} of ${sectionTotals(sections).label}`,
+    "",
+    `Pull quotes required: ${project.pull_quotes ?? 0}; found: ${parts.pullQuotes.length}.`,
+    ...parts.pullQuotes.map((q, i) => `${i + 1}. “${clip(q, 140)}” — ${foundInSources(q, normalizedSources) ? "found word for word in the uploaded sources" : "NOT found word for word in the uploaded sources"}`),
+    "",
+    `Direct quotes required: ${project.direct_quotes ?? 0}; quoted passages of four or more words found in the text: ${findDirectQuotes(parts.body).length}.`,
+    ...findDirectQuotes(parts.body).map((q, i) => `${i + 1}. “${clip(q, 140)}” — ${foundInSources(q, normalizedSources) ? "found word for word in the uploaded sources" : "NOT found word for word in the uploaded sources"}`),
+  ];
+  return lines.join("\n");
+}
+
+// Whether a refine-chat reply is a full article (which replaces the draft)
+// or a conversational reply, such as a clarifying question, which stays in
+// the chat and leaves the draft as it is. A configured article must contain
+// every one of its [SECTION n: …] markers (sections are fixed, so a real
+// revision always has them all); any reply far shorter than the current
+// draft is treated as conversation.
+export function isFullArticleReply(
+  reply: string,
+  currentDraft: string | null | undefined,
+  sections: CopywritingProjectSection[] | null | undefined,
+): boolean {
+  if (!reply.trim()) return false;
+  const expected = (sections || []).length;
+  if (expected && splitDraftParts(reply).markers.length < expected) return false;
+  const before = plainCharCount(currentDraft || "");
+  if (before > 400 && plainCharCount(reply) < before * 0.25) return false;
+  return true;
+}
+
+// The finished article in TRC's handover format, as in the worked examples:
+// each "[SECTION n: Name]" marker becomes a visible label with the section's
+// measured length against its target, sections separated by two blank lines
+// (a SECTION_BREAK_LINE) —
+//   **TITLE (20/21 CHARS):** Jollibee goes global
+//   **TEXT (2,473/2,480 CHARS):**   (then the section's paragraphs)
+// A one-paragraph section goes on the label's line; anything longer (several
+// paragraphs, a pull quote, an image) starts on the next line. Names come
+// from the article's section structure, in capitals, numbered when one is
+// used more than once ("QUOTE 1", "QUOTE 2"). Counts are measured in code
+// (measureSections), never by the model. Used by the final article view,
+// Copy, Word and PDF; articles without a section structure are unchanged.
+export function labelSectionsForOutput(markdown: string, sections: CopywritingProjectSection[] | null | undefined): string {
+  const list = sections || [];
+  if (!list.length || !markdown) return markdown || "";
+  const measures = measureSections(markdown, list);
+  const nameCount = new Map<string, number>();
+  for (const sec of list) nameCount.set(sec.name.toUpperCase(), (nameCount.get(sec.name.toUpperCase()) || 0) + 1);
+  const seen = new Map<string, number>();
+  const labels = list.map((sec, i) => {
+    const name = sec.name.toUpperCase();
+    const nth = (seen.get(name) || 0) + 1;
+    seen.set(name, nth);
+    const m = measures[i];
+    const unit = m.unit === "words" ? "WORDS" : "CHARS";
+    const counts = m.actual === null ? `${formatChars(m.target)} ${unit}` : `${formatChars(m.actual)}/${formatChars(m.target)} ${unit}`;
+    return `${(nameCount.get(name) || 0) > 1 ? `${name} ${nth}` : name} (${counts})`;
+  });
+
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  let i = 0;
+  let order = 0;
+  while (i < lines.length) {
+    const sec = SECTION_LINE_RE.exec(lines[i]);
+    if (!sec) {
+      out.push(lines[i]);
+      i++;
+      continue;
+    }
+    order++;
+    const number = sec[1] ? Number(sec[1]) : order;
+    const label = labels[number - 1] ?? sec[2].trim().toUpperCase();
+    // The section's own lines, up to the next marker.
+    let j = i + 1;
+    while (j < lines.length && !SECTION_LINE_RE.test(lines[j])) j++;
+    const body = lines.slice(i + 1, j);
+    const filled = body.filter((l) => l.trim());
+    const firstIdx = body.findIndex((l) => l.trim());
+    const lastIdx = body.length - 1 - [...body].reverse().findIndex((l) => l.trim());
+    const single =
+      filled.length === 1 &&
+      !PULL_QUOTE_LINE_RE.test(filled[0]) &&
+      !IMAGE_LINE_RE.test(filled[0]) &&
+      !/^\s*(?:[-*+•]|\d+[.)])\s+/.test(filled[0]) &&
+      !/^\s*\|/.test(filled[0]);
+    if (single) {
+      const text = filled[0].trim().replace(/^#{1,6}\s+/, "");
+      out.push(`**${label}:** ${text}`);
+      out.push("");
+    } else {
+      out.push(`**${label}:**`);
+      out.push("");
+      if (filled.length) out.push(...body.slice(firstIdx, lastIdx + 1));
+      out.push("");
+    }
+    // Two blank lines before the next section.
+    if (j < lines.length) {
+      out.push(SECTION_BREAK_LINE);
+      out.push("");
+    }
+    i = j;
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// What the Copy button puts on the clipboard: section markers removed, pull
+// quotes as quoted blockquotes, so the paste reads as a finished article.
+export function articleForCopy(markdown: string): string {
+  return (markdown || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .flatMap((line) => {
+      if (SECTION_LINE_RE.test(line)) return [];
+      const pq = PULL_QUOTE_LINE_RE.exec(line);
+      return pq ? [`> “${pq[1].trim()}”`] : [line];
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // One line that is an image placeholder: [IMAGE 2: …], [PHOTO: …],
 // [IMAGE CAPTION: …]. Unnumbered ones are numbered in reading order by
 // splitArticleImages().
@@ -489,10 +1160,17 @@ const IMAGE_LINE_RE = /^\s*\[(?:IMAGE|PHOTO|PICTURE)(?:\s+CAPTION)?\s*#?\s*(\d+)
 
 export type ArticleSegment =
   | { type: "text"; markdown: string }
-  | { type: "image"; slot: number; description: string };
+  | { type: "image"; slot: number; description: string }
+  // "[SECTION n: Name]" — never printed; the draft view shows a length meter.
+  | { type: "section"; number: number; name: string }
+  // "[PULL QUOTE: …]" — rendered as a highlighted excerpt.
+  | { type: "pullquote"; text: string }
+  // "[SECTION BREAK]" — two blank lines between sections of the final article.
+  | { type: "gap" };
 
-// Splits article markdown into text runs and image slots, so the UI can
-// render an uploadable slot in place of each placeholder line.
+// Splits article markdown into text runs, image slots, section markers and
+// pull quotes, so the UI and the exports render each marker line properly
+// instead of printing it.
 export function splitArticleImages(markdown: string): ArticleSegment[] {
   const segments: ArticleSegment[] = [];
   const used = new Set<number>();
@@ -505,7 +1183,26 @@ export function splitArticleImages(markdown: string): ArticleSegment[] {
     if (text) segments.push({ type: "text", markdown: text });
   };
 
+  let sectionCount = 0;
   for (const line of markdown.replace(/\r\n/g, "\n").split("\n")) {
+    if (SECTION_BREAK_RE.test(line)) {
+      flushText();
+      segments.push({ type: "gap" });
+      continue;
+    }
+    const sec = SECTION_LINE_RE.exec(line);
+    if (sec) {
+      flushText();
+      sectionCount++;
+      segments.push({ type: "section", number: sec[1] ? Number(sec[1]) : sectionCount, name: sec[2].trim() });
+      continue;
+    }
+    const pq = PULL_QUOTE_LINE_RE.exec(line);
+    if (pq) {
+      flushText();
+      if (pq[1].trim()) segments.push({ type: "pullquote", text: pq[1].trim().replace(/^["“]|["”]$/g, "") });
+      continue;
+    }
     const m = IMAGE_LINE_RE.exec(line);
     if (!m) {
       buffer.push(line);
@@ -558,7 +1255,10 @@ function placementTokens(text: string): { words: Set<string>; numbers: Set<strin
     const t = raw.replace(/^\.+|\.+$/g, "");
     if (!t) continue;
     if (/\d/.test(t)) {
-      numbers.add(t.replace(/\.0+$/, ""));
+      // "14bn", "14.5m", "30%" and "14" are the same figure written
+      // differently ("$14bn" in a finding, "US$14 billion" in the draft).
+      const figure = t.replace(/^(\d[\d.]*?)(?:\.0+)?(?:bn|billion|mn|million|m|tn|trillion|k|thousand|%|pc|percent)?$/, "$1");
+      numbers.add(figure.replace(/\.0+$/, ""));
       continue;
     }
     if (t.length < 4 || PLACEMENT_STOPWORDS.has(t)) continue;
@@ -589,6 +1289,17 @@ export function locateClaimInDraft(claim: string, draft: string): string {
   };
   for (const raw of draft.replace(/\r\n/g, "\n").split("\n")) {
     const line = raw.trim();
+    const sec = SECTION_LINE_RE.exec(line);
+    if (sec) {
+      flush();
+      heading = sec[2].trim();
+      inSection = 0;
+      continue;
+    }
+    if (PULL_QUOTE_LINE_RE.test(line)) {
+      flush();
+      continue;
+    }
     const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h) {
       flush();

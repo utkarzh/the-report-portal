@@ -6,6 +6,39 @@ import type { MediaLibraryEntry, MediaOption } from '@/types'
 
 export const MEDIA_LIBRARY_PATH = '/admin/media-library'
 
+// The Media Library is shared, so it's opened from several modules' admin
+// pages. Each link passes `?from=<key>` and the library's back arrow and
+// breadcrumbs return to that module. Allowlisted: an unknown or missing key
+// (e.g. opened from the sidebar) just shows the library as a top-level page.
+export const MEDIA_LIBRARY_ORIGINS = {
+  copywriting: [
+    { label: 'Copywriting Tool', href: '/copywriting' },
+    { label: 'Admin', href: '/copywriting/admin' },
+  ],
+  'meeting-prep': [
+    { label: 'Meeting Preparation', href: '/commercial/meeting-preparation' },
+    { label: 'Admin', href: '/commercial/admin/meeting-prep' },
+  ],
+  'interview-letters': [
+    { label: 'Interview Letters', href: '/interview-letters' },
+    { label: 'Admin', href: '/admin/interview-letters' },
+  ],
+} satisfies Record<string, { label: string; href: string }[]>
+
+export type MediaLibraryOrigin = keyof typeof MEDIA_LIBRARY_ORIGINS
+
+export function parseMediaLibraryOrigin(from: string | string[] | null | undefined): MediaLibraryOrigin | null {
+  return typeof from === 'string' && Object.prototype.hasOwnProperty.call(MEDIA_LIBRARY_ORIGINS, from)
+    ? (from as MediaLibraryOrigin)
+    : null
+}
+
+// The library (or one entry's page) with the origin carried along.
+export function mediaLibraryHref(from?: MediaLibraryOrigin | null, id?: string): string {
+  const path = id ? `${MEDIA_LIBRARY_PATH}/${id}` : MEDIA_LIBRARY_PATH
+  return from ? `${path}?from=${from}` : path
+}
+
 // Same rule as the table's unique index: case and surrounding/double spaces
 // don't make a different publication.
 export function normalizeMediaName(name: string | null | undefined): string {

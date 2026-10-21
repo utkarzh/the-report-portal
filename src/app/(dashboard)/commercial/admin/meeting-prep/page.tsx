@@ -5,7 +5,7 @@ import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import { INTERVIEW_TYPES, MEETING_PREP_PROMPT_KEYS } from '@/lib/meeting-prep'
-import { MEDIA_LIBRARY_PATH, hasMeetingPrepProfile } from '@/lib/media-library'
+import { mediaLibraryHref, hasMeetingPrepProfile } from '@/lib/media-library'
 
 export default async function MeetingPrepAdminPage() {
   requireAdminHeader()
@@ -51,7 +51,7 @@ export default async function MeetingPrepAdminPage() {
                 <p className="text-[10px] text-gray-400 mt-2">{count} publication{count === 1 ? '' : 's'} with a media profile</p>
               </div>
               <Link
-                href={MEDIA_LIBRARY_PATH}
+                href={mediaLibraryHref('meeting-prep')}
                 className="text-xs font-medium tracking-wider uppercase bg-black text-white px-4 py-2.5 hover:bg-gray-900 transition-colors flex-shrink-0"
               >
                 Manage

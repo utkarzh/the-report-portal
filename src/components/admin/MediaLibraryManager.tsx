@@ -7,15 +7,16 @@ import { Plus, Trash2, Pencil } from 'lucide-react'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
-import { MEDIA_LIBRARY_PATH, mediaDetailBadges } from '@/lib/media-library'
+import { mediaLibraryHref, mediaDetailBadges, type MediaLibraryOrigin } from '@/lib/media-library'
 import type { MediaLibraryEntry } from '@/types'
 
 interface Props {
   initialEntries: MediaLibraryEntry[]
   guideCounts: Record<string, number>
+  from?: MediaLibraryOrigin | null
 }
 
-export default function MediaLibraryManager({ initialEntries, guideCounts }: Props) {
+export default function MediaLibraryManager({ initialEntries, guideCounts, from }: Props) {
   const router = useRouter()
   const [entries, setEntries] = useState(initialEntries)
   const [name, setName] = useState('')
@@ -42,7 +43,7 @@ export default function MediaLibraryManager({ initialEntries, guideCounts }: Pro
       return
     }
     // Straight to its page, where the module-specific details are added.
-    router.push(`${MEDIA_LIBRARY_PATH}/${data.media.id}`)
+    router.push(mediaLibraryHref(from, data.media.id))
   }
 
   async function confirmDelete() {
@@ -89,7 +90,7 @@ export default function MediaLibraryManager({ initialEntries, guideCounts }: Pro
               return (
                 <li key={m.id} className="flex items-start gap-3 px-5 py-4 sm:px-6">
                   <div className="min-w-0 flex-1">
-                    <Link href={`${MEDIA_LIBRARY_PATH}/${m.id}`} className="text-sm font-medium text-gray-900 hover:underline">
+                    <Link href={mediaLibraryHref(from, m.id)} className="text-sm font-medium text-gray-900 hover:underline">
                       {m.name}
                     </Link>
                     {m.country && <span className="ml-2 text-xs text-gray-400">{m.country}</span>}
@@ -104,7 +105,7 @@ export default function MediaLibraryManager({ initialEntries, guideCounts }: Pro
                     </div>
                   </div>
                   <div className="flex flex-shrink-0 items-center gap-1">
-                    <Link href={`${MEDIA_LIBRARY_PATH}/${m.id}`} className="p-1.5 text-gray-400 transition-colors hover:text-black" title="Edit">
+                    <Link href={mediaLibraryHref(from, m.id)} className="p-1.5 text-gray-400 transition-colors hover:text-black" title="Edit">
                       <Pencil size={14} />
                     </Link>
                     <button type="button" onClick={() => setDeleting(m)} className="p-1.5 text-gray-300 transition-colors hover:text-red-500" title="Delete">

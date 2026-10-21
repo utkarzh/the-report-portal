@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { denyWithoutCopywritingAccess } from '@/lib/copywriting-access'
-import { COPYWRITING_IMAGES_BUCKET, COPYWRITING_IMAGE_EXT_RE, MAX_IMAGE_BYTES, maxUploadableSlot } from '@/lib/copywriting'
-import { loadProjectImages } from '@/lib/copywriting-images'
+import { COPYWRITING_IMAGES_BUCKET, COPYWRITING_IMAGE_EXT_RE, MAX_IMAGE_BYTES } from '@/lib/copywriting'
+import { loadProjectImages, imageSlotError as slotError, saveSlotImage } from '@/lib/copywriting-images'
 import { parseStagedFiles, readStagedFile, removeStagedFiles } from '@/lib/copywriting-storage'
 
 interface Params {
@@ -19,16 +19,6 @@ async function loadOwnedProject(id: string, userId: string) {
     .maybeSingle()
   if (!project) return { project: null, ok: false }
   return { project, ok: project.user_id === userId || profile?.role === 'admin' }
-}
-
-// Slots are fillable from the first draft onward: up to the configured count,
-// or any slot the draft has when the AI chose the count (image_count blank).
-function slotError(project: { stage: string; image_count: number | null }, slot: number): string | null {
-  const max = maxUploadableSlot(project.image_count)
-  if (max < 1) return 'This article is set to have no images.'
-  if (!Number.isInteger(slot) || slot < 1 || slot > max) return `Image slot must be between 1 and ${max}.`
-  if (project.stage !== 'draft_review' && project.stage !== 'complete') return 'Images can be added once the first draft exists.'
-  return null
 }
 
 // POST { slot, path, filename, mime, size, width?, height? } — puts a photo into one
@@ -73,38 +63,18 @@ export async function POST(request: NextRequest, { params }: Params) {
   const height = Number(body?.height) || null
   const storagePath = file.path
 
-  const { data: previous } = await supabaseAdmin
-    .from('copywriting_project_images')
-    .select('storage_path')
-    .eq('project_id', project.id)
-    .eq('slot', slot)
-    .maybeSingle()
-
-  const { error: dbErr } = await supabaseAdmin.from('copywriting_project_images').upsert(
-    {
-      project_id: project.id,
-      user_id: auth.user.id,
-      slot,
-      filename: file.filename,
-      storage_path: storagePath,
-      mime: file.mime,
-      size_bytes: sizeBytes,
-      width,
-      height,
-    },
-    { onConflict: 'project_id,slot' },
-  )
-  if (dbErr) {
-    await supabaseAdmin.storage.from(COPYWRITING_IMAGES_BUCKET).remove([storagePath])
-    return NextResponse.json({ error: dbErr.message }, { status: 500 })
-  }
-  if (previous?.storage_path) await supabaseAdmin.storage.from(COPYWRITING_IMAGES_BUCKET).remove([previous.storage_path])
-
-  await supabaseAdmin.from('copywriting_project_events').insert({
-    project_id: project.id,
-    event_type: 'image_added',
-    summary: `${previous ? 'Replaced' : 'Added'} the photo for image ${slot} (${file.filename}).`,
+  const saved = await saveSlotImage({
+    projectId: project.id,
+    userId: auth.user.id,
+    slot,
+    filename: file.filename,
+    storagePath,
+    mime: file.mime,
+    sizeBytes,
+    width,
+    height,
   })
+  if (saved.error) return NextResponse.json({ error: saved.error }, { status: 500 })
 
   return NextResponse.json({ images: await loadProjectImages(project.id) }, { status: 201 })
 }

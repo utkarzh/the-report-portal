@@ -6,6 +6,8 @@ import { denyWithoutCopywritingAccess } from '@/lib/copywriting-access'
 import { buildCopywritingDocx } from '@/lib/copywriting-docx'
 import { renderCopywritingPdf } from '@/lib/copywriting-pdf'
 import { loadExportImages } from '@/lib/copywriting-images'
+import { labelSectionsForOutput } from '@/lib/copywriting'
+import type { CopywritingProjectSection } from '@/types'
 
 interface Params {
   params: { id: string }
@@ -21,11 +23,12 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (denied) return denied
 
   const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', auth.user.id).single()
-  const { data: project } = await supabaseAdmin
-    .from('copywriting_projects')
-    .select('id, user_id, draft_name, publication_name, article_type_name, final_output')
-    .eq('id', params.id)
-    .single()
+  const columns = 'id, user_id, draft_name, publication_name, article_type_name, final_output'
+  let { data: project, error: loadErr } = await supabaseAdmin.from('copywriting_projects').select(`${columns}, sections`).eq('id', params.id).single()
+  // Before migration 041 there's no `sections` column: export unlabelled.
+  if (loadErr && /sections/i.test(loadErr.message)) {
+    ;({ data: project } = await supabaseAdmin.from('copywriting_projects').select(columns).eq('id', params.id).single())
+  }
 
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (project.user_id !== auth.user.id && profile?.role !== 'admin') {
@@ -37,13 +40,15 @@ export async function GET(request: NextRequest, { params }: Params) {
   const base = project.draft_name.replace(/[^a-z0-9-_ ]/gi, '').trim() || 'article'
   // Photos uploaded into the article's [IMAGE n: …] slots, embedded in place.
   const images = await loadExportImages(project.id)
+  // Each section labelled with its measured length, as in the worked examples.
+  const finalText = labelSectionsForOutput(project.final_output, (project as { sections?: CopywritingProjectSection[] }).sections)
 
   if (format === 'pdf') {
     const buffer = await renderCopywritingPdf({
       draftName: project.draft_name,
       publicationName: project.publication_name,
       articleTypeName: project.article_type_name,
-      finalText: project.final_output,
+      finalText,
       images,
     })
     return new NextResponse(new Uint8Array(buffer), {
@@ -59,7 +64,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     draftName: project.draft_name,
     publicationName: project.publication_name,
     articleTypeName: project.article_type_name,
-    finalText: project.final_output,
+    finalText,
     images,
   })
   const buffer = await Packer.toBuffer(doc)

@@ -16,11 +16,12 @@ const nextConfig = {
       { source: '/commercial', destination: '/dashboard', permanent: false },
       // Every module's media list became the central Media Library (migration
       // 039). Meeting Prep's ids were kept, so its edit links still resolve.
-      { source: '/commercial/admin/meeting-prep/media-library/new', destination: '/admin/media-library', permanent: false },
-      { source: '/commercial/admin/meeting-prep/media-library/:id', destination: '/admin/media-library/:id', permanent: false },
-      { source: '/commercial/admin/meeting-prep/media-library', destination: '/admin/media-library', permanent: false },
-      { source: '/copywriting/admin/publications', destination: '/admin/media-library', permanent: false },
-      { source: '/admin/interview-letters/media', destination: '/admin/media-library', permanent: false },
+      // `from` keeps the library's back button pointing at the module.
+      { source: '/commercial/admin/meeting-prep/media-library/new', destination: '/admin/media-library?from=meeting-prep', permanent: false },
+      { source: '/commercial/admin/meeting-prep/media-library/:id', destination: '/admin/media-library/:id?from=meeting-prep', permanent: false },
+      { source: '/commercial/admin/meeting-prep/media-library', destination: '/admin/media-library?from=meeting-prep', permanent: false },
+      { source: '/copywriting/admin/publications', destination: '/admin/media-library?from=copywriting', permanent: false },
+      { source: '/admin/interview-letters/media', destination: '/admin/media-library?from=interview-letters', permanent: false },
     ]
   },
 }

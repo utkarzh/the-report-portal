@@ -31,6 +31,17 @@ const styles = StyleSheet.create({
   bulletText: { flex: 1 },
   figure: { marginTop: 4, marginBottom: 12, alignItems: 'center' },
   caption: { fontSize: 9, color: GREY, fontStyle: 'italic', textAlign: 'center', marginTop: 5 },
+  // A "[PULL QUOTE: …]" highlight: larger italic text between gold rules.
+  pullQuote: {
+    marginTop: 8,
+    marginBottom: 14,
+    marginHorizontal: 28,
+    paddingVertical: 8,
+    borderTopWidth: 0.75,
+    borderBottomWidth: 0.75,
+    borderColor: '#C9A961',
+  },
+  pullQuoteText: { fontSize: 13, fontStyle: 'italic', lineHeight: 1.45, color: INK },
   missing: {
     marginTop: 4,
     marginBottom: 12,
@@ -52,7 +63,8 @@ const IMAGE_MAX_W = 483
 const IMAGE_MAX_H = 420
 
 type Block =
-  | { type: 'h2' | 'h3' | 'p' | 'bullet'; text: string }
+  | { type: 'h2' | 'h3' | 'p' | 'bullet' | 'pullquote'; text: string }
+  | { type: 'gap' }
   | { type: 'image'; slot: number; description: string }
 
 // Inline markdown has no run-level styling in this renderer, so the markers
@@ -97,9 +109,14 @@ function ArticlePdfDoc({
   images?: Map<number, ExportImage>
 }) {
   // "[IMAGE n: …]" lines become image blocks; everything else is parsed as text.
-  const blocks: Block[] = splitArticleImages(finalText).flatMap((seg) =>
-    seg.type === 'text' ? parseBlocks(seg.markdown) : [{ type: 'image' as const, slot: seg.slot, description: seg.description }],
-  )
+  // Section markers are structure, not article text, so they print nothing.
+  const blocks: Block[] = splitArticleImages(finalText).flatMap((seg): Block[] => {
+    if (seg.type === 'text') return parseBlocks(seg.markdown)
+    if (seg.type === 'image') return [{ type: 'image', slot: seg.slot, description: seg.description }]
+    if (seg.type === 'pullquote') return [{ type: 'pullquote', text: stripInline(seg.text) }]
+    if (seg.type === 'gap') return [{ type: 'gap' }]
+    return []
+  })
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -119,6 +136,15 @@ function ArticlePdfDoc({
                 {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt prop */}
                 <Image src={{ data: img.data, format: img.type }} style={{ width: size.width, height: size.height }} />
                 <Text style={styles.caption}>{caption}</Text>
+              </View>
+            )
+          }
+          // Two blank lines (11pt × 1.4 line height) between sections.
+          if (b.type === 'gap') return <View key={i} style={{ height: 31 }} />
+          if (b.type === 'pullquote') {
+            return (
+              <View key={i} style={styles.pullQuote} wrap={false}>
+                <Text style={styles.pullQuoteText}>“{b.text}”</Text>
               </View>
             )
           }

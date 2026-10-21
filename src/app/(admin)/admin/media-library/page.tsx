@@ -2,11 +2,18 @@ export const dynamic = 'force-dynamic'
 
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import MediaLibraryManager from '@/components/admin/MediaLibraryManager'
+import { MEDIA_LIBRARY_ORIGINS, parseMediaLibraryOrigin } from '@/lib/media-library'
 import type { MediaLibraryEntry } from '@/types'
 
-export default async function MediaLibraryPage() {
+interface Props {
+  searchParams: { from?: string | string[] }
+}
+
+export default async function MediaLibraryPage({ searchParams }: Props) {
   requireAdminHeader()
+  const from = parseMediaLibraryOrigin(searchParams.from)
 
   const [{ data: entries }, { data: guides }] = await Promise.all([
     supabaseAdmin.from('media_library').select('*').order('name'),
@@ -18,6 +25,8 @@ export default async function MediaLibraryPage() {
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-8">
       <div className="max-w-4xl mx-auto">
+        {from && <Breadcrumbs items={[...MEDIA_LIBRARY_ORIGINS[from], { label: 'Media Library' }]} />}
+
         <div className="mb-8">
           <h1 className="text-lg font-semibold text-gray-900">Media Library</h1>
           <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">
@@ -32,7 +41,7 @@ export default async function MediaLibraryPage() {
           </p>
         </div>
 
-        <MediaLibraryManager initialEntries={(entries || []) as MediaLibraryEntry[]} guideCounts={guideCounts} />
+        <MediaLibraryManager initialEntries={(entries || []) as MediaLibraryEntry[]} guideCounts={guideCounts} from={from} />
       </div>
     </div>
   )

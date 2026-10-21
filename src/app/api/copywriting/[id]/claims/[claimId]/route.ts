@@ -66,7 +66,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const feedback = (body.feedback as string) || ''
     const { data: promptRow } = await supabaseAdmin.from('copywriting_prompt').select('prompt_text').eq('prompt_key', 'research').maybeSingle()
     try {
-      const claim = feedback ? `${entry.claim} (writer feedback on the previous attempt: ${feedback})` : entry.claim
+      // Ask the original question again (the gap/claim it was researched for),
+      // not the previous answer — re-sending "FDI was $12bn" anchors the search
+      // on a figure that may be wrong. The previous finding and the writer's
+      // feedback go along as context. Findings from before requested_claim
+      // existed fall back to their statement.
+      const question = (entry.requested_claim as string | null)?.trim() || entry.claim
+      const context = [
+        question !== entry.claim ? `previous finding, to check and correct: ${entry.claim}` : '',
+        feedback ? `writer feedback on the previous attempt: ${feedback}` : '',
+      ].filter(Boolean)
+      const claim = context.length ? `${question} (${context.join('; ')})` : question
       const findings = await runGeminiResearch({
         promptText: promptRow?.prompt_text || '',
         claims: [claim],
@@ -75,10 +85,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const f = findings[0]
       if (!f) return NextResponse.json({ error: 'Gemini returned nothing usable — try again.' }, { status: 502 })
 
+      // The new finding's own statement — keeping the old one beside the new
+      // source would show a figure that source may not support.
+      const newClaim = (f.claim || '')
+        .replace(/\s*\((?:previous finding, to check and correct|writer feedback on the previous attempt):[^)]*\)\s*$/i, '')
+        .trim()
       const { data, error } = await supabaseAdmin
         .from('copywriting_research_entries')
         .update({
-          claim: entry.claim,
+          claim: newClaim || entry.claim,
           source_url: f.sourceUrl,
           publication_date: f.publicationDate,
           period_covered: f.periodCovered,

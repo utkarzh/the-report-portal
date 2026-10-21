@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
+import { COPYWRITING_PROMPT_KEYS } from '@/lib/copywriting'
 
 export default async function CopywritingAdminPage() {
   const profile = getProfileFromHeaders()
@@ -12,9 +13,10 @@ export default async function CopywritingAdminPage() {
   if (profile.role !== 'admin') redirect('/copywriting')
 
   const supabase = createSupabaseServerClient()
-  const [{ count: pubCount }, { count: typeCount }, { count: guideCount }] = await Promise.all([
+  const [{ count: pubCount }, { count: typeCount }, { count: sectionCount }, { count: guideCount }] = await Promise.all([
     supabase.from('media_library').select('id', { count: 'exact', head: true }),
     supabase.from('copywriting_article_types').select('id', { count: 'exact', head: true }),
+    supabase.from('copywriting_sections').select('id', { count: 'exact', head: true }),
     supabase.from('copywriting_trc_guides').select('id', { count: 'exact', head: true }),
   ])
 
@@ -35,13 +37,19 @@ export default async function CopywritingAdminPage() {
             title="Publication"
             description="Publications are managed in the central Media Library, shared by every tool. Open a publication there to set its writing rules and style guides."
             count={`${pubCount ?? 0} publication${pubCount === 1 ? '' : 's'}`}
-            href="/admin/media-library"
+            href="/admin/media-library?from=copywriting"
           />
           <AdminCard
             title="Article Type"
             description="The article types writers can choose from, each with its own additional instructions."
             count={`${typeCount ?? 0} article type${typeCount === 1 ? '' : 's'}`}
             href="/copywriting/admin/article-types"
+          />
+          <AdminCard
+            title="Sections"
+            description="The section names writers drag into an article's structure. Each article sets its own number of characters per section."
+            count={`${sectionCount ?? 0} section${sectionCount === 1 ? '' : 's'}`}
+            href="/copywriting/admin/sections"
           />
           <AdminCard
             title="TRC Guides"
@@ -52,7 +60,7 @@ export default async function CopywritingAdminPage() {
           <AdminCard
             title="Stage Prompts"
             description="Analyze Sources & Styles, Research, Planning, Drafting, Check and Revision — versioned, testable and reversible."
-            count="7 stages"
+            count={`${COPYWRITING_PROMPT_KEYS.length} stages`}
             href="/copywriting/admin/prompts"
           />
         </div>

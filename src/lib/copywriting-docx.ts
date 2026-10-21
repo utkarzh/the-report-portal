@@ -79,6 +79,20 @@ function imageSlotParagraphs(slot: number, description: string, image: ExportIma
   ]
 }
 
+// A "[PULL QUOTE: …]" line: the excerpt set apart as a highlight — larger
+// italic text between thin rules, indented from both margins.
+function pullQuoteParagraph(text: string): Paragraph {
+  const rule = { style: BorderStyle.SINGLE, size: 6, color: 'C9A961', space: 8 }
+  return new Paragraph({
+    alignment: AlignmentType.LEFT,
+    indent: { left: 567, right: 567 },
+    border: { top: rule, bottom: rule },
+    spacing: { before: 240, after: 300, line: 336 },
+    keepLines: true,
+    children: [new TextRun({ text: `“${text}”`, font: FONT, size: 26, italics: true, color: HEADING_COLOR })],
+  })
+}
+
 export function buildCopywritingDocx(opts: {
   draftName: string
   publicationName: string
@@ -88,11 +102,14 @@ export function buildCopywritingDocx(opts: {
   images?: Map<number, ExportImage>
 }): Document {
   const bodyOpts = { paragraphSpacingAfter: PARA_AFTER, lineSpacing: BODY_LINE, bodyStyle: BODY_STYLE }
-  const body = splitArticleImages(opts.finalText).flatMap((seg) =>
-    seg.type === 'text'
-      ? markdownToParagraphs(seg.markdown, bodyOpts)
-      : imageSlotParagraphs(seg.slot, seg.description, opts.images?.get(seg.slot)),
-  )
+  const body = splitArticleImages(opts.finalText).flatMap((seg) => {
+    if (seg.type === 'text') return markdownToParagraphs(seg.markdown, bodyOpts)
+    if (seg.type === 'image') return imageSlotParagraphs(seg.slot, seg.description, opts.images?.get(seg.slot))
+    if (seg.type === 'pullquote') return [pullQuoteParagraph(seg.text)]
+    // Two blank lines between sections of the final article.
+    if (seg.type === 'gap') return [new Paragraph({ style: BODY_STYLE, children: [] }), new Paragraph({ style: BODY_STYLE, children: [] })]
+    return [] // section markers are structure, not article text
+  })
 
   const titleParas = [
     new Paragraph({

@@ -1,9 +1,15 @@
+import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { canAccessCopywritingTool } from '@/lib/access'
 import { orIlikeFilter } from '@/lib/search'
-import { MAX_IMAGE_COUNT } from '@/lib/copywriting'
+import {
+  MAX_IMAGE_COUNT,
+  MAX_ARTICLE_SECTIONS,
+  MAX_QUOTES,
+} from '@/lib/copywriting'
+import type { CopywritingProjectSection } from '@/types'
 
 const PAGE_SIZE = 12
 
@@ -77,7 +83,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
 
-  const { draftName, publicationId, articleTypeId, editorialObjective, sectionStructure, targetLength, quotesRequired, imageCount } = body
+  const { draftName, publicationId, articleTypeId, editorialObjective, sections, directQuotes, pullQuotes, imageCount } = body
 
   if (!draftName || typeof draftName !== 'string' || !draftName.trim()) {
     return NextResponse.json({ error: 'Draft name is required' }, { status: 400 })
@@ -104,6 +110,41 @@ export async function POST(request: NextRequest) {
     image_count = n
   }
 
+  // Section structure (required, migration 041). The browser sends which
+  // library sections, in order, with a length for each; names are taken from
+  // the library, never from the request, and stored as a snapshot.
+  if (!Array.isArray(sections) || sections.length === 0) {
+    return NextResponse.json({ error: 'Build the section structure: add at least one section.' }, { status: 400 })
+  }
+  if (sections.length > MAX_ARTICLE_SECTIONS) {
+    return NextResponse.json({ error: `An article can have at most ${MAX_ARTICLE_SECTIONS} sections.` }, { status: 400 })
+  }
+  const ids = Array.from(new Set(sections.map((sec: { sectionId?: unknown }) => String(sec?.sectionId || ''))))
+  const { data: library } = await supabaseAdmin.from('copywriting_sections').select('id, name, description').in('id', ids)
+  const byId = new Map((library || []).map((l) => [l.id as string, { name: l.name as string, description: (l.description as string) || '' }]))
+  const snapshot: CopywritingProjectSection[] = []
+  for (const sec of sections as { sectionId?: unknown; target?: unknown; targetChars?: unknown; unit?: unknown }[]) {
+    const lib = byId.get(String(sec?.sectionId || ''))
+    if (!lib) {
+      return NextResponse.json({ error: 'One of the chosen sections no longer exists. Refresh the page and rebuild the structure.' }, { status: 400 })
+    }
+    // Characters by default; `targetChars` is what the form sent before units existed.
+    const unit = sec?.unit === 'words' ? 'words' : 'characters'
+    const target = Number(sec?.target ?? sec?.targetChars)
+    if (!Number.isInteger(target) || target < 1) {
+      return NextResponse.json({ error: `“${lib.name}” needs its length in ${unit} (a whole number above 0).` }, { status: 400 })
+    }
+    snapshot.push({ key: randomUUID(), section_id: String(sec.sectionId), name: lib.name, description: lib.description, unit, target })
+  }
+  const quoteCount = (value: unknown, label: string): number | string => {
+    const n = Number(value)
+    return Number.isInteger(n) && n >= 0 && n <= MAX_QUOTES ? n : `${label} must be a whole number from 0 to ${MAX_QUOTES}.`
+  }
+  const direct_quotes = quoteCount(directQuotes, 'Direct quotes')
+  const pull_quotes = quoteCount(pullQuotes, 'Pull quotes')
+  if (typeof direct_quotes === 'string') return NextResponse.json({ error: direct_quotes }, { status: 400 })
+  if (typeof pull_quotes === 'string') return NextResponse.json({ error: pull_quotes }, { status: 400 })
+
   const { data: project, error } = await supabaseAdmin
     .from('copywriting_projects')
     .insert({
@@ -114,9 +155,9 @@ export async function POST(request: NextRequest) {
       article_type_id: articleType.id,
       article_type_name: articleType.name,
       editorial_objective: editorialObjective || '',
-      section_structure: sectionStructure || '',
-      target_length: typeof targetLength === 'number' ? targetLength : targetLength ? Number(targetLength) : null,
-      quotes_required: typeof quotesRequired === 'number' ? quotesRequired : quotesRequired ? Number(quotesRequired) : null,
+      sections: snapshot,
+      direct_quotes,
+      pull_quotes,
       image_count,
       stage: 'upload',
     })

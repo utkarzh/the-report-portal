@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { denyWithoutCopywritingAccess } from '@/lib/copywriting-access'
 import type { CopywritingAnalysis } from '@/types'
+import { findAnalysisSection, updateAnalysisSection } from '@/lib/copywriting'
 
 interface Params {
   params: { id: string }
@@ -32,11 +33,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (type === 'analysis_section') {
     const section = body.section as string
     if (!section) return NextResponse.json({ error: 'section is required' }, { status: 400 })
-    const analysis = { ...(project.analysis as CopywritingAnalysis) }
-    if (!(analysis as Record<string, unknown>)[section]) {
-      return NextResponse.json({ error: 'That section does not exist yet' }, { status: 400 })
-    }
-    ;(analysis as Record<string, { text: string; approved?: boolean }>)[section].approved = true
+    const current = findAnalysisSection(project.analysis as CopywritingAnalysis, section)
+    if (!current) return NextResponse.json({ error: 'That section does not exist yet' }, { status: 400 })
+    const analysis = updateAnalysisSection(project.analysis as CopywritingAnalysis, current.key, { approved: true })
     await supabaseAdmin.from('copywriting_projects').update({ analysis }).eq('id', project.id)
     return NextResponse.json({ analysis })
   }

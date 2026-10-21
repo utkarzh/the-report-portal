@@ -11,10 +11,11 @@ export default async function NewCopywritingProjectPage() {
   if (!profile) redirect('/login')
 
   const supabase = createSupabaseServerClient()
-  const [{ data: publications }, { data: articleTypes }] = await Promise.all([
+  const [{ data: publications }, { data: articleTypes }, { data: sectionLibrary }] = await Promise.all([
     // Publications are the central Media Library's entries (Admin → Media Library).
     supabase.from('media_library').select('id, name').order('name'),
     supabase.from('copywriting_article_types').select('id, name').order('name'),
+    supabase.from('copywriting_sections').select('id, name, description').order('name'),
   ])
 
   return (
@@ -30,15 +31,16 @@ export default async function NewCopywritingProjectPage() {
           </p>
         </div>
 
-        {(!publications || publications.length === 0 || !articleTypes || articleTypes.length === 0) && (
+        {(!publications?.length || !articleTypes?.length || !sectionLibrary?.length) && (
           <p className="mb-6 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-4 py-3">
             {!publications?.length && 'No publications configured yet. '}
             {!articleTypes?.length && 'No article types configured yet. '}
+            {!sectionLibrary?.length && 'No sections configured yet. '}
             An admin can add these from the Admin area.
           </p>
         )}
 
-        <NewProjectForm publications={publications || []} articleTypes={articleTypes || []} />
+        <NewProjectForm publications={publications || []} articleTypes={articleTypes || []} sectionLibrary={sectionLibrary || []} />
       </div>
     </div>
   )

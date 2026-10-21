@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { denyWithoutCopywritingAccess } from '@/lib/copywriting-access'
 import { runGeminiResearch } from '@/lib/copywriting-gemini'
+import { matchFindingsToClaims } from '@/lib/copywriting'
 
 interface Params {
   params: { id: string }
@@ -38,8 +39,12 @@ export async function POST(request: NextRequest, { params }: Params) {
       articleContext: `${project.draft_name} — ${project.editorial_objective || ''}`,
     })
 
-    const rows = findings.map((f) => ({
+    // The exact gap/claim each finding answers, so the analysis screen can
+    // drop that gap once the finding is approved or discarded.
+    const requested = matchFindingsToClaims(findings.map((f) => f.claim), claims)
+    const rows = findings.map((f, i) => ({
       project_id: project.id,
+      requested_claim: requested[i],
       claim: f.claim,
       source_url: f.sourceUrl,
       publication_date: f.publicationDate,
@@ -49,7 +54,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       status: 'pending' as const,
     }))
 
-    const { data: inserted, error } = await supabaseAdmin.from('copywriting_research_entries').insert(rows).select('*')
+    let { data: inserted, error } = await supabaseAdmin.from('copywriting_research_entries').insert(rows).select('*')
+    // Before migration 041 there's no requested_claim column — save without it.
+    if (error && /requested_claim/i.test(error.message)) {
+      ;({ data: inserted, error } = await supabaseAdmin
+        .from('copywriting_research_entries')
+        .insert(rows.map(({ requested_claim: _unused, ...rest }) => rest))
+        .select('*'))
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     await supabaseAdmin.from('copywriting_project_events').insert({

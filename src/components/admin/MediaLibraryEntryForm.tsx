@@ -7,12 +7,13 @@ import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import PublicationGuides, { type PublicationGuide } from '@/components/admin/PublicationGuides'
-import { MEDIA_LIBRARY_PATH } from '@/lib/media-library'
+import { mediaLibraryHref, type MediaLibraryOrigin } from '@/lib/media-library'
 import { MEDIA_DESCRIPTION_TOKEN, wordCount } from '@/lib/interview-letters'
 import type { MediaLibraryEntry } from '@/types'
 
 interface Props {
   entry: MediaLibraryEntry
+  from?: MediaLibraryOrigin | null
   initialGuides: PublicationGuide[]
 }
 
@@ -28,7 +29,7 @@ function Section({ title, used, children }: { title: string; used: string; child
   )
 }
 
-export default function MediaLibraryEntryForm({ entry, initialGuides }: Props) {
+export default function MediaLibraryEntryForm({ entry, initialGuides, from }: Props) {
   const router = useRouter()
   const [form, setForm] = useState({
     name: entry.name,
@@ -82,7 +83,7 @@ export default function MediaLibraryEntryForm({ entry, initialGuides }: Props) {
       setError(data.error || 'Failed to delete.')
       return
     }
-    router.push(MEDIA_LIBRARY_PATH)
+    router.push(mediaLibraryHref(from))
     router.refresh()
   }
 

@@ -30,11 +30,20 @@ import { uploadToStorage, type StagedFile } from '@/lib/copywriting-upload'
 import CopywritingLoader, { type CopywritingLoaderVariant } from '@/components/copywriting/CopywritingLoader'
 import AiDisclaimerModal from '@/components/ui/AiDisclaimerModal'
 import {
-  ANALYSIS_SECTION_ORDER,
-  ANALYSIS_SECTION_LABELS,
+  analysisSectionList,
+  isGatedAnalysisSection,
+  isGapsAnalysisSection,
   analysisAllApproved,
   splitGapLines,
+  gapResearchState,
   splitArticleImages,
+  articleForCopy,
+  labelSectionsForOutput,
+  SECTION_BREAK_LINE,
+  formatChars,
+  formatLength,
+  sectionTarget,
+  sectionTotals,
   maxUploadableSlot,
   isStalledStage,
   IN_PROGRESS_STAGE_ENTRY,
@@ -93,6 +102,8 @@ const COPY_STYLES: Record<string, string> = {
   h2: 'font-size:12pt;font-weight:600;color:#111111;margin:18pt 0 6pt;line-height:1.3;border-bottom:1px solid #e5e3df;padding-bottom:4pt;',
   h3: 'font-size:11.25pt;font-weight:600;color:#111111;margin:18pt 0 6pt;line-height:1.3;',
   h4: 'font-size:10.5pt;font-weight:600;color:#111111;margin:18pt 0 6pt;line-height:1.3;',
+  // Pull quotes (articleForCopy() turns them into blockquotes).
+  blockquote: 'margin:12pt 21pt 15pt;padding:6pt 0;border-top:1px solid #C9A961;border-bottom:1px solid #C9A961;font-style:italic;font-size:12pt;color:#111111;',
   p: 'font-size:10.5pt;font-weight:400;color:#374151;margin:0 0 9pt;line-height:1.75;',
   ul: 'margin:0 0 9pt;padding-left:16.8pt;',
   ol: 'margin:0 0 9pt;padding-left:16.8pt;',
@@ -117,9 +128,13 @@ function styledArticleHtml(md: string): string {
 // Copies the article so it pastes the way it looks on screen: rich HTML with
 // the page's own heading sizes and spacing for Word / Google Docs / email,
 // plus a clean plain-text version (no # or ** markers) for plain-text fields.
-async function copyArticle(md: string) {
-  const html = styledArticleHtml(md)
-  const plain = markdownToPlainText(md)
+async function copyArticle(rawMd: string) {
+  const md = articleForCopy(rawMd)
+  // A section break is two blank lines: two empty paragraphs in the rich
+  // copy, two blank lines in the plain one (which otherwise collapses them).
+  const breakLine = (l: string) => l.trim() === SECTION_BREAK_LINE
+  const html = styledArticleHtml(md.split('\n').map((l) => (breakLine(l) ? '&nbsp;\n\n&nbsp;' : l)).join('\n'))
+  const plain = markdownToPlainText(md.split('\n').map((l) => (breakLine(l) ? '\u2063' : l)).join('\n')).replace(/\n*\u2063\n*/g, '\n\n\n')
   try {
     await navigator.clipboard.write([
       new ClipboardItem({
@@ -229,16 +244,39 @@ export default function ProjectWorkspace({ projectId, initial, isAdmin }: Props)
     return data
   }
 
+  // Draft, then the Check step as its own request (a full check report
+  // doesn't fit in what's left of the drafting request). A draft that stopped
+  // before the end is still shown, with a note saying so.
+  async function draftThenCheck() {
+    const data = await runAction('draft')
+    if (!data) return
+    await runAction('check')
+    if (data.incomplete) setError(data.incomplete)
+  }
+
   // After a research run lands, scroll up to the Research Ledger button and
-  // flash it so the writer sees where the new findings went.
+  // flash it so the writer sees where the new findings went. The AI-content
+  // notice opens at the same moment, so the scroll + flash wait until it's
+  // dismissed — otherwise the flash is over (and the writer has lost their
+  // place) by the time they click "I understand".
   const ledgerRef = useRef<HTMLButtonElement>(null)
   const [ledgerHighlighted, setLedgerHighlighted] = useState(false)
+  const [highlightLedgerAfterNotice, setHighlightLedgerAfterNotice] = useState(false)
 
   useEffect(() => {
     if (!ledgerHighlighted) return
-    const t = setTimeout(() => setLedgerHighlighted(false), 2500)
+    const t = setTimeout(() => setLedgerHighlighted(false), 4000)
     return () => clearTimeout(t)
   }, [ledgerHighlighted])
+
+  function closeDisclaimer() {
+    setDisclaimerOpen(false)
+    if (highlightLedgerAfterNotice) {
+      setHighlightLedgerAfterNotice(false)
+      // After the notice's exit animation, once the page can scroll again.
+      setTimeout(highlightLedger, 200)
+    }
+  }
 
   function highlightLedger() {
     ledgerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -247,7 +285,23 @@ export default function ProjectWorkspace({ projectId, initial, isAdmin }: Props)
 
   // Approved research the current draft doesn't use yet (placement is
   // computed in code after every draft/refine/approval — lib/copywriting-ledger.ts).
-  const unusedApproved = research.filter((r) => r.status === 'approved' && (!r.placement || r.placement === 'Not used in draft'))
+  // A finding also counts as used once an "Update draft with approved
+  // research" revision has worked it in — the placement search can miss a
+  // finding the AI rephrased. Re-researching it (a newer checked_at) brings
+  // it back.
+  const appliedAt = new Map<string, string>()
+  for (const e of events) {
+    if (e.event_type !== 'draft_revised') continue
+    for (const id of (e.payload?.appliedResearchIds as string[] | undefined) || []) {
+      if (!appliedAt.has(id) || appliedAt.get(id)! < e.created_at) appliedAt.set(id, e.created_at)
+    }
+  }
+  const unusedApproved = research.filter(
+    (r) =>
+      r.status === 'approved' &&
+      (!r.placement || r.placement === 'Not used in draft') &&
+      !(appliedAt.has(r.id) && appliedAt.get(r.id)! >= r.checked_at),
+  )
   const flaggedGaps = outstandingFlaggedGaps(events)
   // Bumped by the ledger's "Update draft" button; DraftStage runs the refine.
   const [applySignal, setApplySignal] = useState(0)
@@ -265,7 +319,7 @@ export default function ProjectWorkspace({ projectId, initial, isAdmin }: Props)
     if (!res.ok) setError(data.error || 'Research failed')
     await refresh()
     if (res.ok) {
-      highlightLedger()
+      setHighlightLedgerAfterNotice(true)
       showDisclaimer()
     }
   }
@@ -331,7 +385,7 @@ export default function ProjectWorkspace({ projectId, initial, isAdmin }: Props)
     <>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
         <p className="text-xs text-amber-900">
-          You’re viewing the <span className="font-semibold">{STEPS.find((st) => st.key === viewing)?.label}</span> step as it was approved — read-only.
+          You’re viewing the <span className="font-semibold">{STEPS.find((st) => st.key === viewing)?.label}</span> step as it was {viewing === 'configure' ? 'set up' : 'approved'} — read-only.
         </p>
         <Button size="sm" variant="secondary" onClick={() => setViewStep(null)}>
           Back to current step
@@ -410,7 +464,7 @@ export default function ProjectWorkspace({ projectId, initial, isAdmin }: Props)
               The {stalledAction === 'analyze' ? 'analysis' : stalledAction} didn’t complete — usually the request ran out of time. Nothing was saved from it, so you can safely run it again.
             </p>
           </div>
-          <Button size="sm" onClick={() => runAction(stalledAction)}>
+          <Button size="sm" onClick={() => (stalledAction === 'draft' ? draftThenCheck() : runAction(stalledAction))}>
             <RefreshCw size={13} className="mr-1.5 inline" /> Retry
           </Button>
         </div>
@@ -446,7 +500,7 @@ export default function ProjectWorkspace({ projectId, initial, isAdmin }: Props)
           busy={busy}
           onApprove={() => approve('plan')}
           onRequestChanges={(feedback) => runAction('replan', { feedback })}
-          onDraft={() => runAction('draft')}
+          onDraft={draftThenCheck}
         />
       )}
 
@@ -499,15 +553,18 @@ export default function ProjectWorkspace({ projectId, initial, isAdmin }: Props)
         applyCount={project.stage === 'draft_review' ? unusedApproved.length : 0}
         onApplyApproved={() => { setLedgerOpen(false); setApplySignal((n) => n + 1) }}
       />
-      <AiDisclaimerModal open={disclaimerOpen} onClose={() => setDisclaimerOpen(false)} />
+      <AiDisclaimerModal open={disclaimerOpen} onClose={closeDisclaimer} />
     </div>
   )
 }
 
 // ── Step navigation ──────────────────────────────────────────────────────
-type StepKey = 'sources' | 'analysis' | 'plan' | 'draft' | 'final'
+type StepKey = 'configure' | 'sources' | 'analysis' | 'plan' | 'draft' | 'final'
 
+// "Configure" is done the moment the project exists, so it's always viewable
+// (read-only) and never the current step.
 const STEPS: { key: StepKey; label: string }[] = [
+  { key: 'configure', label: 'Configure' },
   { key: 'sources', label: 'Sources' },
   { key: 'analysis', label: 'Analysis' },
   { key: 'plan', label: 'Plan' },
@@ -524,6 +581,7 @@ function currentStepFor(stage: string): StepKey {
 }
 
 function stepHasContent(step: StepKey, project: CopywritingProject, documents: CopywritingProjectDocument[]): boolean {
+  if (step === 'configure') return true
   if (step === 'sources') return documents.length > 0
   if (step === 'analysis') return !!project.analysis
   if (step === 'plan') return !!project.plan_output
@@ -594,10 +652,81 @@ function PastStepView({
   documents: CopywritingProjectDocument[]
   images: CopywritingProjectImage[]
 }) {
+  if (step === 'configure') return <PastConfigureView project={project} />
   if (step === 'sources') {
     return <PastSourcesView project={project} documents={documents} />
   }
   return <PastStepBody step={step} project={project} images={images} />
+}
+
+// Read-only summary of what was set in the Configure form. Projects
+// configured before the section structure (migration 041) show their
+// original free-text structure, word target and quote count instead.
+function PastConfigureView({ project }: { project: CopywritingProject }) {
+  const sections = project.sections || []
+  const totals = sectionTotals(sections)
+  const images =
+    project.image_count === null || project.image_count === undefined
+      ? 'AI decides'
+      : project.image_count === 0
+        ? 'None'
+        : String(project.image_count)
+  const row = (label: string, value: React.ReactNode) => (
+    <div className="grid grid-cols-1 gap-1 border-b border-[#e5e3df] py-3 last:border-b-0 sm:grid-cols-[11rem_1fr] sm:gap-4">
+      <dt className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 sm:pt-0.5">{label}</dt>
+      <dd className="min-w-0 text-sm text-gray-800">{value}</dd>
+    </div>
+  )
+  const notSet = <span className="text-gray-400">Not set</span>
+
+  return (
+    <div className="mt-6 bg-white border border-[#e5e3df] p-6 sm:p-8">
+      <h2 className="text-sm font-semibold text-gray-900">Configuration</h2>
+      <dl className="mt-3">
+        {row('Draft name', project.draft_name || notSet)}
+        {row('Publication', project.publication_name || notSet)}
+        {row('Article type', project.article_type_name || notSet)}
+        {row('Editorial objective', project.editorial_objective ? <span className="whitespace-pre-line">{project.editorial_objective}</span> : notSet)}
+        {sections.length > 0 ? (
+          <>
+            {row(
+              'Section structure',
+              <div>
+                <ol className="flex flex-col gap-2">
+                  {sections.map((sec, i) => (
+                    <li key={sec.key} className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-gray-900 px-1.5 text-[10px] font-semibold tabular-nums text-white">
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                          <span className="font-medium text-gray-900">{sec.name}</span>
+                          <span className="text-xs tabular-nums text-gray-500">{formatLength(sectionTarget(sec).value, sectionTarget(sec).unit)}</span>
+                        </div>
+                        {sec.description && <p className="mt-0.5 text-xs text-gray-500">{sec.description}</p>}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+                <p className="mt-3 text-xs tabular-nums text-gray-500">
+                  Total: <span className="font-medium text-gray-800">{totals.label}</span>
+                </p>
+              </div>,
+            )}
+            {row('Direct quotes', project.direct_quotes ?? 0)}
+            {row('Pull quotes', project.pull_quotes ?? 0)}
+          </>
+        ) : (
+          <>
+            {row('Section structure', project.section_structure ? <span className="whitespace-pre-line">{project.section_structure}</span> : notSet)}
+            {row('Target length', project.target_length ? `${formatChars(project.target_length)} words` : notSet)}
+            {row('Quotes required', project.quotes_required ?? notSet)}
+          </>
+        )}
+        {row('Number of images', images)}
+      </dl>
+    </div>
+  )
 }
 
 // Read-only list of the uploaded sources, each viewable.
@@ -636,14 +765,13 @@ function PastStepBody({
     const analysis = project.analysis as CopywritingAnalysis | null
     return (
       <div className="mt-6 flex flex-col gap-5">
-        {ANALYSIS_SECTION_ORDER.map((key) => {
-          const section = analysis?.[key]
-          if (!section) return null
+        {analysisSectionList(analysis).map((section) => {
+          const key = section.key
           return (
             <div key={key} className="bg-white border border-[#e5e3df] p-6">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-gray-900">{ANALYSIS_SECTION_LABELS[key]}</h3>
-                {key !== 'style_theme' && (section.approved ? <StatusPill label="Approved" tone="emerald" /> : <StatusPill label="Pending" tone="amber" />)}
+                <h3 className="text-sm font-semibold text-gray-900">{section.label}</h3>
+                {isGatedAnalysisSection(key) && (section.approved ? <StatusPill label="Approved" tone="emerald" /> : <StatusPill label="Pending" tone="amber" />)}
               </div>
               <Markdown text={section.text} className="mt-3" />
             </div>
@@ -673,6 +801,7 @@ function PastStepBody({
         markdown={project.draft_text || ''}
         images={images}
         imageCount={project.image_count}
+        sectionTargets={project.sections}
         editable={false}
         onImagesChange={() => {}}
         className="mt-3"
@@ -854,7 +983,17 @@ function AnalysisStage({
   const [feedback, setFeedback] = useState('')
   const [selectedGaps, setSelectedGaps] = useState<string[]>([])
 
-  const gapLines = splitGapLines(analysis.gaps?.text)
+  // Sections come from the Analyze prompt's markers (the 5 defaults when it
+  // has none), in the order the model wrote them.
+  const sections = analysisSectionList(analysis)
+  // A gap leaves the list once a finding researched for it is approved or
+  // discarded in the Research Ledger; while it's awaiting review it stays,
+  // marked, and can't be sent again.
+  const allGapLines = splitGapLines(sections.find((s) => isGapsAnalysisSection(s.key))?.text)
+  const gapStates = new Map(allGapLines.map((line) => [line, gapResearchState(line, research)]))
+  const visibleGaps = allGapLines.filter((line) => gapStates.get(line) !== 'resolved')
+  const gapLines = visibleGaps.filter((line) => gapStates.get(line) === 'open')
+  const resolvedGapCount = allGapLines.length - visibleGaps.length
   const allApproved = analysisAllApproved(analysis)
 
   function toggleGap(line: string) {
@@ -863,12 +1002,11 @@ function AnalysisStage({
 
   return (
     <div className="mt-8 flex flex-col gap-5">
-      {ANALYSIS_SECTION_ORDER.map((key) => {
-        const section = analysis[key]
-        if (!section) return null
-        const label = ANALYSIS_SECTION_LABELS[key]
-        const gated = key !== 'style_theme'
-        const isGaps = key === 'gaps'
+      {sections.map((section) => {
+        const key = section.key
+        const label = section.label
+        const gated = isGatedAnalysisSection(key)
+        const isGaps = isGapsAnalysisSection(key)
 
         return (
           <div key={key} className="bg-white border border-[#e5e3df] p-6">
@@ -921,14 +1059,22 @@ function AnalysisStage({
               </div>
             )}
 
-            {isGaps && gapLines.length > 0 && (
+            {isGaps && resolvedGapCount > 0 && (
+              <p className="mt-3 flex items-center gap-1.5 text-xs text-emerald-700">
+                <CheckCircle2 size={12} />
+                {resolvedGapCount} gap{resolvedGapCount === 1 ? '' : 's'} resolved in the Research Ledger
+                {visibleGaps.length === 0 ? ' — none left to research.' : '.'}
+              </p>
+            )}
+            {isGaps && visibleGaps.length > 0 && (
               <div className="mt-4 border-t border-[#e5e3df] pt-4">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Send to research</p>
-                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                  <label className={`flex items-center gap-1.5 text-xs text-gray-600 ${gapLines.length ? 'cursor-pointer' : 'opacity-50'}`}>
                     <input
                       type="checkbox"
-                      checked={selectedGaps.length === gapLines.length}
+                      disabled={gapLines.length === 0}
+                      checked={gapLines.length > 0 && selectedGaps.length === gapLines.length}
                       // Indeterminate when only some are ticked.
                       ref={(el) => { if (el) el.indeterminate = selectedGaps.length > 0 && selectedGaps.length < gapLines.length }}
                       onChange={() => setSelectedGaps(selectedGaps.length === gapLines.length ? [] : gapLines)}
@@ -937,12 +1083,22 @@ function AnalysisStage({
                   </label>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  {gapLines.map((line) => (
-                    <label key={line} className="flex items-start gap-2 text-xs text-gray-600">
-                      <input type="checkbox" checked={selectedGaps.includes(line)} onChange={() => toggleGap(line)} className="mt-0.5" />
-                      <span>{plainLine(line)}</span>
-                    </label>
-                  ))}
+                  {visibleGaps.map((line) =>
+                    gapStates.get(line) === 'pending' ? (
+                      <div key={line} className="flex items-start gap-2 text-xs text-gray-400">
+                        <input type="checkbox" checked={false} disabled className="mt-0.5" aria-label="Already researched" />
+                        <span>
+                          {plainLine(line)}{' '}
+                          <span className="whitespace-nowrap font-medium text-amber-700">· researched, awaiting review in the Research Ledger</span>
+                        </span>
+                      </div>
+                    ) : (
+                      <label key={line} className="flex items-start gap-2 text-xs text-gray-600">
+                        <input type="checkbox" checked={selectedGaps.includes(line)} onChange={() => toggleGap(line)} className="mt-0.5" />
+                        <span>{plainLine(line)}</span>
+                      </label>
+                    ),
+                  )}
                 </div>
                 <Button
                   size="sm"
@@ -1107,7 +1263,12 @@ function DraftStage({
   // What the "x of y added" pill counts against: the set number, or — when
   // the AI chose — however many slots it put in the draft.
   const imageCount = configuredImages ?? draftSlots
-  const checks = project.checks?.items || CHECK_ITEM_LABELS.map((label) => ({ label, result: 'warning' as const, detail: 'Not run yet' }))
+  // Measured items (and the model's own items when it reports in lines),
+  // plus the model's report exactly as written when it uses its own format.
+  const checkReport = project.checks?.report || ''
+  const checks = project.checks
+    ? project.checks.items
+    : CHECK_ITEM_LABELS.map((label) => ({ label, result: 'warning' as const, detail: 'Not run yet' }))
 
   // The in-flight turn: the writer's question (shown immediately) and the
   // reply as it streams in. Cleared once the saved messages are reloaded.
@@ -1120,7 +1281,7 @@ function DraftStage({
   // parent's runAction('revision'), so every question ran twice.)
   // `override` sends a prepared message (e.g. "update the draft with the
   // approved research") without touching what's typed in the input box.
-  async function send(override?: string) {
+  async function send(override?: string, appliedResearchIds?: string[]) {
     const message = (override ?? chatInput).trim()
     if (!message || sending) return
     if (override === undefined) setChatInput('')
@@ -1153,7 +1314,7 @@ function DraftStage({
       const res = await fetch(`/api/copywriting/${project.id}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'revision', message }),
+        body: JSON.stringify({ action: 'revision', message, ...(appliedResearchIds?.length ? { appliedResearchIds } : {}) }),
       })
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}))
@@ -1175,7 +1336,9 @@ function DraftStage({
             if (data.delta) setPending((p) => (p ? { ...p, reply: p.reply + data.delta } : p))
             if (data.error) failure = data.error
             if (data.done) {
-              revised = true
+              // A chat-only reply (e.g. a clarifying question) didn't change
+              // the draft, so there's nothing new to check.
+              revised = data.draftChanged !== false
               await finish()
             }
           }
@@ -1190,7 +1353,7 @@ function DraftStage({
   }
 
   function applyApprovedResearch() {
-    if (unusedApproved.length) send(applyResearchMessage(unusedApproved))
+    if (unusedApproved.length) send(applyResearchMessage(unusedApproved), unusedApproved.map((r) => r.id))
   }
 
   // The Research Ledger's "Update draft" button bumps applySignal.
@@ -1226,6 +1389,7 @@ function DraftStage({
             markdown={project.draft_text || ''}
             images={images}
             imageCount={project.image_count}
+            sectionTargets={project.sections}
             editable
             onImagesChange={onImagesChange}
             className="mt-3 max-h-[32rem] overflow-y-auto"
@@ -1247,6 +1411,9 @@ function DraftStage({
             project.checks_run_at && <p className="text-[10px] text-gray-400 mt-1">Last run {new Date(project.checks_run_at).toLocaleString()}</p>
           )}
           <div className={`mt-4 flex flex-col gap-2 transition-opacity ${busy === 'check' ? 'opacity-40' : ''}`}>
+            {checkReport && checks.length > 0 && (
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Measured by the system</p>
+            )}
             {checks.map((c, i) => (
               <div key={i} className="flex items-start justify-between gap-4 text-sm">
                 <div className="min-w-0">
@@ -1261,6 +1428,18 @@ function DraftStage({
                 </div>
               </div>
             ))}
+            {checkReport && (
+              <div className={checks.length > 0 ? 'mt-4 border-t border-[#e5e3df] pt-4' : ''}>
+                {project.checks?.report_incomplete && (
+                  <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    This check report stopped before the end (it reached the step's time or length limit). Run Check Again for a complete one.
+                  </p>
+                )}
+                <div className="max-h-[36rem] overflow-auto">
+                  <Markdown text={checkReport} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1382,7 +1561,7 @@ function CompletedView({
 
   async function copyText() {
     if (!project.final_output) return
-    await copyArticle(project.final_output)
+    await copyArticle(labelSectionsForOutput(project.final_output, project.sections))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -1417,7 +1596,8 @@ function CompletedView({
         <ArticleWithImages
           projectId={project.id}
           ownerId={project.user_id}
-          markdown={project.final_output || ''}
+          // Each section labelled with its measured length, as in the worked examples.
+          markdown={labelSectionsForOutput(project.final_output || '', project.sections)}
           images={images}
           imageCount={project.image_count}
           editable

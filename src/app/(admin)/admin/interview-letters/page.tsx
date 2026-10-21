@@ -115,7 +115,7 @@ export default async function InterviewLettersAdminPage() {
               written wherever the template says [Approved Media Partner Description].
             </p>
             <Link
-              href="/admin/media-library"
+              href="/admin/media-library?from=interview-letters"
               className="mt-4 flex items-center justify-between px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
             >
               <span>
