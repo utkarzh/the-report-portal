@@ -16,7 +16,7 @@
 // the band bytes, and only the server-side builders (docx.ts, pdf.tsx, through
 // bands.ts) resolve it to actual image data.
 //
-// All eight templates are `kind: 'image'`: their header and footer are the real
+// All nine templates are `kind: 'image'`: their header and footer are the real
 // full-width bands from the client's own artwork (see assets.ts for provenance),
 // so every download is pixel-faithful — real logos, real fonts, real rules.
 //
@@ -45,6 +45,7 @@ export type BandKey =
   | 'TRC_NEWSWEEK'
   | 'TRC_GUARDIAN'
   | 'TRC_FOREIGN_POLICY'
+  | 'TRC_DER_SPIEGEL'
   | 'GFDI_DIE_WELT'
   | 'GFDI_GULF_NEWS'
   | 'GFDI_USA_TODAY'
@@ -63,7 +64,7 @@ export interface DownloadTemplate {
 }
 
 // Brand wordmark address block, used by composed footers and nothing else while
-// all eight templates are image-based. Both blocks are transcribed from the
+// all nine templates are image-based. Both blocks are transcribed from the
 // client's real footers.
 export const BRAND_INFO: Record<BrandFamily, { name: string; address: string[]; site: string }> = {
   TRC: {
@@ -126,6 +127,15 @@ export const TEMPLATES: DownloadTemplate[] = [
     kind: 'image',
     partnerSite: 'foreignpolicy.com',
     bandKey: 'TRC_FOREIGN_POLICY',
+  },
+  {
+    id: 'trc-der-spiegel',
+    label: 'TRC – Der Spiegel',
+    brand: 'TRC',
+    partner: 'Der Spiegel',
+    kind: 'image',
+    partnerSite: 'spiegel.de',
+    bandKey: 'TRC_DER_SPIEGEL',
   },
   {
     id: 'gfdi-die-welt',
