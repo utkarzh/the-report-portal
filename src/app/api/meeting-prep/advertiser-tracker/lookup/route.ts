@@ -6,17 +6,20 @@ import { matchAdvertiserHistory, type TrackerEntry } from '@/lib/meeting-prep-tr
 export const runtime = 'nodejs'
 
 // GET /api/meeting-prep/advertiser-tracker/lookup?company=&country=
-// Auto-matches the company against EVERY uploaded tracker pooled together —
+// Matches the company against EVERY uploaded tracker pooled together —
 // matching is worldwide, not scoped to the interviewee's own country, since a
-// company can have advertised anywhere. `country` is accepted for backward
-// compatibility but no longer used to filter. Returns an editable Commercial
-// Alert (status + details). Used by the meeting-prep form.
+// company can have advertised anywhere. `country` puts the company's own
+// country first and scopes the "similar names" hint. Returns an editable
+// Commercial Alert: status 'yes' + details only for TRC placements; placements
+// with competitors (or unverified ones) come back separately, for the rep to
+// see but not as TRC history. Used by the meeting-prep form.
 export async function GET(request: NextRequest) {
   const supabase = createSupabaseServerClient()
   const auth = await getApiUser()
   if (!auth.user) return auth.response
 
   const company = (request.nextUrl.searchParams.get('company') || '').trim()
+  const country = (request.nextUrl.searchParams.get('country') || '').trim()
   if (!company) {
     return NextResponse.json({ error: 'company is required' }, { status: 400 })
   }
@@ -36,7 +39,7 @@ export async function GET(request: NextRequest) {
     null,
   )
 
-  const match = matchAdvertiserHistory(allEntries, company)
+  const match = matchAdvertiserHistory(allEntries, company, country)
   return NextResponse.json({
     trackerFound: true,
     updatedAt,
@@ -44,5 +47,7 @@ export async function GET(request: NextRequest) {
     details: match.details,
     hasHistory: match.hasHistory,
     matchCount: match.matchedRows.length,
+    otherPlacements: match.otherPlacements,
+    similarNames: match.similarNames,
   })
 }

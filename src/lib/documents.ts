@@ -64,7 +64,7 @@ export const DOC_TYPES: Record<DocType, DocTypeConfig> = {
     maxWebSearches: 7,
     tokenReserve: 150_000,
     lengthGuidance:
-      'Keep the executive assessment (Sections 1-4) to about three A4 pages; the appendices after it have no length limit, and the historical advertiser register must include every record available. Prioritise strictly recent, well-sourced data.',
+      'Keep the executive assessment (Sections 1-4) to about three A4 pages; the appendices after it have no length limit, and Appendix D1 must list every project record available. Prioritise strictly recent, well-sourced data.',
     description:
       'This function assesses whether TRC should open a project in a country with a given media partner. It gives the verdict up front (Go, Further Investigation, No Go or Delay), then the commercial case, timing and budget calendar behind it, new advertiser prospects, and the advertiser history on record.',
     contextPlaceholder:

@@ -3,9 +3,16 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { getDocConfig, isDocType } from '@/lib/documents'
+import { DOCUMENT_SAMPLES_BUCKET, getDocConfig, isDocType } from '@/lib/documents'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 import { getApiUser } from '@/lib/auth/api-user'
+import type { TrackerEntry } from '@/lib/meeting-prep-tracker'
+import {
+  advertiserRecordsBlock,
+  advertiserRowsForCountry,
+  attachAdvertiserRegister,
+  spreadsheetRowsForCountry,
+} from '@/lib/advertiser-register'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
@@ -146,9 +153,38 @@ export async function POST(
   // Sample documents that shape the output (admin-managed, shared per type).
   const { data: samples } = await supabaseAdmin
     .from('document_samples')
-    .select('filename, extracted_text')
+    .select('filename, extracted_text, storage_path, truncated')
     .eq('doc_type', session.doc_type)
     .order('created_at', { ascending: true })
+
+  // Business Cases need the project country's full advertising record (see
+  // advertiser-register.ts): the advertiser database rows for the country,
+  // and — in place of a spreadsheet sample cut off at MAX_SAMPLE_CHARS (the
+  // competitor-reports tracker) — that workbook's rows for the country.
+  const isBusinessCase = session.doc_type === 'business_case'
+  const country = (session.project_country || '').trim()
+  let advertiserRows: TrackerEntry[] | null = null
+  if (isBusinessCase && country) {
+    const { data: trackers, error: trackerError } = await supabaseAdmin
+      .from('meeting_prep_advertiser_tracker')
+      .select('entries')
+    if (trackerError) console.error('[doc-gen] advertiser tracker load failed:', trackerError.message)
+    else advertiserRows = advertiserRowsForCountry(trackers.flatMap((t) => (t.entries as TrackerEntry[]) || []), country)
+
+    for (const s of samples || []) {
+      if (!s.truncated || !/\.xlsx?$/i.test(s.filename) || !s.storage_path) continue
+      const { data: file, error } = await supabaseAdmin.storage.from(DOCUMENT_SAMPLES_BUCKET).download(s.storage_path)
+      if (error || !file) {
+        console.error(`[doc-gen] sample ${s.filename} download failed, using its truncated text:`, error?.message)
+        continue
+      }
+      try {
+        s.extracted_text = spreadsheetRowsForCountry(await file.arrayBuffer(), country).text
+      } catch (err) {
+        console.error(`[doc-gen] sample ${s.filename} could not be filtered, using its truncated text:`, err)
+      }
+    }
+  }
 
   // Give each pass the doc's remaining search budget (early passes do most of
   // the research; later ones rarely search).
@@ -217,6 +253,9 @@ ${inputs || '(no structured inputs provided)'}${
     session.additional_context ? `\n\n--- ADDITIONAL CONTEXT FROM USER ---\n${session.additional_context}` : ''
   }${extra ? `\n\n--- REVISION REQUEST (regenerate with this feedback) ---\n${extra}` : ''}`
 
+  // The advertiser block has no breakpoint of its own (a request allows four):
+  // from the second pass on, the continuation breakpoint below caches it as
+  // part of its prefix.
   const userContentBlocks = [
     ...(sampleText
       ? [{
@@ -225,6 +264,7 @@ ${inputs || '(no structured inputs provided)'}${
           cache_control: CACHE_1H,
         }]
       : []),
+    ...(advertiserRows ? [{ type: 'text' as const, text: advertiserRecordsBlock(advertiserRows, country) }] : []),
     { type: 'text' as const, text: taskBlock },
   ]
 
@@ -417,7 +457,8 @@ ${inputs || '(no structured inputs provided)'}${
         // treat it as finished to avoid an endless Continue.
         const stalled = !softDeadlineHit && !hasMarker && fullText.trim().length === 0
         const done = !softDeadlineHit && (hasMarker || stopReason !== 'max_tokens' || stalled)
-        const cleanOutput = done ? stripNarration(stripLeadingNarration(combined)) : combined
+        let cleanOutput = done ? stripNarration(stripLeadingNarration(combined)) : combined
+        if (done && advertiserRows) cleanOutput = attachAdvertiserRegister(cleanOutput, advertiserRows, country)
 
         const newTokensTotal = baseTokensTotal + roundTokens
         const newSearches = baseSearches + roundSearches

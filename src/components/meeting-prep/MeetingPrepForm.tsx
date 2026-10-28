@@ -41,7 +41,13 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
   // both filled (country is no longer used to filter, just as a UX gate).
   const [looking, setLooking] = useState(false)
   const [lookup, setLookup] = useState<
-    { trackerFound: boolean; hasHistory?: boolean; matchCount?: number } | null
+    {
+      trackerFound: boolean
+      hasHistory?: boolean
+      matchCount?: number
+      otherPlacements?: string
+      similarNames?: string[]
+    } | null
   >(null)
   const [lastKey, setLastKey] = useState('')
 
@@ -199,8 +205,9 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
           {looking && <span className="text-xs text-gray-400">Checking tracker…</span>}
         </div>
         <p className="mt-1 text-xs text-gray-500">
-          Optional — auto-filled from the advertiser tracker (searched worldwide) where available.
-          Leave as &ldquo;Not aware&rdquo; if you don&rsquo;t know.
+          Optional — auto-filled from the advertiser tracker where the same company name is found
+          (searched worldwide). Only placements made with TRC count as TRC history. Leave as
+          &ldquo;Not aware&rdquo; if you don&rsquo;t know.
         </p>
 
         {lookup && !lookup.trackerFound && (
@@ -211,14 +218,26 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
         )}
         {lookup && lookup.trackerFound && lookup.hasHistory && (
           <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-            Matched {lookup.matchCount} row{lookup.matchCount === 1 ? '' : 's'} in the advertiser tracker —
-            advertising history found and filled in below.
+            Previous TRC advertising found for &ldquo;{form.companyOrg.trim()}&rdquo; and filled in below.
+            Check it is the same company before you continue.
           </p>
         )}
         {lookup && lookup.trackerFound && !lookup.hasHistory && (
           <p className="mt-2 rounded-lg border border-[#e5e3df] bg-[#faf9f7] px-3 py-2 text-xs text-gray-600">
-            No previous advertising found for &ldquo;{form.companyOrg.trim()}&rdquo; in the advertiser tracker.
+            No previous TRC advertising found for &ldquo;{form.companyOrg.trim()}&rdquo; in the advertiser tracker.
             Marked as &ldquo;No&rdquo; — override below if you know otherwise.
+          </p>
+        )}
+        {lookup?.trackerFound && lookup.otherPlacements && (
+          <div className="mt-2 rounded-lg border border-[#e5e3df] bg-white px-3 py-2 text-xs text-gray-600">
+            <p className="font-medium text-gray-700">Also in the tracker, not counted as TRC history:</p>
+            <p className="mt-1 whitespace-pre-line">{lookup.otherPlacements}</p>
+          </div>
+        )}
+        {lookup?.trackerFound && (lookup.similarNames?.length ?? 0) > 0 && (
+          <p className="mt-2 text-xs text-gray-500">
+            Similar names in the tracker, not matched: {lookup.similarNames!.join('; ')}. If one of them is this
+            company, set the answer below by hand.
           </p>
         )}
       </div>
