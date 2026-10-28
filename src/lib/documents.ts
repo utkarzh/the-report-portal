@@ -48,6 +48,8 @@ export interface DocTypeConfig {
   lengthGuidance: string
   /** One-line module description shown under the h1 on the module's list page */
   description: string
+  /** Placeholder for the create form's Additional Context box */
+  contextPlaceholder: string
 }
 
 export const DOC_TYPES: Record<DocType, DocTypeConfig> = {
@@ -62,9 +64,11 @@ export const DOC_TYPES: Record<DocType, DocTypeConfig> = {
     maxWebSearches: 7,
     tokenReserve: 150_000,
     lengthGuidance:
-      'Target roughly 8-10 pages. Prioritise strictly recent, well-sourced data.',
+      'Keep the executive assessment (Sections 1-4) to about three A4 pages; the appendices after it have no length limit, and the historical advertiser register must include every record available. Prioritise strictly recent, well-sourced data.',
     description:
-      'This function provides a snapshot of a country and its economy to help assess whether it is a worthwhile market to pursue. It highlights economic performance, investment potential, key sectors, and relevant opportunities.',
+      'This function assesses whether TRC should open a project in a country with a given media partner. It gives the verdict up front (Go, Further Investigation, No Go or Delay), then the commercial case, timing and budget calendar behind it, new advertiser prospects, and the advertiser history on record.',
+    contextPlaceholder:
+      'What you know about this market: past advertising (TRC or competitor projects, advertisers), recent promotional campaigns, upcoming events, or concerns the AI should research.',
   },
   editorial_brief: {
     type: 'editorial_brief',
@@ -80,6 +84,7 @@ export const DOC_TYPES: Record<DocType, DocTypeConfig> = {
       'Target a detailed document of roughly 15-20 pages, with real depth in every section.',
     description:
       'This function helps define the editorial direction of a country report. It identifies the key sectors to focus on and develops the central narrative that the final report should follow.',
+    contextPlaceholder: 'Anything else the AI should know or focus on for this document.',
   },
 }
 

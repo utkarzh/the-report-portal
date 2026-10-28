@@ -103,7 +103,7 @@ export default function DocumentForm({ docType, media, isAtLimit }: Props) {
       <Textarea
         label="Additional Context"
         hint="optional"
-        placeholder="Anything else the AI should know or focus on for this document."
+        placeholder={config.contextPlaceholder}
         value={form.additionalContext}
         onChange={(e) => handleChange('additionalContext', e.target.value)}
         rows={4}
