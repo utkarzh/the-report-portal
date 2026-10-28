@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requireFinanceAccess } from '@/lib/finance-auth'
 import { isFinanceAdmin } from '@/lib/access'
-import { buildCajaWorkbook } from '@/lib/finance-excel'
+import { buildCajaWorkbook, cajaWeekBalances } from '@/lib/finance-excel'
 
 interface Params { params: { id: string } }
 
@@ -48,30 +48,26 @@ export async function GET(request: NextRequest, { params }: Params) {
     .lte('expense_date', weekEnd)
     .order('expense_date')
 
-  const { data: weekFundings } = await supabaseAdmin
+  const { data: fundings } = await supabaseAdmin
     .from('finance_fundings')
-    .select('amount')
+    .select('amount, date_sent')
     .eq('project_id', params.id)
-    .gte('date_sent', weekStart)
     .lte('date_sent', weekEnd)
-
-  // Carried forward = everything before this week: funds received minus
-  // non-rejected expenses, up to (not including) weekStart.
-  const { data: priorFundings } = await supabaseAdmin
-    .from('finance_fundings')
-    .select('amount')
-    .eq('project_id', params.id)
-    .lt('date_sent', weekStart)
   const { data: priorExpenses } = await supabaseAdmin
     .from('finance_expenses')
-    .select('settlement_amount, status')
+    .select('settlement_amount, status, expense_date')
     .eq('project_id', params.id)
     .neq('status', 'rejected')
-    .lt('expense_date', weekStart)
+    .lte('expense_date', weekEnd)
+  const { data: transfers } = await supabaseAdmin
+    .from('finance_transfers')
+    .select('from_project_id, to_project_id, amount, to_amount, created_at')
+    .or(`from_project_id.eq.${params.id},to_project_id.eq.${params.id}`)
 
-  const carriedForward = (priorFundings ?? []).reduce((s, f) => s + Number(f.amount), 0)
-    - (priorExpenses ?? []).reduce((s, e) => s + Number(e.settlement_amount), 0)
-  const fundsReceivedThisWeek = (weekFundings ?? []).reduce((s, f) => s + Number(f.amount), 0)
+  const { carriedForward, fundsReceivedThisWeek, transfersThisWeek, confirmedBalance } = cajaWeekBalances({
+    projectId: params.id, weekStart, weekEnd,
+    fundings: fundings ?? [], expenses: priorExpenses ?? [], transfers: transfers ?? [],
+  })
 
   const buffer = await buildCajaWorkbook({
     project,
@@ -81,6 +77,8 @@ export async function GET(request: NextRequest, { params }: Params) {
     expenses: weekExpenses ?? [],
     carriedForward,
     fundsReceivedThisWeek,
+    transfersThisWeek,
+    confirmedBalance,
   })
 
   const filename = `${project.name.replace(/[^a-z0-9]+/gi, '_')}_${label.replace(/[^a-z0-9]+/gi, '_')}_${weekStart}_to_${weekEnd}.xlsx`

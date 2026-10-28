@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import Button from '@/components/ui/Button'
-import { projectWeekBounds, projectWeekNumberForDate } from '@/lib/finance-weeks'
+import { currentProjectWeek, projectWeekBounds } from '@/lib/finance-weeks'
 import type { FinanceCaja } from '@/types'
 
 const STAGE_LABELS: Record<string, string> = {
@@ -14,7 +14,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 export default function CajaListView({ projectId, backHref }: { projectId: string; backHref: string }) {
   const [cajas, setCajas] = useState<FinanceCaja[]>([])
-  const [projectCreatedAt, setProjectCreatedAt] = useState<string | null>(null)
+  const [weekAnchor, setWeekAnchor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -26,21 +26,21 @@ export default function CajaListView({ projectId, backHref }: { projectId: strin
       fetch(`/api/finance/projects/${projectId}`).then(r => r.json()),
     ]).then(([cajaData, projectData]) => {
       setCajas(cajaData.cajas ?? [])
-      setProjectCreatedAt(projectData.project?.created_at ?? null)
+      setWeekAnchor(projectData.weekAnchor ?? projectData.project?.created_at ?? null)
     }).finally(() => setLoading(false))
   }, [projectId])
 
   useEffect(() => { load() }, [load])
 
   async function handleOpenThisWeek() {
-    if (!projectCreatedAt) return
+    if (!weekAnchor) return
     setCreating(true)
     setError(null)
-    // "This week" here means "the project's own current week" — the N-th
-    // 7-day block since it was created, not the calendar week (see
+    // "This week" here means "the project's own current week" — the current
+    // Monday–Sunday week, numbered from the project's first entry (see
     // lib/finance-weeks.ts).
-    const weekNumber = projectWeekNumberForDate(projectCreatedAt, new Date())
-    const { start, end } = projectWeekBounds(projectCreatedAt, weekNumber)
+    const weekNumber = currentProjectWeek(weekAnchor)
+    const { start, end } = projectWeekBounds(weekAnchor, weekNumber)
     const res = await fetch(`/api/finance/projects/${projectId}/cajas`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -64,7 +64,7 @@ export default function CajaListView({ projectId, backHref }: { projectId: strin
           <h1 className="text-xl font-semibold text-gray-900">Weekly cajas</h1>
           <p className="text-sm text-gray-500 mt-1">Group this week&apos;s expenses and submit them for Finance&apos;s review.</p>
         </div>
-        <Button size="sm" onClick={handleOpenThisWeek} loading={creating} disabled={!projectCreatedAt}>Open this week</Button>
+        <Button size="sm" onClick={handleOpenThisWeek} loading={creating} disabled={!weekAnchor}>Open this week</Button>
       </div>
       {error && <div className="p-3 mb-4 bg-red-50 border border-red-200 text-sm text-red-700 rounded">{error}</div>}
 

@@ -1,19 +1,22 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Check, X, AlertTriangle, Info, Copy, ShieldAlert, ScanEye, ListChecks } from 'lucide-react'
+import { Check, X, AlertTriangle, Info, Copy, ShieldAlert, ScanEye, ListChecks, MessageSquare } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
-import { LEDGER_SORT_OPTIONS, type LedgerSort } from '@/lib/finance-ledger'
+import { LEDGER_SORT_OPTIONS, uploaderKey, uploaderOptions, type LedgerSort } from '@/lib/finance-ledger'
 import { formatDayMonthYear } from '@/lib/date-format'
-import type { FinanceExpense, FinanceExpenseFlag, FinanceFlagSeverity } from '@/types'
+import ExpenseThread, { SentBackBadge, wasSentBack } from '@/components/finance/ExpenseThread'
+import WaitingBadge from '@/components/finance/WaitingBadge'
+import type { FinanceExpense, FinanceExpenseComment, FinanceExpenseFlag, FinanceFlagSeverity } from '@/types'
 
 type QueueItem = FinanceExpense & {
   finance_expense_flags: FinanceExpenseFlag[]
   finance_projects: { name: string; settlement_currency: string; exchange_rate: number }
   profiles: { full_name: string | null; email: string } | null
   receiptUrl: string | null
+  comments: FinanceExpenseComment[]
 }
 
 const FLAG_ICONS: Record<string, React.ElementType> = {
@@ -27,6 +30,7 @@ const FLAG_ICONS: Record<string, React.ElementType> = {
   manual_note: Info,
   ai_verification_mismatch: ScanEye,
   custom_rule_violation: ListChecks,
+  comment_review: MessageSquare,
 }
 
 const SEVERITY_STYLE: Record<FinanceFlagSeverity, string> = {
@@ -40,26 +44,51 @@ export default function ReviewQueuePage() {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('pending')
   const [category, setCategory] = useState('')
-  const [sort, setSort] = useState<LedgerSort>('date_desc')
+  // Client-side, over what's loaded — the queue spans every project, so the
+  // list of people comes from the tickets themselves.
+  const [uploader, setUploader] = useState('')
+  // Longest-waiting first by default, so the backlog clears oldest-first
+  // (client review, 26 Oct 2026). Closed projects never appear here.
+  const [sort, setSort] = useState<LedgerSort>('waiting_desc')
+  const [project, setProject] = useState('')
+  const [projectOptions, setProjectOptions] = useState<{ value: string; label: string }[]>([])
   const [rejectTarget, setRejectTarget] = useState<QueueItem | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
     const params = new URLSearchParams({ status, sort })
     if (category) params.set('category', category)
+    if (project) params.set('project', project)
     fetch(`/api/finance/review-queue?${params}`)
       .then(r => r.json())
       .then(d => setItems(d.expenses ?? []))
       .finally(() => setLoading(false))
-  }, [status, category, sort])
+  }, [status, category, sort, project])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    fetch('/api/finance/projects')
+      .then(r => r.json())
+      .then(d => setProjectOptions(((d.projects ?? []) as { id: string; name: string; status: string }[])
+        .filter(p => p.status !== 'closed')
+        .map(p => ({ value: p.id, label: p.name }))))
+      .catch(() => setProjectOptions([]))
+  }, [])
+
+  const uploaders = uploaderOptions(items)
+  const visibleItems = uploader ? items.filter(i => uploaderKey(i) === uploader) : items
 
   async function handleVerify(id: string) {
     setBusyId(id)
-    await fetch(`/api/finance/expenses/${id}/verify`, { method: 'POST' })
+    setVerifyError(null)
+    const res = await fetch(`/api/finance/expenses/${id}/verify`, { method: 'POST' })
     setBusyId(null)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setVerifyError(data.error || 'Failed to verify this ticket.')
+    }
     load()
   }
 
@@ -83,7 +112,21 @@ export default function ReviewQueuePage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 max-w-2xl">
+      {verifyError && (
+        <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-6 max-w-4xl">
+          <span className="flex-1">{verifyError}</span>
+          <button onClick={() => setVerifyError(null)} className="text-xs text-red-400 hover:text-red-700 transition-colors">Dismiss</button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 mb-6 max-w-4xl">
+        <Select
+          label="Project"
+          options={projectOptions}
+          value={project}
+          onChange={e => setProject(e.target.value)}
+          placeholder="All open projects"
+        />
         <Select
           label="Status"
           options={[{ value: 'pending', label: 'Pending' }, { value: 'verified', label: 'Verified' }, { value: 'rejected', label: 'Rejected' }, { value: 'all', label: 'All' }]}
@@ -99,6 +142,13 @@ export default function ReviewQueuePage() {
           placeholder="All categories"
         />
         <Select
+          label="Uploaded by"
+          options={uploaders}
+          value={uploader}
+          onChange={e => setUploader(e.target.value)}
+          placeholder="Everyone"
+        />
+        <Select
           label="Sort by"
           options={LEDGER_SORT_OPTIONS}
           value={sort}
@@ -109,13 +159,13 @@ export default function ReviewQueuePage() {
 
       {loading ? (
         <div className="text-sm text-gray-400">Loading…</div>
-      ) : items.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <div className="border border-[#e5e3df] bg-white rounded-xl p-8 text-center text-sm text-gray-500">
           Nothing here right now.
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          {items.map(item => {
+          {visibleItems.map(item => {
             const unresolvedFlags = item.finance_expense_flags.filter(f => !f.resolved)
             const needsApproval = unresolvedFlags.some(f => f.flag_type === 'prior_approval_required')
             return (
@@ -125,9 +175,11 @@ export default function ReviewQueuePage() {
                     <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-blue-50 text-blue-700">{item.finance_projects?.name}</span>
                     <span className="font-semibold text-sm">{item.concept}</span>
                     <StatusBadge status={item.status} />
+                    {wasSentBack(item.status, item.comments) && <SentBackBadge />}
+                    {item.status === 'pending' && <WaitingBadge loggedAt={item.created_at} />}
                   </div>
                   <div className="text-xs text-gray-500">
-                    logged by {item.profiles?.full_name || item.profiles?.email} · {item.expense_date} · uploaded {formatDayMonthYear(item.created_at)}
+                    logged by {item.profiles?.full_name || item.profiles?.email || item.logged_by_name} · {item.expense_date} · uploaded {formatDayMonthYear(item.created_at)}
                   </div>
                 </div>
 
@@ -151,7 +203,7 @@ export default function ReviewQueuePage() {
                       <Field label={`${item.finance_projects?.settlement_currency} (rate ${item.exchange_rate_used})`} value={`${item.finance_projects?.settlement_currency} ${Number(item.settlement_amount).toFixed(2)}`} />
                     </div>
 
-                    {item.rejection_reason && (
+                    {item.rejection_reason && !(item.comments ?? []).some(c => c.kind === 'rejection') && (
                       <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded text-xs text-red-800">
                         <b>Rejected:</b> {item.rejection_reason}
                       </div>
@@ -193,6 +245,16 @@ export default function ReviewQueuePage() {
                         )}
                       </div>
                     )}
+
+                    <div className="mt-4 pt-3 border-t border-[#f0efeb]">
+                      <ExpenseThread
+                        expenseId={item.id}
+                        status={item.status}
+                        comments={item.comments ?? []}
+                        viewerSide="finance"
+                        startCollapsed
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

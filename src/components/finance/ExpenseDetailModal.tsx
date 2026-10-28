@@ -2,12 +2,16 @@
 
 import { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { X, Sparkles, Car, BedDouble, Phone, Layers, Printer, Landmark, ShieldCheck, Receipt as ReceiptIcon, Pencil, Trash2, ImageUp } from 'lucide-react'
+import { X, Sparkles, Car, BedDouble, Phone, Layers, Printer, Landmark, ShieldCheck, Receipt as ReceiptIcon, Pencil, Trash2, ImageUp, Lock, History, ChevronDown, ChevronUp } from 'lucide-react'
 import Select from '@/components/ui/Select'
 import ReceiptLightbox, { isPreviewableReceiptUrl } from '@/components/finance/ReceiptLightbox'
+import ExpenseThread from '@/components/finance/ExpenseThread'
+import HistoryList from '@/components/finance/HistoryList'
+import RateCheck from '@/components/finance/RateCheck'
 import { SUB_LINES_BY_CATEGORY, defaultSubLine } from '@/lib/finance-categories'
+import { isSameCurrency, roundMoney } from '@/lib/finance'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
-import type { FinanceExpense, FinanceExpenseCategory, FinanceExpenseFlag } from '@/types'
+import type { FinanceCommentSide, FinanceExpense, FinanceExpenseCategory, FinanceExpenseComment, FinanceExpenseFlag } from '@/types'
 import { formatDayMonthYearTime } from '@/lib/date-format'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 
@@ -28,6 +32,7 @@ const CATEGORY_OPTIONS = Object.entries(FINANCE_EXPENSE_CATEGORY_LABELS).map(([v
 type ExpenseWithExtras = FinanceExpense & {
   receiptUrl: string | null
   finance_expense_flags?: FinanceExpenseFlag[]
+  comments?: FinanceExpenseComment[]
 }
 
 interface EditForm {
@@ -41,6 +46,9 @@ interface EditForm {
   localCurrency: string
   exchangeRate: string
   nights: string
+  // Field "save & resubmit" of a rejected ticket: an optional note to
+  // Finance, recorded on the ticket's thread with the resubmission.
+  note: string
 }
 
 interface Props {
@@ -62,6 +70,20 @@ interface Props {
   // How many logged entries share this expense's receipt photo.
   siblingCount?: number
   onUpdated?: () => void
+  // Shows the ticket's comment thread, written from this side (migration
+  // 042). Omitted → no thread (e.g. a caller that hasn't loaded comments).
+  viewerSide?: FinanceCommentSide
+  // Field view: this rejected ticket can be answered and sent back for
+  // review without re-uploading (its uploader or the project's Director).
+  canSendBack?: boolean
+  // Called after a comment is posted while the modal stays open, in place
+  // of onUpdated — for a caller whose onUpdated would remount the modal.
+  onThreadChanged?: () => void
+  // The project's settlement currency — enables the exchange-rate check in
+  // the edit form (RateCheck).
+  settlementCurrency?: string
+  // A closed project: everything is shown, nothing can be changed.
+  readOnly?: boolean
 }
 
 // The upload flow collects a lot more than any compact table row shows
@@ -69,7 +91,7 @@ interface Props {
 // full AI note, every flag). This is the single place that lays out every
 // saved field for one expense — shared by the admin ledger and the field
 // expense list so "click a row" means the same thing everywhere.
-export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchangeRateProofUrl, canEdit, canManageOwn, siblingCount = 1, onUpdated }: Props) {
+export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchangeRateProofUrl, canEdit, canManageOwn, siblingCount = 1, onUpdated, viewerSide, canSendBack, onThreadChanged, settlementCurrency, readOnly }: Props) {
   const Icon = CATEGORY_ICONS[e.category] ?? Layers
   const unresolvedFlags = (e.finance_expense_flags ?? []).filter(f => !f.resolved)
   const resolvedFlags = (e.finance_expense_flags ?? []).filter(f => f.resolved)
@@ -82,8 +104,13 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [busy, setBusy] = useState<'delete' | 'replace' | null>(null)
   const replaceInputRef = useRef<HTMLInputElement>(null)
-  const canModify = !!canEdit || !!canManageOwn
-  const canRemove = canModify && e.status !== 'verified'
+  const [historyOpen, setHistoryOpen] = useState(false)
+  // A verified ticket is locked for everyone, Finance included (client
+  // decision, 26 Oct 2026); a closed project is read-only.
+  const locked = e.status === 'verified'
+  const mayChange = !!canEdit || !!canManageOwn
+  const canModify = mayChange && !locked && !readOnly
+  const canRemove = canModify
   const [form, setForm] = useState<EditForm>(() => ({
     concept: e.concept,
     category: e.category,
@@ -95,15 +122,36 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
     localCurrency: e.local_currency,
     exchangeRate: String(e.exchange_rate_used),
     nights: e.nights != null ? String(e.nights) : '',
+    note: '',
   }))
+  const resubmitting = !!canManageOwn && !canEdit && e.status === 'rejected'
+  const comments = e.comments ?? []
+  // The thread already opens with the rejection, so the separate box would
+  // only repeat it — except before migration 042, when there's no thread.
+  const showRejectionBox = !!e.rejection_reason && !(viewerSide && comments.some(c => c.kind === 'rejection'))
 
   function updateForm(patch: Partial<EditForm>) {
     setForm(f => {
       const next = { ...f, ...patch }
       if (patch.category && patch.category !== f.category) next.subLine = defaultSubLine(patch.category)
+      // A receipt in the settlement currency converts at exactly 1.
+      if (patch.localCurrency !== undefined && settlementCurrency && isSameCurrency(patch.localCurrency, settlementCurrency)) next.exchangeRate = '1'
       return next
     })
   }
+
+  // Amount, currency or rate changed — only then is the ticket re-converted.
+  // Saving any other edit leaves the stored conversion exactly as it was
+  // (tickets logged before 28 Oct 2026 can carry a receipt's own dollar
+  // figure beside a different rate; re-deriving it would move the money).
+  const editLocal = parseFloat(form.localAmount)
+  const editRate = parseFloat(form.exchangeRate)
+  const conversionChanged = editLocal !== Number(e.local_amount)
+    || form.localCurrency.trim().toUpperCase() !== (e.local_currency || '').toUpperCase()
+    || editRate !== Number(e.exchange_rate_used)
+  const editSettlement = Number.isFinite(editLocal) && editLocal > 0 && Number.isFinite(editRate) && editRate > 0
+    ? roundMoney(editLocal / editRate)
+    : null
 
   async function handleSave() {
     const localAmount = parseFloat(form.localAmount)
@@ -116,7 +164,6 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
     }
     setSaving(true)
     setSaveError(null)
-    const settlementAmount = Math.round((localAmount / exchangeRate) * 100) / 100
     const res = await fetch(`/api/finance/expenses/${e.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -128,11 +175,14 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
         date: form.date,
         reference: form.reference.trim() || null,
         vendor: form.vendor.trim() || null,
-        localAmount,
-        localCurrency: form.localCurrency.trim().toUpperCase(),
-        exchangeRate,
-        settlementAmount,
+        ...(conversionChanged ? {
+          localAmount,
+          localCurrency: form.localCurrency.trim().toUpperCase(),
+          exchangeRate,
+          settlementAmount: roundMoney(localAmount / exchangeRate),
+        } : {}),
         nights: form.nights ? parseInt(form.nights, 10) : null,
+        comment: resubmitting && form.note.trim() ? form.note.trim() : undefined,
       }),
     })
     setSaving(false)
@@ -245,7 +295,7 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
 
             {editing ? (
               <div className="flex flex-col gap-3">
-                {canManageOwn && !canEdit && e.status === 'rejected' && (
+                {resubmitting && (
                   <div className="text-xs text-gray-500">Saving sends this expense back to Finance for review.</div>
                 )}
                 {saveError && <div className="p-2.5 bg-red-50 border border-red-200 text-xs text-red-700 rounded-lg">{saveError}</div>}
@@ -298,10 +348,26 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
                     <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Exchange rate</label>
                     <input type="number" step="0.0001" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={form.exchangeRate} onChange={ev => updateForm({ exchangeRate: ev.target.value })} />
                   </div>
+                  {settlementCurrency && (
+                    <div className="col-span-2 -mt-1">
+                      <RateCheck base={settlementCurrency} quote={form.localCurrency} rate={form.exchangeRate} onUseRate={r => updateForm({ exchangeRate: String(r) })} />
+                    </div>
+                  )}
+                  <div className="col-span-2 text-xs text-gray-500 -mt-1">
+                    {conversionChanged
+                      ? editSettlement != null ? `Will be ${symbol}${editSettlement.toFixed(2)} at rate ${form.exchangeRate}.` : 'Enter an amount and exchange rate to see the converted total.'
+                      : `${symbol}${Number(e.settlement_amount).toFixed(2)} — unchanged unless you change the amount, currency or rate.`}
+                  </div>
+                  {resubmitting && (
+                    <div className="col-span-2">
+                      <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Note to Finance (optional)</label>
+                      <textarea rows={2} maxLength={2000} className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={form.note} onChange={ev => updateForm({ note: ev.target.value })} placeholder="What you changed, or anything Finance should know." />
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 pt-1">
                   <button onClick={handleSave} disabled={saving} className="text-xs font-medium bg-black text-white rounded-lg px-4 py-2 hover:bg-gray-800 disabled:opacity-50 transition-colors">
-                    {canManageOwn && !canEdit && e.status === 'rejected' ? 'Save & resubmit' : 'Save changes'}
+                    {resubmitting ? 'Save & resubmit' : 'Save changes'}
                   </button>
                   <button onClick={() => { setEditing(false); setSaveError(null) }} className="text-xs text-gray-500 hover:text-gray-700 transition-colors">Cancel</button>
                 </div>
@@ -373,11 +439,30 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
             </div>
           )}
 
-          {e.rejection_reason && (
+          {showRejectionBox && (
             <div>
               <div className="text-[10.5px] font-semibold uppercase tracking-wide text-red-500 mb-1.5">Rejection reason</div>
               <div className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5">{e.rejection_reason}</div>
             </div>
+          )}
+
+          {viewerSide && (
+            <ExpenseThread
+              expenseId={e.id}
+              status={e.status}
+              comments={comments}
+              viewerSide={viewerSide}
+              canSendBack={canSendBack}
+              readOnly={readOnly}
+              onPosted={(_comment, sentBack) => {
+                if (sentBack) {
+                  onUpdated?.()
+                  onClose()
+                } else {
+                  (onThreadChanged ?? onUpdated)?.()
+                }
+              }}
+            />
           )}
 
           {canModify && !editing && (
@@ -431,6 +516,22 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
               </div>
             </div>
           )}
+
+          {mayChange && locked && !readOnly && (
+            <div className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+              <Lock size={12} /> Verified tickets are locked — they can no longer be edited, re-photographed or removed.
+            </div>
+          )}
+
+          <div>
+            <button
+              onClick={() => setHistoryOpen(o => !o)}
+              className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              <History size={11} /> History {historyOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            </button>
+            {historyOpen && <div className="mt-2"><HistoryList entityType="expense" entityId={e.id} /></div>}
+          </div>
 
           <div className="text-[11px] text-gray-400 pt-1 border-t border-[#f0efeb]">
             Logged {formatDayMonthYearTime(e.created_at)}

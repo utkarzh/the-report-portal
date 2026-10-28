@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireFinanceAccess } from '@/lib/finance-auth'
+import { requireFinanceAccess, closedProjectError } from '@/lib/finance-auth'
+import { recordHistory } from '@/lib/finance-history'
 import { isFinanceAdmin } from '@/lib/access'
 import { computeDeterministicFlags, missingFieldFlags, suspiciousPersonalFlag, categoryMismatchFlag } from '@/lib/finance-flags'
 import { verifyEntriesAgainstReceipt, type EntryVerification } from '@/lib/finance-ai'
+import { addExpenseComment, formatThreadForReview } from '@/lib/finance-comments'
+import { guessFileMimeType, verificationFlags, projectFundsReceived, ticketMarketRate } from '@/lib/finance-review'
+import { reconcileConversion } from '@/lib/finance'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceExpenseCategory } from '@/types'
 
@@ -34,18 +38,16 @@ interface EntryInput {
   // The second pass below (verifyEntriesAgainstReceipt) re-checks the final,
   // possibly-edited values and takes priority when it runs successfully.
   ruleViolation?: string | null
+  // The uploader's own explanation for Finance ("taxi to the Saturday
+  // meeting with …") — its own field rather than squeezed into the concept;
+  // saved as the first message of the ticket's thread.
+  comment?: string | null
 }
 
 const VALID_CATEGORIES = new Set(Object.keys(FINANCE_EXPENSE_CATEGORY_LABELS))
 
-function guessFileMimeType(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase()
-  if (ext === 'pdf') return 'application/pdf'
-  if (ext === 'png') return 'image/png'
-  if (ext === 'webp') return 'image/webp'
-  if (ext === 'gif') return 'image/gif'
-  if (ext === 'heic' || ext === 'heif') return 'image/heic'
-  return 'image/jpeg'
+function isIsoDate(v: unknown): v is string {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v))
 }
 
 // POST /api/finance/projects/[id]/expenses — confirms one or more entries
@@ -71,27 +73,53 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: project } = await supabaseAdmin.from('finance_projects').select('*').eq('id', params.id).single()
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const closed = await closedProjectError(params.id)
+  if (closed) return closed
 
   const { receiptId, receiptFilePath, entries } = await request.json() as { receiptId: string | null; receiptFilePath?: string | null; entries: EntryInput[] }
   if (!Array.isArray(entries) || entries.length === 0) {
     return NextResponse.json({ error: 'At least one expense entry is required.' }, { status: 400 })
   }
 
+  // Every file a ticket points at must be this project's own — otherwise a
+  // member could attach another project's receipt and read it through their
+  // ledger (the GET route signs whatever path is stored).
+  const ownPath = (p: unknown) => p == null || p === '' || (typeof p === 'string' && p.startsWith(`${params.id}/`))
+  if (!ownPath(receiptFilePath) || entries.some(e => !ownPath(e.exchangeRateProofPath))) {
+    return NextResponse.json({ error: 'Invalid receipt file.' }, { status: 400 })
+  }
+  if (receiptId) {
+    const { data: ownReceipt } = await supabaseAdmin.from('finance_receipts').select('id').eq('id', receiptId).eq('project_id', params.id).maybeSingle()
+    if (!ownReceipt) return NextResponse.json({ error: 'Invalid receipt.' }, { status: 400 })
+  }
+
   for (const e of entries) {
-    if (!e.concept?.trim() || !VALID_CATEGORIES.has(e.category) || !e.date
-      || e.localAmount == null || e.localAmount <= 0 || !e.localCurrency
-      || e.settlementAmount == null || e.settlementAmount <= 0) {
-      return NextResponse.json({ error: 'Every expense needs a concept, category, date, amount, currency and computed settlement amount.' }, { status: 400 })
+    if (!e.concept?.trim() || !VALID_CATEGORIES.has(e.category) || !isIsoDate(e.date)
+      || typeof e.localCurrency !== 'string' || !/^[A-Za-z]{3}$/.test(e.localCurrency.trim())) {
+      return NextResponse.json({ error: 'Every expense needs a concept, category, date, amount and a 3-letter currency code.' }, { status: 400 })
     }
-    if (e.exchangeRate == null || e.exchangeRate <= 0) {
-      return NextResponse.json({ error: 'Every expense needs a positive exchange rate.' }, { status: 400 })
-    }
+    // One rule for rate and amount (finance.ts): they're stored consistent
+    // whatever the client sent — 1 for the settlement currency, and the rate
+    // implied by the receipt when its own settlement figure was kept.
+    const conversion = reconcileConversion(e, project.settlement_currency)
+    if ('error' in conversion) return NextResponse.json({ error: conversion.error }, { status: 400 })
+    e.localAmount = Number(e.localAmount)
+    e.localCurrency = e.localCurrency.trim().toUpperCase()
+    e.exchangeRate = conversion.exchangeRate
+    e.settlementAmount = conversion.settlementAmount
+    e.nights = e.nights != null && Number.isInteger(Number(e.nights)) && Number(e.nights) > 0 ? Number(e.nights) : null
   }
 
   const { data: existingExpenses } = await supabaseAdmin
     .from('finance_expenses')
     .select('*')
     .eq('project_id', params.id)
+
+  // For the conversion checks (finance-flags.ts conversionFlags): today's
+  // market rate per local currency in this upload, and the funds received.
+  const fundsReceived = await projectFundsReceived(params.id)
+  const localCurrencies = Array.from(new Set(entries.map(e => String(e.localCurrency || '').toUpperCase())))
+  const marketRates = new Map(await Promise.all(localCurrencies.map(async c => [c, await ticketMarketRate(project.settlement_currency, c)] as const)))
 
   // Snapshotted onto every row below, not just looked up live — so removing
   // this person from the project (or deleting their account outright) can
@@ -137,6 +165,11 @@ export async function POST(request: NextRequest, { params }: Params) {
             localCurrency: e.localCurrency,
             vendor: e.vendor,
             reference: e.reference,
+            // The uploader's own explanation, so the check reads it alongside
+            // the receipt (and the project's rules).
+            conversation: typeof e.comment === 'string' && e.comment.trim()
+              ? formatThreadForReview([{ author_side: 'field', author_name: loggedByName, kind: 'comment', message: e.comment }])
+              : null,
           })),
           profile.id,
         )
@@ -181,7 +214,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Rule violations: the second pass re-checked the FINAL data and wins
     // when it ran; otherwise fall back to what the first extraction pass
     // (based on the AI's own initial read) already found.
-    const ruleViolationText = verification ? verification.ruleViolation : (e.ruleViolation ?? null)
+    const secondPassFlags = verification
+      ? verificationFlags(verification)
+      : e.ruleViolation ? [{ flagType: 'custom_rule_violation' as const, severity: 'warn' as const, message: e.ruleViolation }] : []
 
     const flags = [
       ...computeDeterministicFlags(
@@ -191,6 +226,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           vendor: e.vendor,
           reference: e.reference,
           localAmount: e.localAmount,
+          localCurrency: e.localCurrency,
           settlementAmount: e.settlementAmount,
           exchangeRateUsed: Number(e.exchangeRate),
           nights: e.nights ?? null,
@@ -198,23 +234,12 @@ export async function POST(request: NextRequest, { params }: Params) {
         },
         project,
         existingExpenses ?? [],
+        { marketRate: marketRates.get(String(e.localCurrency || '').toUpperCase()) ?? null, fundsReceived },
       ),
       ...missingFieldFlags(e.lowConfidenceFields ?? []),
       ...suspiciousPersonalFlag(e.suspiciousPersonal ?? false, e.aiComment ?? ''),
       ...categoryMismatchFlag(e.category, e.concept, e.vendor),
-      // Crit: the submitted value for this field doesn't match what's
-      // actually visible on the receipt — whether an honest mistake or a
-      // deliberate edit after the AI's first read, it needs a human's eyes.
-      ...(verification?.mismatches ?? []).map(m => ({
-        flagType: 'ai_verification_mismatch' as const,
-        severity: 'crit' as const,
-        message: `Submitted ${m.field} ("${m.submittedValue}") doesn't match what's visible on the receipt ("${m.visibleValue}") — ${m.note}`,
-      })),
-      ...(ruleViolationText ? [{
-        flagType: 'custom_rule_violation' as const,
-        severity: 'warn' as const,
-        message: ruleViolationText,
-      }] : []),
+      ...secondPassFlags,
     ]
 
     if (flags.length > 0) {
@@ -222,6 +247,24 @@ export async function POST(request: NextRequest, { params }: Params) {
         flags.map(f => ({ expense_id: expense.id, flag_type: f.flagType, severity: f.severity, message: f.message })),
       )
     }
+
+    if (typeof e.comment === 'string' && e.comment.trim()) {
+      await addExpenseComment({
+        expenseId: expense.id,
+        author: profile,
+        side: isFinanceAdmin(profile) ? 'finance' : 'field',
+        kind: 'comment',
+        message: e.comment,
+      })
+    }
+
+    await recordHistory({
+      projectId: params.id, entityType: 'expense', entityId: expense.id, action: 'logged', actor: profile,
+      changes: Object.fromEntries(
+        (['concept', 'expense_date', 'local_amount', 'local_currency', 'exchange_rate_used', 'settlement_amount'] as const)
+          .map(f => [f, { from: null, to: expense[f] }]),
+      ),
+    })
 
     created.push(expense)
     // Feed this one into subsequent duplicate checks within the same batch

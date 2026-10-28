@@ -7,6 +7,7 @@ import Select from '@/components/ui/Select'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import Button from '@/components/ui/Button'
 import { COUNTRY_OPTIONS } from '@/lib/country-flags'
+import RateCheck from '@/components/finance/RateCheck'
 
 interface FinanceUser {
   id: string
@@ -121,7 +122,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: Props) {
               placeholder=""
             />
             <Input
-              label="Exchange rate *"
+              label={`Exchange rate * (${form.localCurrency || 'local'} per 1 ${form.settlementCurrency})`}
               type="number"
               step="0.0001"
               placeholder="83.20"
@@ -130,6 +131,15 @@ export default function NewProjectModal({ open, onClose, onCreated }: Props) {
               required
             />
           </div>
+          {/* Says what the number means and checks it against today's market
+              — an inverted project rate is what turned Jamaica's tickets into
+              millions (client review, 26 Oct 2026). */}
+          <RateCheck
+            base={form.settlementCurrency}
+            quote={form.localCurrency}
+            rate={form.exchangeRate}
+            onUseRate={r => setForm(p => ({ ...p, exchangeRate: String(r) }))}
+          />
           <Input
             label="Media / publication"
             placeholder="The Guardian"

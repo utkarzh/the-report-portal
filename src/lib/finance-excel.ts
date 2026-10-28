@@ -24,8 +24,14 @@ export async function buildCajaWorkbook(params: {
   expenses: FinanceExpense[] // already filtered to this week, rejected excluded
   carriedForward: number
   fundsReceivedThisWeek: number
+  // Net money moved between this project and others this week (in − out).
+  transfersThisWeek: number
+  // The app's own balance at the end of the week: funds and transfers minus
+  // VERIFIED tickets only. The lines above count pending tickets too (client
+  // decision, 26 Oct 2026), so this shows the confirmed figure beside them.
+  confirmedBalance: number
 }): Promise<ExcelJS.Buffer> {
-  const { project, weekLabel, weekStart, weekEnd, expenses, carriedForward, fundsReceivedThisWeek } = params
+  const { project, weekLabel, weekStart, weekEnd, expenses, carriedForward, fundsReceivedThisWeek, transfersThisWeek, confirmedBalance } = params
 
   const wb = new ExcelJS.Workbook()
   // Excel sheet names: max 31 chars, no \ / * ? : [ ]
@@ -87,7 +93,9 @@ export async function buildCajaWorkbook(params: {
       row++
     } else {
       for (const e of categoryExpenses) {
-        sheet.getCell(`A${row}`).value = e.concept
+        // Pending tickets are listed (and counted) but marked, so a reviewer
+        // can tell them from verified ones.
+        sheet.getCell(`A${row}`).value = e.status === 'pending' ? `${e.concept} (pending)` : e.concept
         sheet.getCell(`B${row}`).value = e.sub_line || SUB_LINES_BY_CATEGORY[category][SUB_LINES_BY_CATEGORY[category].length - 1]
         sheet.getCell(`C${row}`).value = Number(e.local_amount)
 
@@ -118,9 +126,11 @@ export async function buildCajaWorkbook(params: {
   }
 
   // Balance section — carried forward + new funds − total expenses = final
-  // balance, exactly the four lines her template tracks (§2.2), and
-  // reconciled against cash on hand the same way (§6.6): Opening − Expenses
-  // = Remaining.
+  // balance, the four lines her template tracks (§2.2), reconciled against
+  // cash on hand the same way (§6.6): Opening − Expenses = Remaining. Two
+  // lines added 26 Oct 2026 (client decisions): transfers between projects,
+  // which were missing entirely, and the confirmed balance (verified tickets
+  // only), which is what the app shows.
   row++
   sheet.getCell(`A${row}`).value = 'BALANCE'
   sheet.getCell(`A${row}`).font = { bold: true, size: 13 }
@@ -136,6 +146,11 @@ export async function buildCajaWorkbook(params: {
   const fundsReceivedCell = `D${row}`
   row++
 
+  sheet.getCell(`A${row}`).value = 'Transfers between projects this week (+ in / − out)'
+  sheet.getCell(`D${row}`).value = transfersThisWeek
+  const transfersCell = `D${row}`
+  row++
+
   sheet.getCell(`A${row}`).value = 'Total expenses this week'
   sheet.getCell(`D${row}`).value = { formula: `${categorySubtotalCells.join('+')}` } as ExcelJS.CellFormulaValue
   const totalExpensesCell = `D${row}`
@@ -144,9 +159,55 @@ export async function buildCajaWorkbook(params: {
   row++
 
   sheet.getCell(`A${row}`).value = 'Final remaining balance'
-  sheet.getCell(`D${row}`).value = { formula: `${carriedForwardCell}+${fundsReceivedCell}-${totalExpensesCell}` } as ExcelJS.CellFormulaValue
+  sheet.getCell(`D${row}`).value = { formula: `${carriedForwardCell}+${fundsReceivedCell}+${transfersCell}-${totalExpensesCell}` } as ExcelJS.CellFormulaValue
   sheet.getCell(`A${row}`).font = { bold: true, size: 12 }
   sheet.getCell(`D${row}`).font = { bold: true, size: 12 }
+  row++
+
+  sheet.getCell(`A${row}`).value = 'Confirmed balance — verified tickets only (as in Cash Box)'
+  sheet.getCell(`D${row}`).value = Math.round(confirmedBalance * 100) / 100
+  sheet.getCell(`A${row}`).font = { italic: true }
+  sheet.getCell(`D${row}`).font = { italic: true }
 
   return wb.xlsx.writeBuffer()
 }
+
+// The balance lines of one week's caja, from the project's fundings,
+// non-rejected tickets and transfers up to the week's end. Shared by the
+// export route and its tests so the figures can't drift apart.
+//   carriedForward  — before the week: funds + transfers in − transfers out
+//                     − non-rejected tickets (pending included, like the
+//                     ticket lines — client decision, 26 Oct 2026)
+//   fundsReceived…  — funds dated in the week
+//   transfers…      — net transfers in the week; a transfer counts on its
+//                     own date, in at to_amount (this project's currency),
+//                     out at amount
+//   confirmedBalance — what the app shows at the week's end: verified only
+export function cajaWeekBalances(params: {
+  projectId: string
+  weekStart: string
+  weekEnd: string
+  fundings: { amount: number | string; date_sent: string }[]
+  expenses: { settlement_amount: number | string; status: string; expense_date: string }[]
+  transfers: { from_project_id: string; to_project_id: string; amount: number | string; to_amount: number | string | null; created_at: string }[]
+}) {
+  const { projectId, weekStart, weekEnd } = params
+  const sum = (rows: { v: number }[]) => rows.reduce((s, r) => s + r.v, 0)
+  const before = <T extends { date: string }>(rows: T[]) => rows.filter(r => r.date < weekStart)
+  const within = <T extends { date: string }>(rows: T[]) => rows.filter(r => r.date >= weekStart && r.date <= weekEnd)
+  const upToEnd = <T extends { date: string }>(rows: T[]) => rows.filter(r => r.date <= weekEnd)
+
+  const funds = params.fundings.map(f => ({ date: f.date_sent, v: Number(f.amount) }))
+  const tickets = params.expenses.filter(e => e.status !== 'rejected').map(e => ({ date: e.expense_date, v: Number(e.settlement_amount), status: e.status }))
+  const transfers = params.transfers
+    .filter(t => t.to_project_id === projectId || t.from_project_id === projectId)
+    .map(t => ({ date: t.created_at.slice(0, 10), v: t.to_project_id === projectId ? Number(t.to_amount ?? t.amount) : -Number(t.amount) }))
+
+  return {
+    carriedForward: sum(before(funds)) + sum(before(transfers)) - sum(before(tickets)),
+    fundsReceivedThisWeek: sum(within(funds)),
+    transfersThisWeek: sum(within(transfers)),
+    confirmedBalance: sum(upToEnd(funds)) + sum(upToEnd(transfers)) - sum(upToEnd(tickets).filter(t => t.status === 'verified')),
+  }
+}
+

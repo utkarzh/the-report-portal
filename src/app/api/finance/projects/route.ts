@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requireFinanceAccess, requireFinanceAdmin, grantFieldAccessIfNeeded } from '@/lib/finance-auth'
 import { isFinanceAdmin } from '@/lib/access'
 import { computeBalance } from '@/lib/finance'
+import { recordHistory } from '@/lib/finance-history'
 import type { FinanceExpense, FinanceFunding, FinanceTransfer } from '@/types'
 
 // GET /api/finance/projects — finance admins (and platform admins) see every
@@ -46,8 +47,11 @@ export async function GET() {
     const pe = (expenses ?? []).filter((e: FinanceExpense) => e.project_id === p.id)
     const tIn = (transfers ?? []).filter((t: FinanceTransfer) => t.to_project_id === p.id)
     const tOut = (transfers ?? []).filter((t: FinanceTransfer) => t.from_project_id === p.id)
-    const pendingCount = pe.filter(e => e.status === 'pending').length
-    return { ...p, ...computeBalance(pf, pe, tIn, tOut), pendingCount }
+    const pending = pe.filter(e => e.status === 'pending')
+    // When the longest-waiting ticket was logged — the overview shows how long
+    // the review backlog has been sitting (client review, 26 Oct 2026).
+    const oldestPendingAt = pending.map(e => e.created_at as string).sort()[0] ?? null
+    return { ...p, ...computeBalance(pf, pe, tIn, tOut), pendingCount: pending.length, oldestPendingAt }
   })
 
   return NextResponse.json({ projects: enriched })
@@ -124,5 +128,10 @@ export async function POST(request: NextRequest) {
     if (!repError) await grantFieldAccessIfNeeded(repId)
   }
 
+  await recordHistory({
+    projectId: project.id, entityType: 'project', entityId: project.id, action: 'project_created', actor: profile,
+    changes: Object.fromEntries((['name', 'country', 'settlement_currency', 'local_currency', 'exchange_rate'] as const)
+      .map(f => [f, { from: null, to: project[f] }])),
+  })
   return NextResponse.json({ project }, { status: 201 })
 }

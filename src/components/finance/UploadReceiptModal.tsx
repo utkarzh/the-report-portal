@@ -7,6 +7,10 @@ import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import ReceiptReadingLoader from './ReceiptReadingLoader'
+import RateCheck from './RateCheck'
+import { IMPLAUSIBLE_TICKET_AMOUNT } from '@/lib/finance-flags'
+import { isSameCurrency, roundMoney } from '@/lib/finance'
+import type { RateSource } from '@/lib/finance-ai'
 import { SUB_LINES_BY_CATEGORY, defaultSubLine } from '@/lib/finance-categories'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
 import type { FinanceExpenseCategory } from '@/types'
@@ -21,6 +25,9 @@ interface Props {
   // configured rate is a starting point now, not an enforced value (exchange
   // rates aren't fixed; the field user types the real rate per expense).
   defaultExchangeRate: number
+  // The project's local currency — the one defaultExchangeRate is for. A
+  // receipt in any other currency must not inherit that rate.
+  localCurrency?: string | null
 }
 
 interface EditableEntry {
@@ -36,12 +43,23 @@ interface EditableEntry {
   // Per-expense, editable — e.g. one taxi ride's own rate, not the project
   // default. Optional proof photo travels with it.
   exchangeRate: string
+  // Where the rate came from, shown under the field: the receipt's own two
+  // amounts, 1 (same currency), the project rate or today's market rate.
+  // null once the user types their own.
+  rateSource: RateSource | null
+  // The rate as first read, so switching the currency back restores it
+  // (e.g. a rate worked out from the receipt's own two amounts).
+  seed: { currency: string; rate: string; source: RateSource | null }
   exchangeRateProofFile: File | null
   nights: string
   lowConfidenceFields: string[]
   suspiciousPersonal: boolean
   aiComment: string
   ruleViolation: string | null
+  // The uploader's own explanation for Finance (client feedback, Oct 2026:
+  // people were putting it in the concept) — saved as the first message of
+  // the ticket's thread.
+  comment: string
 }
 
 // One per uploaded file — a batch upload produces one group per receipt, each
@@ -96,16 +114,25 @@ async function expandZip(zipFile: File): Promise<File[]> {
   return out
 }
 
-function blankEntry(defaultExchangeRate: number): EditableEntry {
+function blankEntry(defaultExchangeRate: number, localCurrency: string | null | undefined): EditableEntry {
   return {
     concept: '', category: 'transport', subLine: defaultSubLine('transport'), date: new Date().toISOString().slice(0, 10),
-    reference: '', vendor: '', localAmount: '', localCurrency: '', settlementAmount: null,
-    exchangeRate: String(defaultExchangeRate), exchangeRateProofFile: null,
-    nights: '', lowConfidenceFields: [], suspiciousPersonal: false, aiComment: '', ruleViolation: null,
+    reference: '', vendor: '', localAmount: '', localCurrency: (localCurrency || '').toUpperCase(), settlementAmount: null,
+    exchangeRate: String(defaultExchangeRate), rateSource: 'project',
+    seed: { currency: (localCurrency || '').toUpperCase(), rate: String(defaultExchangeRate), source: 'project' },
+    exchangeRateProofFile: null,
+    nights: '', lowConfidenceFields: [], suspiciousPersonal: false, aiComment: '', ruleViolation: null, comment: '',
   }
 }
 
-export default function UploadReceiptModal({ open, onClose, onLogged, projectId, settlementCurrency, defaultExchangeRate }: Props) {
+const RATE_SOURCE_NOTES: Record<RateSource, string> = {
+  receipt: 'Rate worked out from the receipt, which shows both amounts.',
+  same_currency: 'Already in the settlement currency, so the rate is 1.',
+  project: "The project's rate.",
+  market: "Today's market rate — this receipt isn't in the project's local currency.",
+}
+
+export default function UploadReceiptModal({ open, onClose, onLogged, projectId, settlementCurrency, defaultExchangeRate, localCurrency: projectLocalCurrency }: Props) {
   const [step, setStep] = useState<Step>('select')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [expandingZip, setExpandingZip] = useState(false)
@@ -202,7 +229,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
       if (!canAutoRead) {
         return {
           key: path, fileName: file.name, receiptId: null, receiptFilePath: path, previewUrl,
-          note: null, entries: [blankEntry(defaultExchangeRate)], couldNotRead: true, submitError: null,
+          note: null, entries: [blankEntry(defaultExchangeRate, projectLocalCurrency)], couldNotRead: true, submitError: null,
         }
       }
 
@@ -216,15 +243,15 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
       if (!res.ok || data.couldNotRead || data.entries.length === 0) {
         return {
           key: path, fileName: file.name, receiptId: data.receiptId ?? null, receiptFilePath: path, previewUrl,
-          note: null, entries: [blankEntry(data.exchangeRate ?? defaultExchangeRate)], couldNotRead: true, submitError: null,
+          note: null, entries: [blankEntry(data.exchangeRate ?? defaultExchangeRate, projectLocalCurrency)], couldNotRead: true, submitError: null,
         }
       }
 
-      // The extract route's "exchangeRate" is just the project's configured
-      // rate, echoed back as a suggestion — used here only to seed each
-      // entry's own editable field, per brief: rates aren't fixed, and a
-      // multi-trip receipt's entries may each need a different one.
-      const seedRate = data.exchangeRate ?? defaultExchangeRate
+      // Each entry arrives with its own starting rate and converted amount
+      // (seedConversion in finance-ai.ts) — editable, per brief: rates aren't
+      // fixed, and a multi-trip receipt's entries may each need a different
+      // one. No rate (a foreign currency with no market rate) leaves the
+      // field empty for the user to fill.
       return {
         key: path,
         fileName: file.name,
@@ -237,7 +264,8 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
         entries: data.entries.map((e: {
           concept: string; category: FinanceExpenseCategory; subLine: string | null; date: string | null; reference: string | null
           vendor: string | null; localAmount: number | null; localCurrency: string | null
-          settlementAmount: number | null; nights: number | null; lowConfidenceFields: string[]
+          settlementAmount: number | null; exchangeRate: number | null; rateSource: RateSource | null
+          nights: number | null; lowConfidenceFields: string[]
           suspiciousPersonal: boolean; aiComment: string; ruleViolation: string | null
         }) => ({
           concept: e.concept || '',
@@ -249,13 +277,20 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
           localAmount: e.localAmount != null ? String(e.localAmount) : '',
           localCurrency: e.localCurrency || '',
           settlementAmount: e.settlementAmount,
-          exchangeRate: String(seedRate),
+          exchangeRate: e.exchangeRate != null ? String(e.exchangeRate) : '',
+          rateSource: e.rateSource,
+          seed: {
+            currency: (e.localCurrency || '').trim().toUpperCase(),
+            rate: e.exchangeRate != null ? String(e.exchangeRate) : '',
+            source: e.rateSource,
+          },
           exchangeRateProofFile: null,
           nights: e.nights != null ? String(e.nights) : '',
           lowConfidenceFields: e.lowConfidenceFields ?? [],
           suspiciousPersonal: e.suspiciousPersonal,
           aiComment: e.aiComment || '',
           ruleViolation: e.ruleViolation || null,
+          comment: '',
         })),
       }
     } catch (err) {
@@ -277,9 +312,29 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
           if (idx !== entryIndex) return e
           const next = { ...e, ...patch }
           if (patch.category && patch.category !== e.category) next.subLine = defaultSubLine(patch.category)
-          const amt = parseFloat(next.localAmount)
-          const rate = parseFloat(next.exchangeRate)
-          next.settlementAmount = Number.isFinite(amt) && Number.isFinite(rate) && rate > 0 ? Math.round((amt / rate) * 100) / 100 : null
+          if (patch.exchangeRate !== undefined) next.rateSource = null
+          // A corrected currency gets that currency's rate, never the one
+          // that belonged to the old currency (checked once a full 3-letter
+          // code is typed).
+          const currency = (patch.localCurrency ?? '').trim().toUpperCase()
+          if (patch.localCurrency !== undefined && /^[A-Z]{3}$/.test(currency) && currency !== e.localCurrency.trim().toUpperCase()) {
+            if (currency === e.seed.currency && e.seed.rate) {
+              next.exchangeRate = e.seed.rate; next.rateSource = e.seed.source
+            } else if (isSameCurrency(currency, settlementCurrency)) {
+              next.exchangeRate = '1'; next.rateSource = 'same_currency'
+            } else if (projectLocalCurrency && currency === projectLocalCurrency.toUpperCase()) {
+              next.exchangeRate = String(defaultExchangeRate); next.rateSource = 'project'
+            } else {
+              next.rateSource = null
+            }
+          }
+          // Only an amount, currency or rate change re-converts — editing the
+          // concept must never move the money.
+          if (patch.localAmount !== undefined || patch.localCurrency !== undefined || patch.exchangeRate !== undefined) {
+            const amt = parseFloat(next.localAmount)
+            const rate = parseFloat(next.exchangeRate)
+            next.settlementAmount = Number.isFinite(amt) && amt > 0 && Number.isFinite(rate) && rate > 0 ? roundMoney(amt / rate) : null
+          }
           return next
         }),
       }
@@ -318,8 +373,13 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
       if (g.key !== groupKey) return [g]
       const old = g.entries[entryIndex]
       // A photo the AI couldn't read keeps what was already typed in for
-      // this entry rather than starting from a blank form.
-      const swapped = replacement.couldNotRead && old ? { ...replacement, entries: [old] } : replacement
+      // this entry rather than starting from a blank form; one it could read
+      // still keeps the uploader's own comment.
+      const swapped = replacement.couldNotRead && old
+        ? { ...replacement, entries: [old] }
+        : old?.comment
+          ? { ...replacement, entries: replacement.entries.map(e => ({ ...e, comment: old.comment })) }
+          : replacement
       const remaining = g.entries.filter((_, idx) => idx !== entryIndex)
       return remaining.length > 0 ? [{ ...g, entries: remaining }, swapped] : [swapped]
     }))
@@ -374,12 +434,13 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
             localCurrency: e.localCurrency.trim().toUpperCase(),
             exchangeRate: parseFloat(e.exchangeRate),
             exchangeRateProofPath,
-            settlementAmount: e.settlementAmount ?? parseFloat(e.localAmount),
+            settlementAmount: e.settlementAmount ?? roundMoney(parseFloat(e.localAmount) / parseFloat(e.exchangeRate)),
             nights: e.nights ? parseInt(e.nights, 10) : null,
             lowConfidenceFields: e.lowConfidenceFields,
             suspiciousPersonal: e.suspiciousPersonal,
             aiComment: e.aiComment || null,
             ruleViolation: e.ruleViolation || null,
+            comment: e.comment.trim() || null,
           }
         }))
       } catch (err) {
@@ -635,8 +696,17 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                             <input className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 uppercase" value={entry.localCurrency} onChange={e => updateEntry(group.key, i, { localCurrency: e.target.value })} />
                           </div>
                           <div>
-                            <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Exchange rate</label>
+                            <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">
+                              Exchange rate ({entry.localCurrency.trim().toUpperCase() || 'local'} per 1 {settlementCurrency})
+                            </label>
                             <input type="number" step="0.0001" min="0" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={entry.exchangeRate} onChange={e => updateEntry(group.key, i, { exchangeRate: e.target.value })} />
+                            <RateCheck
+                              base={settlementCurrency}
+                              quote={entry.localCurrency}
+                              rate={entry.exchangeRate}
+                              onUseRate={r => updateEntry(group.key, i, { exchangeRate: String(r) })}
+                            />
+                            {entry.rateSource && <p className="text-[11px] text-gray-500 mt-1">{RATE_SOURCE_NOTES[entry.rateSource]}</p>}
                           </div>
                           <div>
                             <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Proof of exchange rate (optional)</label>
@@ -651,6 +721,23 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                             {entry.settlementAmount != null
                               ? `≈ ${settlementCurrency} ${entry.settlementAmount.toFixed(2)} at rate ${entry.exchangeRate}`
                               : 'Enter a local amount and exchange rate to see the converted total.'}
+                            {entry.settlementAmount != null && entry.settlementAmount >= IMPLAUSIBLE_TICKET_AMOUNT && (
+                              <div className="flex items-center gap-1.5 text-red-700 font-medium mt-1">
+                                <AlertTriangle size={12} className="flex-shrink-0" />
+                                That&apos;s over {IMPLAUSIBLE_TICKET_AMOUNT.toLocaleString('en-US')} {settlementCurrency} for one ticket — check the amount and the exchange rate.
+                              </div>
+                            )}
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Comment for Finance (optional)</label>
+                            <textarea
+                              rows={2}
+                              maxLength={2000}
+                              className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2"
+                              value={entry.comment}
+                              onChange={e => updateEntry(group.key, i, { comment: e.target.value })}
+                              placeholder="Anything Finance should know — e.g. Saturday taxi to the meeting with the Minister of Trade."
+                            />
                           </div>
                         </div>
                       </div>

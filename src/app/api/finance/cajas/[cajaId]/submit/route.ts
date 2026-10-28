@@ -5,6 +5,7 @@ import { isFinanceAdmin } from '@/lib/access'
 import { canTransition } from '@/lib/finance-caja'
 import { emailCajaSubmitted } from '@/lib/finance-email'
 import { getBaseUrl } from '@/lib/url'
+import { financeNotificationRecipients } from '@/lib/finance-admins'
 
 interface Params { params: { cajaId: string } }
 
@@ -66,16 +67,20 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   await supabaseAdmin.from('finance_caja_events').insert({ caja_id: params.cajaId, from_stage: caja.stage, to_stage: 'submitted', actor_id: profile.id })
 
-  // Notify every finance admin — in-app (brief G-02) and by email, since a
-  // submission is exactly the kind of low-frequency, high-signal event worth
-  // an email (one caja, once a week, per project).
-  const { data: admins } = await supabaseAdmin.from('profiles').select('id, email').eq('finance_role', 'finance_admin')
+  // Notify Finance (financeNotificationRecipients — office@ for now) — in-app
+  // (brief G-02) and by email, since a submission is exactly the kind of
+  // low-frequency, high-signal event worth an email (one caja, once a week,
+  // per project).
+  const admins = await financeNotificationRecipients()
   const { data: project } = await supabaseAdmin.from('finance_projects').select('name').eq('id', caja.project_id).single()
-  if (admins?.length) {
+  const inApp = admins.filter(a => a.id)
+  if (inApp.length) {
     await supabaseAdmin.from('finance_notifications').insert(
-      admins.map(a => ({ user_id: a.id, type: 'caja_submitted', message: `Week ${caja.week_number} caja submitted for review.`, link: `/finance/cajas/${caja.id}` })),
+      inApp.map(a => ({ user_id: a.id, type: 'caja_submitted', message: `Week ${caja.week_number} caja submitted for review.`, link: `/finance/cajas/${caja.id}` })),
     )
-    await emailCajaSubmitted(getBaseUrl(request), admins.map(a => a.email).filter(Boolean), project?.name || 'Project', caja.week_number, caja.id)
+  }
+  if (admins.length) {
+    await emailCajaSubmitted(getBaseUrl(request), admins.map(a => a.email), project?.name || 'Project', caja.week_number, caja.id)
   }
 
   return NextResponse.json({ caja: updated })

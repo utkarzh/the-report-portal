@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { emailReceiptReminderMidweek, emailReceiptReminderFriday, emailAdminReviewReminder } from '@/lib/finance-email'
+import { emailReceiptReminderMidweek, emailReceiptReminderFriday, emailAdminReviewReminder, type ReviewBacklog } from '@/lib/finance-email'
 import { getBaseUrl } from '@/lib/url'
 
 export const dynamic = 'force-dynamic'
@@ -48,9 +48,35 @@ export async function GET(request: NextRequest) {
   // actually worth nudging Finance to clear the review queue.
   let adminsSent = 0
   if (type === 'friday') {
-    await Promise.all(FINANCE_ADMIN_REVIEW_RECIPIENTS.map(email => emailAdminReviewReminder(baseUrl, email)))
+    const backlog = await reviewBacklog()
+    await Promise.all(FINANCE_ADMIN_REVIEW_RECIPIENTS.map(email => emailAdminReviewReminder(baseUrl, email, backlog)))
     adminsSent = FINANCE_ADMIN_REVIEW_RECIPIENTS.length
   }
 
   return NextResponse.json({ type, sent: (recipients ?? []).length, adminsSent })
+}
+
+// Pending tickets on open projects, per project, longest-waiting first.
+async function reviewBacklog(): Promise<ReviewBacklog> {
+  const { data } = await supabaseAdmin
+    .from('finance_expenses')
+    .select('created_at, finance_projects!inner(name, status)')
+    .eq('status', 'pending')
+    .eq('finance_projects.status', 'active')
+  const now = Date.now()
+  const byProject = new Map<string, number[]>()
+  for (const e of (data ?? []) as unknown as { created_at: string; finance_projects: { name: string } }[]) {
+    const days = Math.floor((now - Date.parse(e.created_at)) / 86400000)
+    const list = byProject.get(e.finance_projects.name) ?? []
+    list.push(days)
+    byProject.set(e.finance_projects.name, list)
+  }
+  const all = Array.from(byProject.values()).flat()
+  return {
+    waiting: all.length,
+    overTwoWeeks: all.filter(d => d > 14).length,
+    oldestDays: all.length ? Math.max(...all) : 0,
+    projects: Array.from(byProject, ([name, list]) => ({ name, waiting: list.length, oldestDays: Math.max(...list) }))
+      .sort((a, b) => b.oldestDays - a.oldestDays),
+  }
 }

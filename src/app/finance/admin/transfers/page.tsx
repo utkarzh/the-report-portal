@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import Input from '@/components/ui/Input'
+import RateCheck from '@/components/finance/RateCheck'
 
 interface Project { id: string; name: string; settlement_currency: string }
 interface Transfer {
@@ -47,7 +48,8 @@ export default function TransfersPage() {
       fetch('/api/finance/projects').then(r => r.json()),
     ]).then(([t, p]) => {
       setTransfers(t.transfers ?? [])
-      setProjects(p.projects ?? [])
+      // A closed project can't send or receive funds (the API refuses it).
+      setProjects((p.projects ?? []).filter((x: Project & { status?: string }) => x.status !== 'closed'))
     }).finally(() => setLoading(false))
   }, [])
 
@@ -113,14 +115,22 @@ export default function TransfersPage() {
         </div>
         {crossCurrency && (
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
-            <Input
-              label={`Exchange rate (${fromProject!.settlement_currency} → ${toProject!.settlement_currency})`}
-              type="number"
-              step="0.0001"
-              value={form.exchangeRate}
-              onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value }))}
-              required
-            />
+            <div>
+              <Input
+                label={`Exchange rate (${toProject!.settlement_currency} per 1 ${fromProject!.settlement_currency})`}
+                type="number"
+                step="0.0001"
+                value={form.exchangeRate}
+                onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value }))}
+                required
+              />
+              <RateCheck
+                base={fromProject!.settlement_currency}
+                quote={toProject!.settlement_currency}
+                rate={form.exchangeRate}
+                onUseRate={r => setForm(f => ({ ...f, exchangeRate: String(r) }))}
+              />
+            </div>
             <div className="text-xs text-gray-500 sm:col-span-3">
               {previewToAmount != null
                 ? `${toProject!.name} receives ${toProject!.settlement_currency} ${previewToAmount.toFixed(2)}`

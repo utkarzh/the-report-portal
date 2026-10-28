@@ -68,7 +68,11 @@ export default function CajaDetailPage({ params }: { params: { cajaId: string } 
 
   async function handleVerify(expenseId: string) {
     setBusy(true)
-    await fetch(`/api/finance/expenses/${expenseId}/verify`, { method: 'POST' })
+    const res = await fetch(`/api/finance/expenses/${expenseId}/verify`, { method: 'POST' })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setError(data.error || 'Failed to verify this ticket.')
+    }
     setBusy(false)
     load()
   }

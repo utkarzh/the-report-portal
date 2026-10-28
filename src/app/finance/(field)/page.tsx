@@ -30,7 +30,8 @@ export default async function MyProjectsPage() {
         .order('created_at', { ascending: false })
     : { data: [] as FinanceProject[] }
 
-  const list = (projects ?? []) as FinanceProject[]
+  // Open projects first; a closed one stays listed (read-only) below them.
+  const list = ((projects ?? []) as FinanceProject[]).sort((a, b) => Number(a.status === 'closed') - Number(b.status === 'closed'))
   const ids = list.map(p => p.id)
 
   const { data: fundings } = ids.length
@@ -61,7 +62,7 @@ export default async function MyProjectsPage() {
             const pe = (expenses ?? []).filter((e: FinanceExpense) => e.project_id === project.id)
             const tIn = (transfers ?? []).filter((t: FinanceTransfer) => t.to_project_id === project.id)
             const tOut = (transfers ?? []).filter((t: FinanceTransfer) => t.from_project_id === project.id)
-            const { balance, totalFunded, pendingSpend } = computeBalance(pf, pe, tIn, tOut)
+            const { balance, totalFunded, totalTransfersIn, totalTransfersOut, verifiedSpend } = computeBalance(pf, pe, tIn, tOut)
             const pendingCount = pe.filter((e: FinanceExpense) => e.status === 'pending').length
             return (
               <Link
@@ -77,7 +78,7 @@ export default async function MyProjectsPage() {
                       <div className="text-xs text-gray-500 mt-0.5">{project.country} · {project.settlement_currency}</div>
                     </div>
                   </div>
-                  <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">
+                  <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full ${project.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
                     {project.status === 'active' ? 'Active' : 'Closed'}
                   </span>
                 </div>
@@ -94,8 +95,13 @@ export default async function MyProjectsPage() {
                     </span>
                   )}
                 </div>
-                <div className="text-[11px] text-gray-500 mt-2">
-                  {(totalFunded - balance - pendingSpend).toFixed(2)} of {totalFunded.toFixed(2)} verified spend
+                {/* Straight from computeBalance — this line used to derive spend
+                    as funded − balance − pending, left over from when the
+                    balance counted pending tickets, and showed negative
+                    figures once it stopped (fixed 26 Oct 2026). Funds include
+                    transfers in and out, like the balance does. */}
+                <div className="text-[11px] text-gray-500 mt-2 tabular-nums">
+                  {verifiedSpend.toFixed(2)} verified spend of {(totalFunded + totalTransfersIn - totalTransfersOut).toFixed(2)} received
                 </div>
               </Link>
             )

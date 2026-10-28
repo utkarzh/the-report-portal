@@ -2,52 +2,49 @@
 
 import { useMemo, useState } from 'react'
 import { X, Download } from 'lucide-react'
-import { projectWeekBounds, projectWeekNumberForDate } from '@/lib/finance-weeks'
+import { currentProjectWeek, projectWeekBounds } from '@/lib/finance-weeks'
 
 interface Props {
   open: boolean
   onClose: () => void
   projectId: string
-  projectCreatedAt: string
+  // The date week 1 is counted from (projectWeekAnchor in finance-weeks.ts).
+  weekAnchor: string
 }
 
 // Downloads the caja Excel for a chosen week — a plain navigation, not a
 // fetch+blob dance, since the browser already sends the auth cookie and the
 // route sets Content-Disposition: attachment.
 //
-// Weeks here are strict to the project's own creation date (see
-// lib/finance-weeks.ts), not calendar weeks — "Week 1" always means "the
-// first 7 days of this project," full stop. The dropdown lists every elapsed
-// week in descending order; picking one fills the date range to match
-// exactly. If the dates are then hand-edited to something that doesn't line
+// Weeks run Monday to Sunday (see lib/finance-weeks.ts) — "Week 1" is the
+// Monday–Sunday week of the project's first receipt or funds. The dropdown lists every
+// elapsed week in descending order; picking one fills the date range to
+// match exactly. If the dates are then hand-edited to something that doesn't line
 // up with any single project week, this becomes a "Custom" export instead —
 // still fully supported, just not labelled as a specific week.
-export default function ExportWeekModal({ open, onClose, projectId, projectCreatedAt }: Props) {
-  const currentWeekNumber = useMemo(
-    () => projectWeekNumberForDate(projectCreatedAt, new Date()),
-    [projectCreatedAt],
-  )
+export default function ExportWeekModal({ open, onClose, projectId, weekAnchor }: Props) {
+  const currentWeekNumber = useMemo(() => currentProjectWeek(weekAnchor), [weekAnchor])
   const weekOptions = useMemo(
     () => Array.from({ length: currentWeekNumber }, (_, i) => currentWeekNumber - i), // descending
     [currentWeekNumber],
   )
 
-  const initial = projectWeekBounds(projectCreatedAt, currentWeekNumber)
+  const initial = projectWeekBounds(weekAnchor, currentWeekNumber)
   const [weekStart, setWeekStart] = useState(initial.start)
   const [weekEnd, setWeekEnd] = useState(initial.end)
 
   const matchedWeek = useMemo(() => {
     for (const n of weekOptions) {
-      const b = projectWeekBounds(projectCreatedAt, n)
+      const b = projectWeekBounds(weekAnchor, n)
       if (b.start === weekStart && b.end === weekEnd) return n
     }
     return null
-  }, [weekStart, weekEnd, weekOptions, projectCreatedAt])
+  }, [weekStart, weekEnd, weekOptions, weekAnchor])
 
   const label = matchedWeek ? `Week ${matchedWeek}` : 'Custom'
 
   function selectWeek(n: number) {
-    const b = projectWeekBounds(projectCreatedAt, n)
+    const b = projectWeekBounds(weekAnchor, n)
     setWeekStart(b.start)
     setWeekEnd(b.end)
   }
@@ -90,8 +87,8 @@ export default function ExportWeekModal({ open, onClose, projectId, projectCreat
           </div>
           <p className="text-[11px] text-gray-500">
             {matchedWeek
-              ? `Week ${matchedWeek} — strict to this project's own start date, not the calendar week.`
-              : "Custom range — doesn't line up with a single project week, exported as-is."}
+              ? `Week ${matchedWeek} — Monday ${weekStart} to Sunday ${weekEnd}.`
+              : "Custom range — doesn't line up with a single Monday–Sunday week, exported as-is."}
           </p>
           <a
             href={href}

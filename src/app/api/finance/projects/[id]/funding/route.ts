@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { requireFinanceAdmin } from '@/lib/finance-auth'
+import { requireFinanceAdmin, closedProjectError } from '@/lib/finance-auth'
+import { recordHistory, FUNDING_HISTORY_FIELDS } from '@/lib/finance-history'
+import { parseFundingAttachments, MAX_FUNDING_ATTACHMENTS } from '@/lib/finance'
 
 interface Params {
   params: { id: string }
@@ -18,12 +20,15 @@ const MAX_CONCEPT_LENGTH = 200
 // admin work. When the funds were sent in a currency other than the
 // project's settlement currency, `exchangeRate` (settlement units per 1 sent
 // unit) converts the face value into the credited `amount`.
+//
+// Evidence can be several files (migration 042): `proofFiles` is a list of
+// { path, name }. A single `proofImagePath` from an older client still works.
 export async function POST(request: NextRequest, { params }: Params) {
   const auth = await requireFinanceAdmin()
   if ('error' in auth) return auth.error
   const { profile } = auth
 
-  const { amount, currency, exchangeRate, dateSent, proofImagePath, concept } = await request.json()
+  const { amount, currency, exchangeRate, dateSent, proofImagePath, proofFiles, concept } = await request.json()
 
   const { data: project } = await supabaseAdmin
     .from('finance_projects')
@@ -31,6 +36,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     .eq('id', params.id)
     .single()
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const closed = await closedProjectError(params.id)
+  if (closed) return closed
 
   const sentAmount = Number(amount)
   if (!Number.isFinite(sentAmount) || sentAmount <= 0) {
@@ -57,8 +64,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   const credited = Math.round(sentAmount * rate * 100) / 100
   if (credited <= 0) return NextResponse.json({ error: 'The converted amount must be positive.' }, { status: 400 })
 
-  if (proofImagePath != null && (typeof proofImagePath !== 'string' || !proofImagePath.startsWith(`${params.id}/`))) {
-    return NextResponse.json({ error: 'Invalid evidence file.' }, { status: 400 })
+  const files = parseFundingAttachments(proofFiles ?? (proofImagePath ? [{ path: proofImagePath }] : []), params.id)
+  if (!files) {
+    return NextResponse.json({ error: `Invalid evidence files (at most ${MAX_FUNDING_ATTACHMENTS}).` }, { status: 400 })
   }
 
   const trimmedConcept = typeof concept === 'string' ? concept.trim().slice(0, MAX_CONCEPT_LENGTH) : ''
@@ -72,7 +80,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       sent_currency: sentCurrency,
       exchange_rate: rate,
       date_sent: dateSent,
-      proof_image_path: proofImagePath || null,
+      proof_files: files,
+      proof_image_path: files[0]?.path ?? null,
       concept: trimmedConcept || null,
       recorded_by: profile.id,
     })
@@ -80,5 +89,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await recordHistory({
+    projectId: params.id, entityType: 'funding', entityId: funding.id, action: 'funds_recorded', actor: profile,
+    changes: Object.fromEntries(FUNDING_HISTORY_FIELDS.map(f => [f, { from: null, to: funding[f] }])),
+  })
   return NextResponse.json({ funding }, { status: 201 })
 }

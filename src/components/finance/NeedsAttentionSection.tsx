@@ -2,26 +2,41 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertTriangle, Sparkles, ChevronDown, ChevronUp, Undo2 } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
-import type { FinanceExpense, FinanceExpenseFlag } from '@/types'
+import type { FinanceExpense, FinanceExpenseComment, FinanceExpenseFlag } from '@/types'
 import ExpenseDetailModal from '@/components/finance/ExpenseDetailModal'
+import { LatestCommentPreview } from '@/components/finance/ExpenseThread'
 
-type ExpenseWithReceipt = FinanceExpense & { receiptUrl: string | null; finance_expense_flags?: FinanceExpenseFlag[] }
+type ExpenseWithReceipt = FinanceExpense & {
+  receiptUrl: string | null
+  finance_expense_flags?: FinanceExpenseFlag[]
+  comments?: FinanceExpenseComment[]
+}
 
 interface Props {
   settlementCurrency: string
   rejectedExpenses: ExpenseWithReceipt[]
+  currentUserId: string
+  // The Director may answer any rejected ticket on the project; everyone
+  // else only their own (the comments route enforces the same rule).
+  isDirector: boolean
+  // Closed by Finance: the rejections are listed, nothing can be answered.
+  readOnly?: boolean
 }
 
 // Full-width section listing rejected expenses with "fix & resubmit" /
-// "withdraw" (brief D-06). Deliberately its own component (not part of the
-// button row in FieldProjectActions) so it always renders full-width below
-// the header, regardless of where that row's flex layout puts things.
-export default function NeedsAttentionSection({ settlementCurrency, rejectedExpenses }: Props) {
+// "withdraw" (brief D-06), plus "reply & send back" for a ticket that's right
+// as it is (client feedback, Oct 2026: a Saturday taxi rejected with "was
+// there a meeting?" needs an answer, not a new receipt). Deliberately its own
+// component (not part of the button row in FieldProjectActions) so it always
+// renders full-width below the header, regardless of where that row's flex
+// layout puts things.
+export default function NeedsAttentionSection({ settlementCurrency, rejectedExpenses, currentUserId, isDirector, readOnly }: Props) {
   const router = useRouter()
   const [reuploadTarget, setReuploadTarget] = useState<ExpenseWithReceipt | null>(null)
+  const [replyTarget, setReplyTarget] = useState<ExpenseWithReceipt | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set())
   const [detailExpense, setDetailExpense] = useState<ExpenseWithReceipt | null>(null)
@@ -118,23 +133,41 @@ export default function NeedsAttentionSection({ settlementCurrency, rejectedExpe
                   <span className="font-semibold">Rejected: </span>
                   {e.rejection_reason}
                 </div>
+                <LatestCommentPreview comments={e.comments} />
+                {e.logged_by !== currentUserId && (
+                  <div className="text-[11px] text-gray-500 mt-1.5">Logged by {e.logged_by_name}</div>
+                )}
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-4 py-2.5 border-t border-red-100 bg-red-50/40" onClick={ev => ev.stopPropagation()}>
-              <button
-                onClick={() => setReuploadTarget(e)}
-                className="text-xs font-medium border border-[#e5e3df] bg-white rounded-lg px-3 py-1.5 hover:bg-gray-50"
-              >
-                Fix &amp; resubmit
-              </button>
-              <button
-                onClick={() => handleWithdraw(e.id)}
-                disabled={busyId === e.id}
-                className="text-xs font-medium text-red-600 border border-red-200 bg-white rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50"
-              >
-                Withdraw
-              </button>
-            </div>
+            {!readOnly && <div className="flex justify-end gap-2 flex-wrap px-4 py-2.5 border-t border-red-100 bg-red-50/40" onClick={ev => ev.stopPropagation()}>
+              {(e.logged_by === currentUserId || isDirector) && (
+                <button
+                  onClick={() => setReplyTarget(e)}
+                  className="inline-flex items-center gap-1 text-xs font-medium bg-black text-white rounded-lg px-3 py-1.5 hover:bg-gray-800"
+                >
+                  <Undo2 size={12} /> Reply &amp; send back
+                </button>
+              )}
+              {/* Editing and withdrawing are the uploader's own (the API
+                  refuses anyone else), so they're only offered to them. */}
+              {e.logged_by === currentUserId && (
+                <>
+                  <button
+                    onClick={() => setReuploadTarget(e)}
+                    className="text-xs font-medium border border-[#e5e3df] bg-white rounded-lg px-3 py-1.5 hover:bg-gray-50"
+                  >
+                    Fix &amp; resubmit
+                  </button>
+                  <button
+                    onClick={() => handleWithdraw(e.id)}
+                    disabled={busyId === e.id}
+                    className="text-xs font-medium text-red-600 border border-red-200 bg-white rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    Withdraw
+                  </button>
+                </>
+              )}
+            </div>}
           </div>
         ))}
       </div>
@@ -147,8 +180,20 @@ export default function NeedsAttentionSection({ settlementCurrency, rejectedExpe
           onSaved={refresh}
         />
       )}
+      {replyTarget && (
+        <ReplyModal expense={replyTarget} onClose={() => setReplyTarget(null)} onSent={refresh} />
+      )}
       {detailExpense && (
-        <ExpenseDetailModal expense={detailExpense} symbol={symbol} onClose={() => setDetailExpense(null)} />
+        <ExpenseDetailModal
+          expense={detailExpense}
+          symbol={symbol}
+          onClose={() => setDetailExpense(null)}
+          onUpdated={refresh}
+          viewerSide="field"
+          canSendBack={detailExpense.logged_by === currentUserId || isDirector}
+          settlementCurrency={settlementCurrency}
+          readOnly={readOnly}
+        />
       )}
     </div>
   )
@@ -167,6 +212,7 @@ function FixExpenseModal({ expense, settlementCurrency, onClose, onSaved }: {
   const [localAmount, setLocalAmount] = useState(String(expense.local_amount))
   const [date, setDate] = useState(expense.expense_date)
   const [vendor, setVendor] = useState(expense.vendor || '')
+  const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -178,7 +224,7 @@ function FixExpenseModal({ expense, settlementCurrency, onClose, onSaved }: {
     const res = await fetch(`/api/finance/expenses/${expense.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ concept, localAmount: amt, date, vendor, settlementAmount }),
+      body: JSON.stringify({ concept, localAmount: amt, date, vendor, settlementAmount, comment: note.trim() || undefined }),
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
@@ -201,11 +247,80 @@ function FixExpenseModal({ expense, settlementCurrency, onClose, onSaved }: {
           <input type="date" className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={date} onChange={e => setDate(e.target.value)} />
           <input className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={vendor} onChange={e => setVendor(e.target.value)} placeholder="Vendor" />
           <input type="number" step="0.01" className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={localAmount} onChange={e => setLocalAmount(e.target.value)} placeholder={`Local amount (${expense.local_currency})`} />
-          <p className="text-[11px] text-gray-500">Converted at the project's rate to {settlementCurrency} on save.</p>
+          <p className="text-[11px] text-gray-500">
+            Converted to {settlementCurrency} at this ticket&apos;s rate on save: 1 {settlementCurrency} = {expense.exchange_rate_used} {expense.local_currency}.
+          </p>
+          <textarea
+            className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2"
+            rows={2}
+            maxLength={2000}
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="Note to Finance (optional) — what you changed"
+          />
           <div className="flex gap-3 pt-1">
             <Button size="sm" loading={loading} onClick={handleSave}>Resubmit</Button>
             <button onClick={onClose} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// The answer to a rejection when the ticket is right as it is — the reply is
+// added to the ticket's thread and it goes back to Finance as pending, with
+// no new upload (POST /api/finance/expenses/[id]/comments, sendBack).
+function ReplyModal({ expense, onClose, onSent }: {
+  expense: ExpenseWithReceipt
+  onClose: () => void
+  onSent: () => void
+}) {
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSend() {
+    if (!message.trim()) { setError('Write your reply to Finance first.'); return }
+    setLoading(true)
+    setError(null)
+    const res = await fetch(`/api/finance/expenses/${expense.id}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, sendBack: true }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setError(data.error || 'Failed to send it back.')
+      setLoading(false)
+      return
+    }
+    onSent()
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white w-full max-w-md shadow-2xl rounded-xl p-6">
+        <h3 className="text-sm font-semibold mb-1">Reply &amp; send back for review</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          {expense.concept} — if the ticket is correct as it is, explain why. It goes back to Finance as pending; nothing needs uploading again.
+        </p>
+        <div className="mb-3 bg-red-50 rounded-lg px-3 py-2 text-xs text-red-800">
+          <span className="font-semibold">Finance: </span>{expense.rejection_reason}
+        </div>
+        {error && <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded">{error}</div>}
+        <textarea
+          className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 min-h-[90px]"
+          value={message}
+          maxLength={2000}
+          onChange={e => setMessage(e.target.value)}
+          placeholder="e.g. Yes — the taxi was to the Saturday meeting with the Minister of Trade."
+        />
+        <div className="flex gap-3 pt-3">
+          <Button size="sm" loading={loading} onClick={handleSend}>Send back to Finance</Button>
+          <button onClick={onClose} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
         </div>
       </div>
     </div>

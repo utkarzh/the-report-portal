@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requireFinanceAccess } from '@/lib/finance-auth'
 import { isFinanceAdmin } from '@/lib/access'
-import { extractReceiptData, computeSettlementAmount } from '@/lib/finance-ai'
+import { extractReceiptData, seedConversion } from '@/lib/finance-ai'
+import { ticketMarketRate } from '@/lib/finance-review'
+import { isSameCurrency } from '@/lib/finance'
 
 interface Params {
   params: { id: string }
@@ -31,6 +33,9 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: project } = await supabaseAdmin.from('finance_projects').select('*').eq('id', params.id).single()
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (project.status === 'closed') {
+    return NextResponse.json({ error: 'This project is closed. Finance can reopen it to make changes.' }, { status: 409 })
+  }
 
   const { storagePath, mimeType } = await request.json()
   if (!storagePath || !storagePath.startsWith(`${params.id}/`)) {
@@ -66,9 +71,17 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   if (receiptError || !receipt) return NextResponse.json({ error: 'Failed to save the receipt record.' }, { status: 500 })
 
+  // Each entry starts from its own rate (see seedConversion): the receipt's
+  // two amounts, 1 for the settlement currency, the project rate for its
+  // local currency, today's market rate for any other.
+  const projectLocal = (project.local_currency || '').toUpperCase()
+  const otherCurrencies = Array.from(new Set(result.entries
+    .map(e => (e.localCurrency || '').trim().toUpperCase())
+    .filter(c => c && c !== projectLocal && !isSameCurrency(c, project.settlement_currency))))
+  const marketRates = new Map(await Promise.all(otherCurrencies.map(async c => [c, await ticketMarketRate(project.settlement_currency, c)] as const)))
   const entries = result.entries.map(e => ({
     ...e,
-    settlementAmount: computeSettlementAmount(e, Number(project.exchange_rate)),
+    ...seedConversion(e, project, marketRates.get((e.localCurrency || '').trim().toUpperCase()) ?? null),
   }))
 
   return NextResponse.json({
@@ -78,5 +91,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     entries,
     exchangeRate: Number(project.exchange_rate),
     settlementCurrency: project.settlement_currency,
+    localCurrency: project.local_currency || null,
   })
 }

@@ -27,19 +27,60 @@ export async function emailExpenseRejected(
   await safeSend({
     to,
     subject: `Cash Box: "${concept}" was rejected — ${projectName}`,
-    text: `Your expense "${concept}" on ${projectName} was rejected:\n\n${reason}\n\nFix it and resubmit: ${link}`,
+    text: `Your expense "${concept}" on ${projectName} was rejected:\n\n${reason}\n\nFix it and resubmit — or, if it's correct as it is, reply on the ticket and send it back for review: ${link}`,
     html: renderEmailShell({
       preheader: `"${concept}" was rejected — action needed`,
       bodyHtml: `
 <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#111111;">Expense rejected</p>
-<p style="margin:0 0 18px;color:#4b4844;">Your expense on <b>${projectName}</b> needs a fix before it can be approved.</p>
+<p style="margin:0 0 18px;color:#4b4844;">Your expense on <b>${projectName}</b> was rejected — it needs a fix or an explanation before it can be approved.</p>
 <div style="margin:0 0 22px;padding:14px 18px;background-color:#fdf2f2;border:1px solid #f3c6c6;border-radius:8px;">
 <div style="font-weight:600;color:#8a1f1f;margin-bottom:4px;">"${concept}"</div>
 <div style="color:#8a1f1f;font-size:13px;">${reason}</div>
 </div>
-${emailButton('Fix and resubmit', link)}`,
+<p style="margin:0 0 22px;color:#4b4844;">If the ticket is correct as it is, reply on it and send it back for review — no need to upload it again.</p>
+${emailButton('Open the ticket', link)}`,
     }),
   })
+}
+
+// A message on a ticket's thread (see lib/finance-comments.ts) — Finance
+// asking the uploader something, or the field team replying / sending a
+// rejected ticket back. The message is typed by a person, so it's escaped
+// before it goes into the HTML.
+export async function emailExpenseThreadUpdate(params: {
+  baseUrl: string
+  to: string
+  projectName: string
+  concept: string
+  authorName: string
+  message: string
+  resubmitted: boolean
+  path: string
+}) {
+  const { baseUrl, to, projectName, concept, authorName, message, resubmitted, path } = params
+  const link = `${baseUrl}${path}`
+  const headline = resubmitted ? 'Ticket sent back for review' : 'New comment on a ticket'
+  const action = resubmitted ? 'sent back for review' : 'commented on'
+  await safeSend({
+    to,
+    subject: `Cash Box: ${authorName} ${action} "${concept}" — ${projectName}`,
+    text: `${authorName} ${action} "${concept}" on ${projectName}${message ? `:\n\n${message}` : '.'}\n\n${link}`,
+    html: renderEmailShell({
+      preheader: `${authorName} ${action} "${concept}"`,
+      bodyHtml: `
+<p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#111111;">${headline}</p>
+<p style="margin:0 0 18px;color:#4b4844;"><b>${escapeHtml(authorName)}</b> ${action} a ticket on <b>${escapeHtml(projectName)}</b>.</p>
+<div style="margin:0 0 22px;padding:14px 18px;background-color:#f7f6f3;border:1px solid #e5e3df;border-radius:8px;">
+<div style="font-weight:600;color:#111111;margin-bottom:4px;">"${escapeHtml(concept)}"</div>
+${message ? `<div style="color:#4b4844;font-size:13px;white-space:pre-wrap;">${escapeHtml(message)}</div>` : ''}
+</div>
+${emailButton('Open the ticket', link)}`,
+    }),
+  })
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 // Weekly receipt-upload reminders (Wed/Fri, via the finance-reminders cron —
@@ -77,20 +118,37 @@ ${emailButton('Upload receipts', link)}`,
   })
 }
 
+// What's waiting for Finance, for the Friday reminder below.
+export interface ReviewBacklog {
+  waiting: number
+  overTwoWeeks: number
+  oldestDays: number
+  projects: { name: string; waiting: number; oldestDays: number }[]
+}
+
 // Fires alongside the Friday "last day to upload" field reminder — Finance
 // gets nudged to go clear the review queue right as that week's window
-// closes, instead of pending cajas just sitting there until someone remembers.
-export async function emailAdminReviewReminder(baseUrl: string, to: string) {
+// closes. Carries the backlog itself (client review, 26 Oct 2026: tickets
+// had been waiting up to 49 days with nothing saying so).
+export async function emailAdminReviewReminder(baseUrl: string, to: string, backlog: ReviewBacklog) {
   const link = `${baseUrl}/finance/admin/review`
+  const days = (n: number) => `${n} day${n === 1 ? '' : 's'}`
+  const summary = backlog.waiting === 0
+    ? 'Nothing is waiting for review.'
+    : `${backlog.waiting} ticket${backlog.waiting === 1 ? ' is' : 's are'} waiting for review${backlog.overTwoWeeks > 0 ? `, ${backlog.overTwoWeeks} for more than 14 days` : ''}. The oldest has waited ${days(backlog.oldestDays)}.`
+  const lines = backlog.projects.map(p => `${p.name}: ${p.waiting} waiting, oldest ${days(p.oldestDays)}`)
   await safeSend({
     to,
-    subject: 'Cash Box: cajas ready for your review',
-    text: `This week's uploads are in — please review the pending cajas.\n\n${link}`,
+    subject: backlog.waiting > 0 ? `Cash Box: ${backlog.waiting} ticket${backlog.waiting === 1 ? '' : 's'} waiting for review` : 'Cash Box: review queue is clear',
+    text: `${summary}\n\n${lines.join('\n')}\n\n${link}`,
     html: renderEmailShell({
-      preheader: 'Pending cajas are ready for review',
+      preheader: summary,
       bodyHtml: `
-<p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#111111;">Cajas ready for review</p>
-<p style="margin:0 0 22px;color:#4b4844;">This week&apos;s receipt uploads are in — please review the pending cajas.</p>
+<p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#111111;">Review queue</p>
+<p style="margin:0 0 18px;color:#4b4844;">${summary}</p>
+${lines.length > 0 ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px;width:100%;border-collapse:collapse;font-size:13px;">
+${backlog.projects.map(p => `<tr><td style="padding:6px 0;border-bottom:1px solid #eeece7;color:#111111;">${escapeHtml(p.name)}</td><td style="padding:6px 0;border-bottom:1px solid #eeece7;color:#4b4844;text-align:right;">${p.waiting} waiting · oldest ${days(p.oldestDays)}</td></tr>`).join('')}
+</table>` : ''}
 ${emailButton('Open the review queue', link)}`,
     }),
   })

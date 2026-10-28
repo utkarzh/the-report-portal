@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requireFinanceAdmin } from '@/lib/finance-auth'
+import { recordHistory } from '@/lib/finance-history'
 
 // GET /api/finance/transfers — every transfer, for the finance-admin transfers
 // page. POST creates one (brief J-01: "move funds between a Director's
@@ -39,11 +40,13 @@ export async function POST(request: NextRequest) {
 
   const { data: projects } = await supabaseAdmin
     .from('finance_projects')
-    .select('id, settlement_currency')
+    .select('id, name, settlement_currency, status')
     .in('id', [fromProjectId, toProjectId])
   if ((projects ?? []).length !== 2) return NextResponse.json({ error: 'Project not found.' }, { status: 404 })
   const from = projects!.find(p => p.id === fromProjectId)!
   const to = projects!.find(p => p.id === toProjectId)!
+  const closed = [from, to].find(p => p.status === 'closed')
+  if (closed) return NextResponse.json({ error: `${closed.name} is closed. Reopen it to move funds.` }, { status: 409 })
 
   // Same currency: 1:1, exactly as before. Different currency: the amount
   // debited from `from` (in its own currency) and credited to `to` (in ITS
@@ -74,5 +77,16 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // On both ledgers' history — each side sees the move in its own currency.
+  await recordHistory([
+    {
+      projectId: from.id, entityType: 'transfer', entityId: transfer.id, action: 'transfer_sent', actor: profile,
+      changes: { amount: { from: null, to: transfer.amount } }, note: `To ${to.name}${transfer.reason ? ` — ${transfer.reason}` : ''}`,
+    },
+    {
+      projectId: to.id, entityType: 'transfer', entityId: transfer.id, action: 'transfer_received', actor: profile,
+      changes: { amount: { from: null, to: transfer.to_amount } }, note: `From ${from.name}${transfer.reason ? ` — ${transfer.reason}` : ''}`,
+    },
+  ])
   return NextResponse.json({ transfer }, { status: 201 })
 }

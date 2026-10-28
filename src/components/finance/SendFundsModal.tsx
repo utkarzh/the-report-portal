@@ -1,11 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Paperclip, History, ChevronDown, ChevronUp } from 'lucide-react'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
-import type { FinanceFunding } from '@/types'
+import { MAX_FUNDING_ATTACHMENTS } from '@/lib/finance'
+import type { SignedAttachment } from '@/lib/finance-attachments'
+import RateCheck from '@/components/finance/RateCheck'
+import HistoryList from '@/components/finance/HistoryList'
+import type { FinanceAttachment, FinanceFunding } from '@/types'
 
 interface Props {
   open: boolean
@@ -20,7 +24,16 @@ interface Props {
   // client request Oct 2026) instead of recording a new one. Prefills every
   // field and PATCHes /api/finance/fundings/[id] on submit. A Director never
   // reaches this prop — the admin project page is the only caller that sets it.
-  editingFunding?: FinanceFunding | null
+  // Its signed `attachments` (when the caller has them) make the files
+  // already on record openable from here.
+  editingFunding?: (FinanceFunding & { attachments?: SignedAttachment[] }) | null
+}
+
+// The files on record for a funding — proof_files since migration 042, or
+// the single proof_image_path on a row from before it.
+function recordedFiles(f: FinanceFunding): FinanceAttachment[] {
+  if (f.proof_files?.length) return f.proof_files
+  return f.proof_image_path ? [{ path: f.proof_image_path, name: 'Evidence' }] : []
 }
 
 const CONCEPT_SUGGESTIONS = ['Initial project funds', 'Additional funds', 'Travel budget', 'PR expenses']
@@ -32,9 +45,14 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
   const [exchangeRate, setExchangeRate] = useState('')
   const [dateSent, setDateSent] = useState(() => new Date().toISOString().slice(0, 10))
   const [concept, setConcept] = useState('')
-  const [file, setFile] = useState<File | null>(null)
+  // Several evidence files per funding (client request, Oct 2026: "I can
+  // only upload one file as proof"). keptFiles = already on record (edit),
+  // newFiles = chosen in this session, uploaded on submit.
+  const [keptFiles, setKeptFiles] = useState<FinanceAttachment[]>([])
+  const [newFiles, setNewFiles] = useState<File[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // Prefill from the funding being edited each time the modal opens for it.
   useEffect(() => {
@@ -45,11 +63,13 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
       setExchangeRate(editingFunding.exchange_rate != null && editingFunding.exchange_rate !== 1 ? String(editingFunding.exchange_rate) : '')
       setDateSent(editingFunding.date_sent)
       setConcept(editingFunding.concept || '')
+      setKeptFiles(recordedFiles(editingFunding))
     } else {
       setAmount(''); setCurrency(settlementCurrency); setExchangeRate('')
       setDateSent(new Date().toISOString().slice(0, 10)); setConcept('')
+      setKeptFiles([])
     }
-    setFile(null)
+    setNewFiles([])
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingFunding?.id])
@@ -64,6 +84,19 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
     ? Math.round(amountNum * rateNum * 100) / 100
     : null
 
+  const totalFiles = keptFiles.length + newFiles.length
+  const recordedUrls = new Map((editingFunding?.attachments ?? []).map(a => [a.path, a.url]))
+
+  function addFiles(picked: File[]) {
+    if (picked.length === 0) return
+    if (totalFiles + picked.length > MAX_FUNDING_ATTACHMENTS) {
+      setError(`Up to ${MAX_FUNDING_ATTACHMENTS} files per transfer.`)
+      return
+    }
+    setError(null)
+    setNewFiles(prev => [...prev, ...picked])
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -73,18 +106,28 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
     }
     setLoading(true)
 
+    // Uploaded this time — removed again if the save doesn't go through, so
+    // a failed attempt leaves no stray files in storage.
+    const supabase = getSupabaseBrowserClient()
+    const uploadedPaths: string[] = []
     try {
-      // `undefined` tells the PATCH route "leave the existing evidence alone"
-      // — only set when editing AND no new file was chosen this time.
-      let proofImagePath: string | null | undefined = isEditing ? undefined : null
-      if (file) {
-        const supabase = getSupabaseBrowserClient()
+      // The full list after this save — the files kept plus the new ones.
+      // The edit route replaces what's on record with exactly this list (and
+      // deletes the stored files of any that were removed).
+      // allSettled, so every upload has finished (and is known) before any
+      // failure is reported and cleaned up.
+      const results = await Promise.allSettled(newFiles.map(async (file) => {
         const ext = file.name.split('.').pop() || 'jpg'
         const path = `${projectId}/${crypto.randomUUID()}.${ext}`
         const { error: uploadError } = await supabase.storage.from('finance-receipts').upload(path, file)
-        if (uploadError) throw new Error(uploadError.message)
-        proofImagePath = path
-      }
+        if (uploadError) throw new Error(`${file.name}: ${uploadError.message}`)
+        return { path, name: file.name }
+      }))
+      const uploaded = results.flatMap(r => (r.status === 'fulfilled' ? [r.value] : []))
+      uploadedPaths.push(...uploaded.map(u => u.path))
+      const failedUpload = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+      if (failedUpload) throw failedUpload.reason
+      const proofFiles = [...keptFiles, ...uploaded]
 
       const res = await fetch(
         isEditing ? `/api/finance/fundings/${editingFunding!.id}` : `/api/finance/projects/${projectId}/funding`,
@@ -97,7 +140,7 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
             exchangeRate: crossCurrency ? exchangeRate : undefined,
             dateSent,
             concept: concept.trim() || null,
-            proofImagePath,
+            proofFiles,
           }),
         },
       )
@@ -109,6 +152,7 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
       onSent()
       onClose()
     } catch (err) {
+      if (uploadedPaths.length > 0) await supabase.storage.from('finance-receipts').remove(uploadedPaths).catch(() => {})
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
       setLoading(false)
@@ -164,6 +208,7 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
                 onChange={e => setExchangeRate(e.target.value)}
                 required
               />
+              <RateCheck base={currency} quote={settlementCurrency} rate={exchangeRate} onUseRate={r => setExchangeRate(String(r))} />
               <p className="text-xs text-gray-500 mt-1.5">
                 {credited != null
                   ? `Credits ${settlementCurrency} ${credited.toFixed(2)} to the project balance.`
@@ -204,20 +249,66 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
 
           <div>
             <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1.5">
-              Evidence (optional)
+              Evidence (optional · up to {MAX_FUNDING_ATTACHMENTS} files)
             </label>
+            {totalFiles > 0 && (
+              <div className="flex flex-col gap-1.5 mb-2">
+                {keptFiles.map((f, i) => {
+                  const url = recordedUrls.get(f.path)
+                  return (
+                    <div key={`kept-${f.path}`} className="flex items-center gap-2 text-sm border border-[#e5e3df] rounded-lg px-3 py-1.5 bg-[#faf9f6]">
+                      <Paperclip size={13} className="text-gray-400 flex-shrink-0" />
+                      {url
+                        ? <a href={url} target="_blank" rel="noreferrer" className="truncate flex-1 text-gray-800 hover:underline">{f.name}</a>
+                        : <span className="truncate flex-1 text-gray-800">{f.name}</span>}
+                      <span className="text-[11px] text-gray-400 flex-shrink-0">on file</span>
+                      <button type="button" onClick={() => setKeptFiles(prev => prev.filter((_, idx) => idx !== i))} className="p-0.5 text-gray-400 hover:text-red-600" aria-label={`Remove ${f.name}`}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )
+                })}
+                {newFiles.map((f, i) => (
+                  <div key={`new-${f.name}-${i}`} className="flex items-center gap-2 text-sm border border-[#e5e3df] rounded-lg px-3 py-1.5">
+                    <Paperclip size={13} className="text-gray-400 flex-shrink-0" />
+                    <span className="truncate flex-1 text-gray-800">{f.name}</span>
+                    <span className="text-[11px] text-gray-400 flex-shrink-0">{(f.size / 1024).toFixed(0)} KB</span>
+                    <button type="button" onClick={() => setNewFiles(prev => prev.filter((_, idx) => idx !== i))} className="p-0.5 text-gray-400 hover:text-red-600" aria-label={`Remove ${f.name}`}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <input
               type="file"
+              multiple
               accept="image/*,.pdf"
-              onChange={e => setFile(e.target.files?.[0] ?? null)}
-              className="text-sm w-full border border-[#e5e3df] rounded-lg px-3 py-2.5"
+              disabled={totalFiles >= MAX_FUNDING_ATTACHMENTS}
+              onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = '' }}
+              className="text-sm w-full border border-[#e5e3df] rounded-lg px-3 py-2.5 disabled:opacity-50"
             />
-            {isEditing && !file && (
-              <p className="text-xs text-gray-400 mt-1.5">
-                {editingFunding?.proof_image_path ? 'Leave empty to keep the existing file.' : 'No evidence on file — choose one to attach it.'}
-              </p>
-            )}
+            <p className="text-xs text-gray-400 mt-1.5">
+              {isEditing && keptFiles.length === 0 && newFiles.length === 0
+                ? 'No evidence on file — choose one or more files to attach them.'
+                : isEditing
+                  ? 'Select several at once, or add more one by one. A removed file is deleted when you save.'
+                  : 'Select several at once, or add more one by one.'}
+            </p>
           </div>
+
+          {isEditing && editingFunding && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(o => !o)}
+                className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500 hover:text-gray-900"
+              >
+                <History size={11} /> History {historyOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+              </button>
+              {historyOpen && <div className="mt-2"><HistoryList entityType="funding" entityId={editingFunding.id} /></div>}
+            </div>
+          )}
 
           <p className="text-xs text-gray-500">
             {isEditing

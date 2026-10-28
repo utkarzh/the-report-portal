@@ -124,8 +124,11 @@ export interface FinanceFunding {
   amount: number;
   date_sent: string;
   // Optional since migration 033 — Finance records the transfer, so evidence
-  // is only attached when it's useful.
+  // is only attached when it's useful. Since migration 042 a funding can
+  // carry several files: proof_files is the source of truth, and
+  // proof_image_path just mirrors its first entry.
   proof_image_path: string | null;
+  proof_files: FinanceAttachment[];
   concept: string | null;
   // `amount` is always the credit in the project's settlement currency;
   // these record the face value when the funds were sent in another one.
@@ -181,6 +184,53 @@ export interface FinanceExpenseFlag {
   severity: FinanceFlagSeverity;
   message: string;
   resolved: boolean;
+  created_at: string;
+}
+
+// A file stored in the private finance-receipts bucket, with the name it was
+// uploaded under (migration 042: funding evidence).
+export interface FinanceAttachment {
+  path: string;
+  name: string;
+}
+
+// One message in a ticket's thread (migration 042). 'rejection' carries
+// Finance's reason; 'resubmission' is the field user sending a rejected
+// ticket back for review, with a reply and/or corrected values; 'comment' is
+// any other message, including the note typed when the ticket was submitted.
+export type FinanceExpenseCommentKind = "comment" | "rejection" | "resubmission";
+export type FinanceCommentSide = "finance" | "field";
+
+export interface FinanceExpenseComment {
+  id: string;
+  expense_id: string;
+  author_id: string | null;
+  author_name: string;
+  author_side: FinanceCommentSide;
+  kind: FinanceExpenseCommentKind;
+  message: string;
+  created_at: string;
+}
+
+// One row of the append-only money history (migration 043). `changes` holds
+// each changed field's old and new value.
+export type FinanceAuditEntity = "expense" | "funding" | "project" | "transfer";
+
+export interface FinanceFieldChange {
+  from: unknown;
+  to: unknown;
+}
+
+export interface FinanceAuditEntry {
+  id: string;
+  project_id: string;
+  entity_type: FinanceAuditEntity;
+  entity_id: string;
+  action: string;
+  actor_id: string | null;
+  actor_name: string;
+  changes: Record<string, FinanceFieldChange>;
+  note: string | null;
   created_at: string;
 }
 

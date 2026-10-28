@@ -2,30 +2,46 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, X, Check, Download, Landmark, Wallet, Clock, Users, Car, BedDouble,
   Phone, Layers, Printer, ArrowDownLeft, ArrowUpRight, Receipt, UserPlus, Banknote,
-  ChevronRight, Pencil, ScrollText,
+  ChevronRight, Pencil, ScrollText, Archive, RotateCcw, History as HistoryIcon, Lock, Trash2,
 } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { countryFlag } from '@/lib/country-flags'
-import { projectWeekNumberForDate } from '@/lib/finance-weeks'
+import { currentProjectWeek, ledgerWeekOf } from '@/lib/finance-weeks'
 import SendFundsModal from '@/components/finance/SendFundsModal'
 import AddMemberModal from '@/components/finance/AddMemberModal'
 import ChangeDirectorModal from '@/components/finance/ChangeDirectorModal'
 import ExportWeekModal from '@/components/finance/ExportWeekModal'
 import ExpenseDetailModal from '@/components/finance/ExpenseDetailModal'
 import AiReviewDisclosure from '@/components/finance/AiReviewDisclosure'
+import AttachmentChips from '@/components/finance/AttachmentChips'
+import UploaderSummary from '@/components/finance/UploaderSummary'
+import WaitingBadge from '@/components/finance/WaitingBadge'
+import HistoryList from '@/components/finance/HistoryList'
+import RateCheck from '@/components/finance/RateCheck'
+import { LatestCommentPreview, SentBackBadge, wasSentBack } from '@/components/finance/ExpenseThread'
 import ReceiptLightbox, { isPreviewableReceiptUrl } from '@/components/finance/ReceiptLightbox'
 import WeekNavigator, { ALL_WEEKS } from '@/components/finance/WeekNavigator'
-import { LEDGER_SORT_OPTIONS, compareLedgerRows, fundingConversionNote, type LedgerSort } from '@/lib/finance-ledger'
+import {
+  LEDGER_SORT_OPTIONS, compareLedgerRows, fundingConversionNote, formatSignedAmount, uploaderKey, uploaderOptions, uploaderTotals,
+  type LedgerSort,
+} from '@/lib/finance-ledger'
+import type { SignedAttachment } from '@/lib/finance-attachments'
 import { formatDayMonth } from '@/lib/date-format'
 import { FINANCE_EXPENSE_CATEGORY_LABELS } from '@/types'
-import type { FinanceExpense, FinanceExpenseCategory, FinanceExpenseFlag, FinanceFunding, FinanceProject, FinanceProjectMember, FinanceTransfer } from '@/types'
+import type { FinanceExpense, FinanceExpenseCategory, FinanceExpenseComment, FinanceExpenseFlag, FinanceFunding, FinanceProject, FinanceProjectMember, FinanceTransfer } from '@/types'
 
-type ExpenseRow = FinanceExpense & { finance_expense_flags: FinanceExpenseFlag[]; receiptUrl: string | null; exchangeRateProofUrl: string | null }
-type FundingRow = FinanceFunding & { profiles: { full_name: string | null; email: string } | null }
+type ExpenseRow = FinanceExpense & {
+  finance_expense_flags: FinanceExpenseFlag[]
+  receiptUrl: string | null
+  exchangeRateProofUrl: string | null
+  comments: FinanceExpenseComment[]
+}
+type FundingRow = FinanceFunding & { profiles: { full_name: string | null; email: string } | null; attachments: SignedAttachment[] }
 
 interface Detail {
   project: FinanceProject
@@ -39,13 +55,14 @@ interface Detail {
   verifiedSpend: number
   pendingSpend: number
   categorySpend: Record<string, number>
+  weekAnchor: string
 }
 
 type LedgerRow =
   | { kind: 'funding'; date: string; uploadedAt: string; label: string; detail: string | null; amountIn: number; funding: FundingRow }
   | { kind: 'transfer_in'; date: string; uploadedAt: string; label: string; detail: string | null; amountIn: number }
   | { kind: 'transfer_out'; date: string; uploadedAt: string; label: string; detail: string | null; amountOut: number }
-  | { kind: 'expense'; date: string; uploadedAt: string; expense: ExpenseRow; amountOut: number }
+  | { kind: 'expense'; date: string; uploadedAt: string; pendingSince: string | null; expense: ExpenseRow; amountOut: number }
 
 type StatusFilter = 'all' | 'pending' | 'verified' | 'rejected'
 type TypeFilter = 'all' | 'expense' | 'funding' | 'transfer'
@@ -61,6 +78,7 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
 
 export default function AdminProjectDetailPage({ params }: { params: { id: string } }) {
   const { id } = params
+  const router = useRouter()
   const [detail, setDetail] = useState<Detail | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -85,9 +103,19 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
   const [rulesModalOpen, setRulesModalOpen] = useState(false)
   const [rulesBusy, setRulesBusy] = useState(false)
   const [rulesError, setRulesError] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [statusConfirmOpen, setStatusConfirmOpen] = useState(false)
+  const [statusBusy, setStatusBusy] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteName, setDeleteName] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [reviewError, setReviewError] = useState<string | null>(null)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<FinanceExpenseCategory | 'all'>('all')
+  const [uploaderFilter, setUploaderFilter] = useState<string>('all')
   // null = not yet chosen by the user — defaults to the project's current
   // week once `detail` has loaded (see effectiveWeek below).
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
@@ -102,6 +130,16 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // After a comment on the open ticket: re-read without the loading
+  // skeleton (which would unmount the modal mid-conversation), and point the
+  // open ticket at its fresh row so its thread includes the new message.
+  async function refreshQuietly() {
+    const d = await fetch(`/api/finance/projects/${id}`).then(r => r.json()).catch(() => null)
+    if (!d?.project) return
+    setDetail(d)
+    setDetailExpense(prev => (prev ? (d.expenses as ExpenseRow[]).find(e => e.id === prev.id) ?? prev : prev))
+  }
 
   async function handleRemoveMember(memberId: string) {
     setRemovingId(memberId)
@@ -118,8 +156,13 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
 
   async function handleVerify(expenseId: string) {
     setBusyId(expenseId)
-    await fetch(`/api/finance/expenses/${expenseId}/verify`, { method: 'POST' })
+    setReviewError(null)
+    const res = await fetch(`/api/finance/expenses/${expenseId}/verify`, { method: 'POST' })
     setBusyId(null)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setReviewError(data.error || 'Failed to verify this ticket.')
+    }
     load()
   }
 
@@ -142,17 +185,25 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
     setBulkBusy(true)
-    await Promise.all(ids.map(expenseId => fetch(`/api/finance/expenses/${expenseId}/verify`, { method: 'POST' })))
+    setReviewError(null)
+    const results = await Promise.all(ids.map(async expenseId => {
+      const res = await fetch(`/api/finance/expenses/${expenseId}/verify`, { method: 'POST' })
+      return res.ok ? null : ((await res.json().catch(() => ({}))).error as string | undefined) || 'Failed to verify.'
+    }))
     setBulkBusy(false)
+    const failed = results.filter((r): r is string => r !== null)
+    if (failed.length > 0) {
+      setReviewError(`${failed.length} of ${ids.length} ticket${ids.length === 1 ? '' : 's'} weren't verified. ${failed[0]}`)
+    }
     setSelectedIds(new Set())
     load()
   }
 
-  async function handleUpdateRate(newRate: number) {
+  async function handleUpdateRate(newRate: number, reconvertRates: number[]) {
     setRateBusy(true)
     setRateError(null)
     const res = await fetch(`/api/finance/projects/${id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exchangeRate: newRate }),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exchangeRate: newRate, reconvertRates }),
     })
     setRateBusy(false)
     if (!res.ok) {
@@ -162,6 +213,40 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
     }
     setRateModalOpen(false)
     load()
+  }
+
+  // Close (read-only, out of the overview and backlog) or reopen.
+  async function handleSetStatus(status: 'active' | 'closed') {
+    setStatusBusy(true)
+    setStatusError(null)
+    const res = await fetch(`/api/finance/projects/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+    })
+    setStatusBusy(false)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setStatusError(data.error || 'Failed to update the project.')
+      return
+    }
+    setStatusConfirmOpen(false)
+    setSelectedIds(new Set())
+    load()
+  }
+
+  // Permanent — only offered once the project is closed.
+  async function handleDelete() {
+    setDeleteBusy(true)
+    setDeleteError(null)
+    const res = await fetch(`/api/finance/projects/${id}`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmName: deleteName }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setDeleteBusy(false)
+      setDeleteError(data.error || 'Failed to delete the project.')
+      return
+    }
+    router.push('/finance/admin')
   }
 
   async function handleUpdateRules(newRules: string) {
@@ -212,11 +297,31 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
     )
   }
 
-  const { project, members, fundings, expenses, transfersIn, transfersOut, balance, totalFunded, verifiedSpend, categorySpend } = detail
+  const { project, members, fundings, expenses, transfersIn, transfersOut, balance, totalFunded, verifiedSpend, pendingSpend, categorySpend } = detail
+  const weekAnchor = detail.weekAnchor ?? project.created_at
   const symbol = project.settlement_currency === 'USD' ? '$' : '€'
   const director = members.find(m => m.project_role === 'director')
   const directorName = director?.profiles?.full_name || director?.profiles?.email || null
   const pendingCount = expenses.filter(e => e.status === 'pending').length
+  // A closed project is read-only here too: no funding, review, edits or
+  // bulk actions until it's reopened (the API refuses them anyway).
+  const closed = project.status === 'closed'
+  // Pending tickets in the project's local currency, grouped by the rate they
+  // were converted at — what the rate window offers to re-convert.
+  const projectLocal = (project.local_currency || '').toUpperCase()
+  const pendingByRate = Object.values(expenses
+    .filter(e => e.status === 'pending' && (!projectLocal || (e.local_currency || '').toUpperCase() === projectLocal))
+    .reduce<Record<string, RateGroup>>((acc, e) => {
+      const rate = Number(e.exchange_rate_used)
+      const g = (acc[String(rate)] ??= { rate, count: 0, localTotal: 0, settlementTotal: 0 })
+      g.count++
+      g.localTotal += Number(e.local_amount)
+      g.settlementTotal += Number(e.settlement_amount)
+      return acc
+    }, {}))
+    .sort((a, b) => b.count - a.count)
+  const estimatedBalance = balance - pendingSpend
+  const uploaders = uploaderOptions(expenses)
   const totalCategorySpend = Object.values(categorySpend).reduce((sum, v) => sum + (v || 0), 0)
   const topCategory = Object.entries(FINANCE_EXPENSE_CATEGORY_LABELS)
     .map(([key, label]) => ({ key, label, amount: categorySpend[key] || 0 }))
@@ -255,6 +360,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
       kind: 'expense' as const,
       date: e.expense_date,
       uploadedAt: e.created_at,
+      pendingSince: e.status === 'pending' ? e.created_at : null,
       expense: e,
       amountOut: Number(e.settlement_amount),
     })),
@@ -273,20 +379,21 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
     if (row.kind === 'expense') {
       if (statusFilter !== 'all' && row.expense.status !== statusFilter) return false
       if (categoryFilter !== 'all' && row.expense.category !== categoryFilter) return false
-    } else if (statusFilter !== 'all' || categoryFilter !== 'all') {
+      if (uploaderFilter !== 'all' && uploaderKey(row.expense) !== uploaderFilter) return false
+    } else if (statusFilter !== 'all' || categoryFilter !== 'all' || uploaderFilter !== 'all') {
       return false
     }
     return true
   })
-  const filtersActive = typeFilter !== 'all' || statusFilter !== 'all' || categoryFilter !== 'all'
+  const filtersActive = typeFilter !== 'all' || statusFilter !== 'all' || categoryFilter !== 'all' || uploaderFilter !== 'all'
 
   // Calendar-style single-week view (client request: "should not be shown
   // one below the other, should be dropdown changeable") — reuses the same
-  // project-week convention the legacy caja flow and the Excel export
+  // Monday–Sunday week convention the legacy caja flow and the Excel export
   // already use (see finance-weeks.ts), just applied as a filter rather
   // than stacking every week's table on the page at once.
-  const weekNumberOf = (dateStr: string) => projectWeekNumberForDate(project.created_at, new Date(`${dateStr}T00:00:00Z`))
-  const currentWeekNumber = projectWeekNumberForDate(project.created_at, new Date())
+  const weekNumberOf = (dateStr: string) => ledgerWeekOf(weekAnchor, dateStr)
+  const currentWeekNumber = currentProjectWeek(weekAnchor)
   const effectiveWeek = selectedWeek ?? currentWeekNumber
   const weekCounts = ledgerRows.reduce<Record<number, number>>((acc, row) => {
     const wn = weekNumberOf(row.date)
@@ -295,10 +402,15 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
   }, {})
   const weekLedger = effectiveWeek === ALL_WEEKS ? filteredLedger : filteredLedger.filter(row => weekNumberOf(row.date) === effectiveWeek)
 
-  const visiblePendingExpenseIds = weekLedger
+  const visiblePendingExpenseIds = closed ? [] : weekLedger
     .filter((r): r is Extract<LedgerRow, { kind: 'expense' }> => r.kind === 'expense' && r.expense.status === 'pending')
     .map(r => r.expense.id)
   const allPendingSelected = visiblePendingExpenseIds.length > 0 && visiblePendingExpenseIds.every(pid => selectedIds.has(pid))
+  // "Who paid what": the selected person's tickets in the current view.
+  const uploaderSummary = uploaderFilter === 'all' ? null : {
+    name: uploaders.find(u => u.value === uploaderFilter)?.label ?? 'Unknown',
+    ...uploaderTotals(weekLedger.flatMap(r => (r.kind === 'expense' ? [r.expense] : []))),
+  }
 
   function toggleSelectAllPending() {
     setSelectedIds(allPendingSelected ? new Set() : new Set(visiblePendingExpenseIds))
@@ -322,11 +434,12 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
             </span>
             <button
               onClick={() => setRateModalOpen(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-white border border-[#e5e3df] rounded-full px-2.5 py-1 hover:border-gray-300 transition-colors"
+              disabled={closed}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-white border border-[#e5e3df] rounded-full px-2.5 py-1 hover:border-gray-300 disabled:hover:border-[#e5e3df] transition-colors"
             >
               <Banknote size={12} className="text-gray-400" />
-              {project.settlement_currency} · rate {project.exchange_rate}
-              <Pencil size={10} className="text-gray-400" />
+              {project.settlement_currency} · 1 {project.settlement_currency} = {project.exchange_rate} {project.local_currency || 'local'}
+              {!closed && <Pencil size={10} className="text-gray-400" />}
             </button>
             {directorName ? (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-white border border-[#e5e3df] rounded-full px-2.5 py-1">
@@ -344,20 +457,56 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={() => setRulesModalOpen(true)}
+            onClick={() => setHistoryOpen(true)}
             className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-3.5 py-2.5 hover:border-gray-300 hover:shadow-sm transition-all duration-200 flex items-center gap-1.5"
           >
-            <ScrollText size={13} /> AI rules
+            <HistoryIcon size={13} /> History
           </button>
+          {!closed && (
+            <button
+              onClick={() => setRulesModalOpen(true)}
+              className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-3.5 py-2.5 hover:border-gray-300 hover:shadow-sm transition-all duration-200 flex items-center gap-1.5"
+            >
+              <ScrollText size={13} /> AI rules
+            </button>
+          )}
           <button
             onClick={() => setExportModalOpen(true)}
             className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-3.5 py-2.5 hover:border-gray-300 hover:shadow-sm transition-all duration-200 flex items-center gap-1.5"
           >
             <Download size={13} /> Export week (Excel)
           </button>
-          <Button size="sm" onClick={() => setFundsModalOpen(true)}>Send funds</Button>
+          <button
+            onClick={() => { setStatusError(null); setStatusConfirmOpen(true) }}
+            className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-3.5 py-2.5 hover:border-gray-300 hover:shadow-sm transition-all duration-200 flex items-center gap-1.5"
+          >
+            {closed ? <><RotateCcw size={13} /> Reopen project</> : <><Archive size={13} /> Close project</>}
+          </button>
+          {closed && (
+            <button
+              onClick={() => { setDeleteName(''); setDeleteError(null); setDeleteOpen(true) }}
+              className="text-xs font-medium text-red-700 border border-red-200 bg-white rounded-lg px-3.5 py-2.5 hover:border-red-300 hover:bg-red-50 transition-all duration-200 flex items-center gap-1.5"
+            >
+              <Trash2 size={13} /> Delete project
+            </button>
+          )}
+          {!closed && <Button size="sm" onClick={() => setFundsModalOpen(true)}>Send funds</Button>}
         </div>
       </div>
+
+      {closed && (
+        <div className="flex items-center gap-2 text-sm text-gray-700 bg-gray-100 border border-[#e5e3df] rounded-xl px-4 py-3 mb-8">
+          <Lock size={14} className="text-gray-500 flex-shrink-0" />
+          This project is closed — read-only for everyone, and out of the overview and review queue. Reopen it to make changes, or delete it if it&apos;s no longer needed.
+        </div>
+      )}
+
+      {reviewError && (
+        <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-8">
+          <span className="flex-1">{reviewError}</span>
+          <button onClick={() => setReviewError(null)} className="text-red-400 hover:text-red-700 transition-colors"><X size={14} /></button>
+        </div>
+      )}
 
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -372,6 +521,13 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
               <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Current balance</span>
             </div>
             <div className="text-4xl font-bold tabular-nums text-emerald-700">{symbol}{balance.toFixed(2)}</div>
+            {pendingCount > 0 && (
+              <div className="text-sm text-gray-500 mt-1 tabular-nums">
+                Estimated{' '}
+                <span className={`font-medium ${estimatedBalance < 0 ? 'text-red-600' : 'text-gray-700'}`}>{formatSignedAmount(symbol, estimatedBalance)}</span>
+                {' '}if all {pendingCount} pending ticket{pendingCount === 1 ? ' is' : 's are'} approved
+              </div>
+            )}
             <div className="text-xs text-gray-400 mt-1.5 tabular-nums">
               {symbol}{verifiedSpend.toFixed(2)} verified spend · {symbol}{totalFunded.toFixed(2)} funds received
             </div>
@@ -412,7 +568,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
       </button>
 
       <SectionHeader
-        action={selectedIds.size > 0 ? (
+        action={closed ? null : selectedIds.size > 0 ? (
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">{selectedIds.size} selected</span>
             <button
@@ -439,7 +595,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
 
       <div className="mb-3">
         <WeekNavigator
-          projectCreatedAt={project.created_at}
+          weekAnchor={weekAnchor}
           currentWeekNumber={currentWeekNumber}
           selectedWeek={effectiveWeek}
           onChange={setSelectedWeek}
@@ -479,6 +635,17 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
             <option key={key} value={key}>{label}</option>
           ))}
         </select>
+        {uploaders.length > 1 && (
+          <select
+            value={uploaderFilter}
+            onChange={e => setUploaderFilter(e.target.value)}
+            aria-label="Filter by uploader"
+            className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 hover:border-gray-300 transition-colors"
+          >
+            <option value="all">All uploaders</option>
+            {uploaders.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+          </select>
+        )}
         <select
           value={sort}
           onChange={e => setSort(e.target.value as LedgerSort)}
@@ -489,13 +656,15 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         </select>
         {filtersActive && (
           <button
-            onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setCategoryFilter('all') }}
+            onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setCategoryFilter('all'); setUploaderFilter('all') }}
             className="text-xs text-gray-500 hover:text-gray-900 underline transition-colors"
           >
             Clear filters
           </button>
         )}
       </div>
+
+      {uploaderSummary && <UploaderSummary summary={uploaderSummary} symbol={symbol} />}
 
       {weekLedger.length === 0 ? (
         <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-8 text-sm text-gray-500 mb-10 text-center">
@@ -531,7 +700,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                   className={`align-top hover:bg-[#faf9f6] transition-colors duration-150 ${row.kind === 'expense' ? 'cursor-pointer' : ''}`}
                 >
                   <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
-                    {row.kind === 'expense' && row.expense.status === 'pending' && (
+                    {row.kind === 'expense' && row.expense.status === 'pending' && !closed && (
                       <input
                         type="checkbox"
                         checked={selectedIds.has(row.expense.id)}
@@ -574,6 +743,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                             {row.expense.rejection_reason && (
                               <div className="text-xs text-red-700 mt-1.5">Rejected: {row.expense.rejection_reason}</div>
                             )}
+                            <LatestCommentPreview comments={row.expense.comments} />
                           </div>
                         </div>
                       </td>
@@ -589,7 +759,9 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                       <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
                         <div className="flex flex-col items-start gap-2">
                           <StatusBadge status={row.expense.status} />
-                          {row.expense.status === 'pending' && (
+                          {wasSentBack(row.expense.status, row.expense.comments) && <SentBackBadge />}
+                          {row.expense.status === 'pending' && <WaitingBadge loggedAt={row.expense.created_at} />}
+                          {row.expense.status === 'pending' && !closed && (
                             <div className="flex gap-2">
                               <button onClick={() => handleVerify(row.expense.id)} disabled={busyId === row.expense.id} className="inline-flex items-center gap-1 text-[11px] font-medium bg-black text-white rounded-md px-2.5 py-1.5 hover:bg-gray-800 disabled:opacity-50 transition-colors">
                                 <Check size={11} /> Verify
@@ -612,6 +784,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                           <div className="min-w-0">
                             <div className="font-medium text-gray-900">{row.label}</div>
                             {row.detail && <div className="text-xs text-gray-500 mt-0.5">{row.detail}</div>}
+                            {row.kind === 'funding' && <AttachmentChips attachments={row.funding.attachments ?? []} onOpen={openReceipt} />}
                           </div>
                         </div>
                       </td>
@@ -619,7 +792,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                         {'amountIn' in row ? <span className="text-emerald-700">+{symbol}{row.amountIn.toFixed(2)}</span> : <span className="text-gray-900">−{symbol}{row.amountOut.toFixed(2)}</span>}
                       </td>
                       <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
-                        {row.kind === 'funding' ? (
+                        {row.kind === 'funding' && !closed ? (
                           <button
                             onClick={() => setEditFunding(row.funding)}
                             className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-gray-900 transition-colors"
@@ -666,7 +839,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         projectId={project.id}
-        projectCreatedAt={project.created_at}
+        weekAnchor={weekAnchor}
       />
       {lightboxUrl && <ReceiptLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
       {rejectTarget && (
@@ -681,6 +854,10 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
           canEdit
           siblingCount={receiptSiblingCounts[detailExpense.receipt_id || detailExpense.receipt_file_path || ''] ?? 1}
           onUpdated={load}
+          onThreadChanged={refreshQuietly}
+          viewerSide="finance"
+          settlementCurrency={project.settlement_currency}
+          readOnly={closed}
         />
       )}
       {bulkRejectOpen && (
@@ -698,7 +875,10 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         <EditRateModal
           currentRate={project.exchange_rate}
           currency={project.settlement_currency}
+          localCurrency={project.local_currency}
           country={project.country}
+          pendingByRate={pendingByRate}
+          symbol={symbol}
           busy={rateBusy}
           error={rateError}
           onClose={() => { setRateModalOpen(false); setRateError(null) }}
@@ -713,6 +893,89 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
           onClose={() => { setRulesModalOpen(false); setRulesError(null) }}
           onSubmit={handleUpdateRules}
         />
+      )}
+      {historyOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setHistoryOpen(false)} />
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="relative bg-white w-full max-w-2xl shadow-2xl rounded-xl p-6 max-h-[85vh] overflow-y-auto"
+          >
+            <div className="flex justify-between items-center mb-1">
+              <h3 className="text-sm font-semibold text-gray-900">Project history</h3>
+              <button onClick={() => setHistoryOpen(false)} className="text-gray-400 hover:text-gray-900 transition-colors"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">Every change to this project&apos;s money — tickets, funding, transfers, rate and status — newest first. It can&apos;t be edited.</p>
+            <HistoryList projectId={project.id} />
+          </motion.div>
+        </div>
+      )}
+      {statusConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setStatusConfirmOpen(false)} />
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6"
+          >
+            <h3 className="text-sm font-semibold mb-1">{closed ? 'Reopen this project?' : 'Close this project?'}</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              {closed
+                ? 'It becomes active again: the team can log tickets and Finance can review, fund and transfer.'
+                : `It becomes read-only for everyone — no new tickets, reviews, edits, funds or transfers — and leaves the overview and the review queue.${pendingCount > 0 ? ` Its ${pendingCount} pending ticket${pendingCount === 1 ? '' : 's'} stay pending.` : ''} You can reopen it any time, or delete it once closed.`}
+            </p>
+            {statusError && <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded-lg">{statusError}</div>}
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleSetStatus(closed ? 'active' : 'closed')}
+                disabled={statusBusy}
+                className="text-xs font-medium bg-black text-white rounded-lg px-4 py-2 hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                {statusBusy ? 'Saving…' : closed ? 'Reopen project' : 'Close project'}
+              </button>
+              <button onClick={() => setStatusConfirmOpen(false)} className="text-xs text-gray-500 hover:text-gray-700 transition-colors">Cancel</button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !deleteBusy && setDeleteOpen(false)} />
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6"
+          >
+            <h3 className="text-sm font-semibold mb-1">Delete this project permanently?</h3>
+            <p className="text-xs text-gray-500 mb-3">
+              This removes {project.name} and everything in it for everyone: {expenses.length} ticket{expenses.length === 1 ? '' : 's'}, {fundings.length} funding{fundings.length === 1 ? '' : 's'}, the team, the comment threads and every stored receipt and evidence file. It can&apos;t be undone. To keep the records, leave it closed instead.
+            </p>
+            <label className="block text-xs text-gray-700 mb-1.5">
+              Type <span className="font-semibold text-gray-900">{project.name}</span> to confirm
+            </label>
+            <input
+              value={deleteName}
+              onChange={e => setDeleteName(e.target.value)}
+              autoFocus
+              className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 mb-3 focus:outline-none focus:border-gray-400"
+            />
+            {deleteError && <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded-lg">{deleteError}</div>}
+            <div className="flex gap-3">
+              <button
+                onClick={handleDelete}
+                disabled={deleteBusy || deleteName.trim() !== project.name.trim()}
+                className="text-xs font-medium bg-red-600 text-white rounded-lg px-4 py-2 hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deleteBusy ? 'Deleting…' : 'Delete permanently'}
+              </button>
+              <button onClick={() => setDeleteOpen(false)} disabled={deleteBusy} className="text-xs text-gray-500 hover:text-gray-700 transition-colors">Cancel</button>
+            </div>
+          </motion.div>
+        </div>
       )}
       {teamModalOpen && (
         <TeamModal
@@ -752,18 +1015,42 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function EditRateModal({ currentRate, currency, country, busy, error, onClose, onSubmit }: {
-  currentRate: number; currency: string; country: string; busy: boolean; error: string | null
-  onClose: () => void; onSubmit: (rate: number) => void
+interface RateGroup { rate: number; count: number; localTotal: number; settlementTotal: number }
+
+// The rate is local currency per 1 settlement unit — said in words and
+// checked against today's market (RateCheck), since an inverted entry here
+// is what turned Jamaica's tickets into millions (client review, 26 Oct
+// 2026). Pending tickets converted at another rate are listed by rate with
+// their before → after totals, and the ones ticked are re-converted at the
+// rate saved here — whether or not the project rate itself changes (Jamaica's
+// was already corrected to 158 on its own, leaving 21 tickets at 0.0063).
+// Verified and rejected tickets never change.
+function EditRateModal({ currentRate, currency, localCurrency, country, pendingByRate, symbol, busy, error, onClose, onSubmit }: {
+  currentRate: number; currency: string; localCurrency: string; country: string; pendingByRate: RateGroup[]; symbol: string
+  busy: boolean; error: string | null
+  onClose: () => void; onSubmit: (rate: number, reconvertRates: number[]) => void
 }) {
   const [value, setValue] = useState(String(currentRate))
+  const [selected, setSelected] = useState<Set<number>>(new Set())
   const [localError, setLocalError] = useState<string | null>(null)
+  const local = localCurrency || 'local currency'
+  const newRate = Number(value)
+  const groups = pendingByRate.filter(g => Number.isFinite(newRate) && g.rate !== newRate)
+
+  function toggle(rate: number) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(rate)) next.delete(rate)
+      else next.add(rate)
+      return next
+    })
+  }
 
   function handleSubmit() {
     const rate = Number(value)
     if (!Number.isFinite(rate) || rate <= 0) { setLocalError('Enter a positive number.'); return }
     setLocalError(null)
-    onSubmit(rate)
+    onSubmit(rate, groups.filter(g => selected.has(g.rate)).map(g => g.rate))
   }
 
   return (
@@ -777,8 +1064,8 @@ function EditRateModal({ currentRate, currency, country, busy, error, onClose, o
       >
         <h3 className="text-sm font-semibold mb-1">Update exchange rate</h3>
         <p className="text-xs text-gray-500 mb-4">
-          {country} local currency per 1 {currency}. Only affects expenses logged from now on — every expense
-          already logged keeps the rate that was in effect at the time.
+          How many {local} ({country}) make 1 {currency}. Only affects tickets logged from now on — every ticket
+          already logged keeps the rate that was in effect at the time, unless you re-convert the pending ones below.
         </p>
         {(error || localError) && (
           <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded-lg">{error || localError}</div>
@@ -791,6 +1078,24 @@ function EditRateModal({ currentRate, currency, country, busy, error, onClose, o
           onChange={e => setValue(e.target.value)}
           className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-gray-400 transition-colors tabular-nums"
         />
+        {localCurrency && <RateCheck base={currency} quote={localCurrency} rate={value} onUseRate={r => setValue(String(r))} />}
+        {groups.length > 0 && newRate > 0 && (
+          <div className="mt-4">
+            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Re-convert pending tickets at {value}</div>
+            <div className="flex flex-col gap-1.5">
+              {groups.map(g => (
+                <label key={g.rate} className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer border border-[#efeeea] rounded-lg px-2.5 py-2 hover:bg-[#faf9f6]">
+                  <input type="checkbox" checked={selected.has(g.rate)} onChange={() => toggle(g.rate)} className="mt-0.5 accent-black" />
+                  <span className="tabular-nums">
+                    <span className="font-medium">{g.count} ticket{g.count === 1 ? '' : 's'} at {g.rate}</span>
+                    {' — '}{symbol}{g.settlementTotal.toFixed(2)} → {symbol}{(g.localTotal / newRate).toFixed(2)}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-500 mt-1.5">Only pending {local} tickets are listed. Verified and rejected tickets never change; each re-conversion is recorded in the history.</p>
+          </div>
+        )}
         <div className="flex gap-3 pt-3">
           <button onClick={handleSubmit} disabled={busy} className="text-xs font-medium bg-black text-white rounded-lg px-4 py-2 hover:bg-gray-800 disabled:opacity-50 transition-colors">
             Save rate

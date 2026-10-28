@@ -51,3 +51,15 @@ export async function grantFieldAccessIfNeeded(userId: string) {
     .eq('role', 'user')
     .is('finance_role', null)
 }
+
+// A closed project is read-only for everyone (client review, 26 Oct 2026):
+// nothing can be logged, edited, reviewed, funded or transferred until
+// Finance reopens it. Returns the 409 to send back, or null when it's open.
+// Checked by every route that changes a project's money.
+export async function closedProjectError(projectId: string) {
+  const { data } = await supabaseAdmin.from('finance_projects').select('status').eq('id', projectId).maybeSingle()
+  if (data?.status === 'closed') {
+    return NextResponse.json({ error: 'This project is closed. Finance can reopen it to make changes.' }, { status: 409 })
+  }
+  return null
+}

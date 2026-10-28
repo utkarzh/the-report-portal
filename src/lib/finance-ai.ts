@@ -2,6 +2,7 @@ import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, OPUS_PRICING, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
 import { SUB_LINES_BY_CATEGORY } from '@/lib/finance-categories'
+import { isSameCurrency, rateFromAmounts, roundMoney } from '@/lib/finance'
 import type { FinanceExpenseCategory, FinanceProject } from '@/types'
 
 // Opus, not Sonnet: this reads handwritten annotations and low-quality field
@@ -160,6 +161,9 @@ export interface EntryVerification {
   matches: boolean
   mismatches: VerificationMismatch[]
   ruleViolation: string | null
+  // The reviewer's read of the field team's own explanation (the ticket's
+  // comment thread) — null when the entry came with none.
+  commentReview: string | null
 }
 
 const VERIFICATION_SCHEMA = {
@@ -188,8 +192,9 @@ const VERIFICATION_SCHEMA = {
             },
           },
           ruleViolation: { type: ['string', 'null'], description: "If this project has its own rules and this entry breaks one, name the rule and why. Null if no rules were given or none apply." },
+          commentReview: { type: ['string', 'null'], description: "Only for an entry that came with a conversation: one or two sentences for Finance on what the field team's explanation says, whether it is consistent with the receipt, and whether it plausibly justifies anything unusual (a weekend date, a broken project rule, a high amount). Null when the entry has no conversation." },
         },
-        required: ['matches', 'mismatches', 'ruleViolation'],
+        required: ['matches', 'mismatches', 'ruleViolation', 'commentReview'],
         additionalProperties: false,
       },
     },
@@ -205,6 +210,10 @@ export interface SubmittedEntryForVerification {
   localCurrency: string
   vendor: string | null
   reference: string | null
+  // The ticket's comment thread as plain lines (formatThreadForReview) — the
+  // uploader's own explanation and, once Finance has asked about it, their
+  // exchange. Context for the reviewer, never evidence.
+  conversation?: string | null
 }
 
 // The second look, per the client's own real-world complaint: a field
@@ -224,7 +233,9 @@ export async function verifyEntriesAgainstReceipt(
 ): Promise<EntryVerification[]> {
   const system = `You are double-checking field-expense data before it is logged as real money for TRC (The Report Company), working in ${project.country}. A field worker uploaded this receipt image; it was read once already, and the field worker then confirmed or edited the resulting values. You are now looking at the SAME image again, independently, to check whether what was FINALLY submitted actually matches what you can see.
 
-For each submitted entry (given in order below), compare it against the receipt. Only flag a mismatch when it's real and meaningful — a different date, a different amount, a different vendor or reference than what's actually printed or shown. Do not flag trivial formatting differences, rounding, or paraphrased wording.${
+For each submitted entry (given in order below), compare it against the receipt. Only flag a mismatch when it's real and meaningful — a different date, a different amount, a different vendor or reference than what's actually printed or shown. Do not flag trivial formatting differences, rounding, or paraphrased wording.
+
+Some entries carry a "conversation": the field team's own explanation of the expense and, if Finance has already asked about it, the messages between them (e.g. Finance asking whether a meeting took place on a Saturday, and the answer). Read it as context from the person claiming the expense, not as evidence — the receipt is the evidence. For every entry with a conversation, set commentReview: say briefly what the explanation claims, whether it fits what the receipt shows (date, place, vendor, amount), and whether it plausibly justifies anything unusual. An explanation never removes a real mismatch or a broken project rule — still report those, and say in commentReview whether the explanation could justify the exception, so Finance can decide. commentReview is null for an entry without a conversation.${
     project.ai_rules?.trim()
       ? `\n\nThis project also has its own specific rules from the admin, which you must treat as strict requirements — check each entry against them again using the final submitted values:\n"""\n${project.ai_rules.trim()}\n"""`
       : ''
@@ -269,13 +280,39 @@ For each submitted entry (given in order below), compare it against the receipt.
   return parsed.entries
 }
 
-// settlementAmount = localAmount / exchangeRate (exchangeRate is "local units
-// per 1 settlement unit", matching how the project form captures it — see
-// brief §2 and the mockup's "rate 83.20 INR/USD" convention). The receipt's
-// own settlement-currency figure wins when present (brief §2: "we use the
-// receipt's numbers directly").
-export function computeSettlementAmount(entry: ExtractedEntry, exchangeRate: number): number | null {
-  if (entry.settlementAmountFromReceipt != null) return entry.settlementAmountFromReceipt
-  if (entry.localAmount == null || !exchangeRate) return null
-  return Math.round((entry.localAmount / exchangeRate) * 100) / 100
+export type RateSource = 'receipt' | 'same_currency' | 'project' | 'market'
+
+// The starting rate and converted amount for one read entry; the field user
+// can still change both before logging. Rates are "local units per 1
+// settlement unit" (brief §2, the mockup's "rate 83.20 INR/USD").
+//   - Already in the settlement currency: exactly 1.
+//   - The receipt shows both amounts (brief §2: "we use the receipt's numbers
+//     directly"): its settlement figure, and the rate those two figures imply
+//     — never the project's rate beside it (28 Oct 2026: "₸1,700 / $3.81"
+//     was logged as "@ 498.66", the project default, instead of ~446).
+//   - In the project's local currency: the project's rate.
+//   - In any other currency: today's market rate. The project's rate is for
+//     a different currency (AMD logged at an INR rate, a EUR receipt at a KZT
+//     one); with no market rate the field is left empty for the user to fill.
+export function seedConversion(
+  entry: Pick<ExtractedEntry, 'localAmount' | 'localCurrency' | 'settlementAmountFromReceipt'>,
+  project: Pick<FinanceProject, 'exchange_rate' | 'settlement_currency' | 'local_currency'>,
+  marketRateForCurrency: number | null,
+): { exchangeRate: number | null; settlementAmount: number | null; rateSource: RateSource | null } {
+  const currency = (entry.localCurrency || '').trim().toUpperCase()
+  const projectLocal = (project.local_currency || '').trim().toUpperCase()
+  const local = entry.localAmount != null && entry.localAmount > 0 ? entry.localAmount : null
+  const convert = (rate: number | null, rateSource: RateSource | null) => ({
+    exchangeRate: rate,
+    settlementAmount: local != null && rate ? roundMoney(local / rate) : null,
+    rateSource: rate ? rateSource : null,
+  })
+
+  if (isSameCurrency(currency, project.settlement_currency)) return convert(1, 'same_currency')
+  const fromReceipt = entry.settlementAmountFromReceipt
+  if (local != null && fromReceipt != null && fromReceipt > 0) {
+    return { exchangeRate: rateFromAmounts(local, fromReceipt), settlementAmount: roundMoney(fromReceipt), rateSource: 'receipt' }
+  }
+  if (!currency || !projectLocal || currency === projectLocal) return convert(Number(project.exchange_rate) || null, 'project')
+  return convert(marketRateForCurrency, 'market')
 }
