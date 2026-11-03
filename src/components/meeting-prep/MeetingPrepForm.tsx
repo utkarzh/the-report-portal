@@ -88,11 +88,13 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
   )
   const usableCount = mediaLibrary.length - Object.keys(withoutProfile).length
 
-  // A Government Official has no "company" — the entity is a ministry / body.
+  // A Government Official or a Minister / industry association (apertura)
+  // has no "company" — the entity is a ministry, a body or an association.
   // Wording adapts to the selected interviewee type.
-  const isGov = form.intervieweeType === 'government_official'
-  const orgLabel = isGov ? 'Government Body / Ministry *' : 'Company / Organisation *'
-  const orgPlaceholder = isGov ? 'e.g. Ministry of Economy' : 'e.g. Acme Corp'
+  const isAper = form.intervieweeType === 'aperturador'
+  const isGov = form.intervieweeType === 'government_official' || isAper
+  const orgLabel = isAper ? 'Ministry / Industry Association *' : isGov ? 'Government Body / Ministry *' : 'Company / Organisation *'
+  const orgPlaceholder = isAper ? 'e.g. Ministry of Energy, Bankers Association' : isGov ? 'e.g. Ministry of Economy' : 'e.g. Acme Corp'
   const countryLabel = isGov ? 'Country *' : 'Country of the Company *'
   const countryPlaceholder = isGov ? 'e.g. Georgia' : 'e.g. Brazil'
   const orgWord = isGov ? 'organisation' : 'company'
@@ -115,7 +117,7 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
         return
       }
       const { id } = await res.json()
-      router.push(`/commercial/meeting-preparation/${id}?generating=true`)
+      router.push(`/commercial/meeting-preparation/${id}`)
     } catch {
       setError('Network error. Please try again.')
       setLoading(false)

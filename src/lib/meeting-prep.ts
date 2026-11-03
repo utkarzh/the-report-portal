@@ -1,17 +1,47 @@
 import type { InterviewType, MeetingPrepPromptKey, MeetingPrepResearchSections } from '@/types'
 
 // One admin-uploaded reference recording — not an admin-manageable library,
-// just a fixed object path (see migration 030).
+// just a fixed object path (see migration 030). Shown under the planteo
+// script, and nowhere else (client request, SCRUM-47).
 export const MEETING_PREP_SAMPLE_AUDIO_BUCKET = 'meeting-prep-samples'
 export const MEETING_PREP_SAMPLE_AUDIO_PATH = 'planteo-example.mp3'
 
 export const INTERVIEW_TYPES: { value: InterviewType; label: string }[] = [
   { value: 'company_ceo', label: 'Company Executive' },
   { value: 'government_official', label: 'Government Official' },
+  { value: 'aperturador', label: 'Minister / Head of Industry Association (apertura)' },
 ]
 
 export function isInterviewType(v: unknown): v is InterviewType {
-  return v === 'company_ceo' || v === 'government_official'
+  return v === 'company_ceo' || v === 'government_official' || v === 'aperturador'
+}
+
+export function interviewTypeLabel(type: string): string {
+  return INTERVIEW_TYPES.find((t) => t.value === type)?.label ?? type
+}
+
+// The CEO and aperturador formulas are fixed scripts the client wants spoken
+// word for word, so the model never writes them: the code stores the Planteo
+// Library text verbatim (for the CEO, after the model's internal commercial
+// recommendation). The Government Official formula is a framework the model
+// writes out in full every time.
+export function hasFixedScript(type: string): boolean {
+  return type === 'company_ceo' || type === 'aperturador'
+}
+
+// The two sample files the aperturador script links to ("You can download a
+// sample 'apertura letter' HERE"), provided by the client and uploaded by an
+// admin under Meeting Preparation → Admin → Apertura sample files. Each slot
+// holds one file, under resources/<slot>/ in the meeting-prep-samples bucket.
+export type MeetingPrepResourceSlot = 'apertura_letter' | 'apertura_list'
+
+export const MEETING_PREP_RESOURCE_SLOTS: { slot: MeetingPrepResourceSlot; label: string; accept: string }[] = [
+  { slot: 'apertura_letter', label: 'Sample apertura letter', accept: '.docx,.doc,.pdf,.txt' },
+  { slot: 'apertura_list', label: 'Sample company apertura list format', accept: '.docx,.doc,.pdf,.xlsx,.xls,.csv' },
+]
+
+export function isResourceSlot(v: unknown): v is MeetingPrepResourceSlot {
+  return MEETING_PREP_RESOURCE_SLOTS.some((s) => s.slot === v)
 }
 
 // Appended after the admin-managed prompt on every meeting-prep Claude call
@@ -53,7 +83,7 @@ export const MEETING_PREP_PROMPT_KEYS: { key: MeetingPrepPromptKey; label: strin
   {
     key: 'presentation_points',
     label: 'Presentation Points',
-    description: 'Generates the 3 presentation points from approved research — runs only after the user accepts every research section.',
+    description: 'Writes the 3 presentation points from the research, as soon as the research is done.',
   },
   {
     key: 'planteo',
@@ -63,7 +93,7 @@ export const MEETING_PREP_PROMPT_KEYS: { key: MeetingPrepPromptKey; label: strin
   {
     key: 'final_document',
     label: 'Final Document',
-    description: 'Assembles the final meeting preparation document in its fixed section order and runs the quality checklist.',
+    description: 'Writes the document’s first four blocks (Commercial Alert, Snapshot, Motivations, What they’ve said) from the research.',
   },
 ]
 

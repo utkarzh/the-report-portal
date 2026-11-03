@@ -5,7 +5,11 @@ import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_FINAL_DOC_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { researchSectionsToPrompt, advertiserHistoryToPrompt, splitPlanteoOutput, NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
+import { researchSectionsToPrompt, advertiserHistoryToPrompt } from '@/lib/meeting-prep'
+import {
+  composeFinalDocument, finalBlocksContract, finalSectionsComplete, meetingTypeNoteForDocument, missingFinalBlocks, parseFinalSections,
+} from '@/lib/meeting-prep-document'
+import { addSessionUsage, claimStage, updateMeetingPrep } from '@/lib/meeting-prep-server'
 import type { MeetingPrepResearchSections } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -15,50 +19,10 @@ interface Params {
   params: { id: string }
 }
 
-// US-031's automated QC checklist, reduced to what a cheap heuristic can
-// actually verify: the fixed section order is present. Full semantic checks
-// (every claim sourced, no overt motivation labels, etc.) are asserted as
-// closing instructions inside the prompt itself — this is a backstop, not a
-// replacement for that.
-const REQUIRED_HEADINGS = [
-  /commercial alert/i,
-  /snapshot/i,
-  /motivation/i,
-  /said recently|quotes|news/i,
-  /presentation points/i,
-  /planteo/i,
-]
-
-function missingHeadings(text: string): string[] {
-  const missing: string[] = []
-  const labels = ['Commercial Alert', 'Interviewee & Company Snapshot', 'Motivation Profile Ranking', 'What They’ve Said Recently', '3 Presentation Points', 'Planteo Build-Up']
-  REQUIRED_HEADINGS.forEach((re, i) => {
-    if (!re.test(text)) missing.push(labels[i])
-  })
-  return missing
-}
-
-// The approved planteo (session.planteo_output) is either the client's fixed,
-// verbatim formula or a prior AI draft — either way it was already approved by
-// the rep at the planteo stage, so the assembly pass must not be trusted to
-// retype it identically. Replace whatever the model wrote for section 6 with
-// the approved text exactly, keeping only the heading line it generated. Only
-// the spoken script goes in — for the Company CEO variant, planteo_output
-// also carries an internal commercial recommendation ahead of the spoken
-// script (splitPlanteoOutput separates them), which must NOT be spliced in
-// here: it belongs in the Commercial Alert section only (per the "planteo"
-// prompt's own instruction that it "should not be spoken to the interviewee
-// as a separate section") and the assembly pass already has it via the full
-// planteo_output fed into userContent below.
-function spliceApprovedPlanteo(output: string, approvedPlanteo: string): string {
-  const { script } = splitPlanteoOutput(approvedPlanteo)
-  if (!script.trim()) return output
-  const lines = output.split('\n')
-  const headingIdx = lines.findIndex((l) => /planteo/i.test(l) && l.trim().length < 100)
-  if (headingIdx === -1) return output
-  return [...lines.slice(0, headingIdx + 1), '', script].join('\n')
-}
-
+// POST /api/meeting-prep/[id]/final-document
+// Stage 'planteo_pending' -> writes the document's first four blocks (US-031)
+// and completes the session. Points and planteo are inserted by code from
+// their own columns (composeFinalDocument), so they're never retyped.
 export async function POST(_request: NextRequest, { params }: Params) {
   const auth = await getApiUser()
   if (!auth.user) return auth.response
@@ -93,6 +57,9 @@ export async function POST(_request: NextRequest, { params }: Params) {
   if (session.stage !== 'planteo_pending') {
     return NextResponse.json({ error: 'This session is not ready for the final document.' }, { status: 409 })
   }
+  if (!(await claimStage(session.id, 'planteo_pending', 'final_generating'))) {
+    return NextResponse.json({ error: 'The document is already being assembled.' }, { status: 409 })
+  }
 
   const { data: promptRow } = await supabaseAdmin
     .from('meeting_prep_prompt')
@@ -105,7 +72,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
   const researchContext = researchSectionsToPrompt(session.research_sections as MeetingPrepResearchSections)
   const points = ((session.presentation_points || []) as string[]).map((p, i) => `${i + 1}. ${p}`).join('\n')
 
-  const userContent = `--- ADVERTISER HISTORY ---\n${advertiserBlock}\n\n${researchContext}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\n--- APPROVED PLANTEO ---\n${session.planteo_output || ''}\n\nAssemble the final document now.`
+  const userContent = `--- ADVERTISER HISTORY ---\n${advertiserBlock}\n\n${researchContext}\n\n--- APPROVED PRESENTATION POINTS ---\n${points}\n\n--- APPROVED PLANTEO ---\n${session.planteo_output || ''}${meetingTypeNoteForDocument(session.interviewee_type)}\n\nWrite sections 1 to 4 of the final document now.`
 
   const anthropic = getAnthropicClient()
   let promptTokens = 0
@@ -121,12 +88,13 @@ export async function POST(_request: NextRequest, { params }: Params) {
   const CORRECTIVE_PASS_MARGIN_MS = 60_000
 
   const FINAL_DOC_MAX_TOKENS = 8192
+  const system = `${promptText}\n\n${finalBlocksContract()}`
 
   async function callModel(messages: Anthropic.MessageParam[]): Promise<{ text: string; stopReason: string | null }> {
     const message = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: FINAL_DOC_MAX_TOKENS,
-      system: `${promptText}\n\n${NO_PREAMBLE_INSTRUCTION}`,
+      system,
       messages,
     })
     const usage = parseUsage(message.usage as unknown, 0)
@@ -136,13 +104,10 @@ export async function POST(_request: NextRequest, { params }: Params) {
     return { text, stopReason: message.stop_reason ?? null }
   }
 
-  // missingHeadings() alone can't catch a truncation that lands mid-sentence
-  // AFTER the last heading (a real, observed failure at the old 4096-token
-  // cap) — every heading is already present and matched, so nothing flags it.
   // If a pass stops because it ran out of output tokens, continue the SAME
   // response via assistant-turn prefill (the model picks up exactly where it
   // left off — it is not asked to retype anything, so nothing is duplicated)
-  // instead of silently saving a cut-off document.
+  // instead of silently saving a cut-off block.
   const MAX_CONTINUATIONS = 3
 
   async function runPass(extra?: string): Promise<string> {
@@ -161,35 +126,56 @@ export async function POST(_request: NextRequest, { params }: Params) {
       const timeLeftMs = HARD_CAP_MS - (Date.now() - requestStartedAt)
       if (timeLeftMs < CORRECTIVE_PASS_MARGIN_MS) break
     } while (stopReason === 'max_tokens' && rounds <= MAX_CONTINUATIONS)
-    return extractAfterMarker(full)
+    return full
   }
 
   try {
-    let output = await runPass()
-    const missing = missingHeadings(output)
+    let sections = parseFinalSections(await runPass())
     const timeLeftMs = HARD_CAP_MS - (Date.now() - requestStartedAt)
-    if (missing.length > 0 && timeLeftMs > CORRECTIVE_PASS_MARGIN_MS) {
-      output = await runPass(`Your draft was missing or unclear on these required sections: ${missing.join(', ')}. Regenerate the FULL document with all six sections present, in the required order.`)
+    if (!finalSectionsComplete(sections) && timeLeftMs > CORRECTIVE_PASS_MARGIN_MS) {
+      const retry = parseFinalSections(
+        await runPass(`Your reply was missing these sections or their markers: ${missingFinalBlocks(sections).join(', ')}. Write all four sections again, each under its <<<BLOCK:…>>> marker, in order.`),
+      )
+      // Keep whatever each pass got right.
+      sections = { ...retry, ...Object.fromEntries(Object.entries(sections).filter(([, v]) => v?.trim())) }
     }
-    output = spliceApprovedPlanteo(output, session.planteo_output || '')
 
     const cost = calculateCost({ inputTokens: promptTokens, outputTokens })
     const totalTokens = promptTokens + outputTokens
-
-    await supabaseAdmin
-      .from('meeting_prep_sessions')
-      .update({
-        final_output: output,
-        final_doc_prompt_snapshot: promptText,
-        stage: 'complete',
-        tokens_input: (session.tokens_input || 0) + promptTokens,
-        tokens_output: (session.tokens_output || 0) + outputTokens,
-        tokens_total: (session.tokens_total || 0) + totalTokens,
-        cost_usd: Number(session.cost_usd || 0) + cost,
-      })
-      .eq('id', session.id)
-
+    await addSessionUsage(session.id, { tokensInput: promptTokens, tokensOutput: outputTokens, cost })
     await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
+
+    // Nothing usable at all: back to the planteo checkpoint for a retry. A
+    // document with only some blocks is saved — each missing block shows
+    // its own Regenerate, which is cheaper than redoing the whole pass.
+    if (Object.keys(sections).length === 0) {
+      await updateMeetingPrep(session.id, {
+        stage: 'planteo_pending',
+        error: 'The document came back in an unexpected format. Try again: everything else is kept.',
+      })
+      await logUsageEvent({
+        userId: user.id,
+        workflow: 'meeting_prep_final_document',
+        sourceId: session.id,
+        model: CLAUDE_MODEL,
+        tokensInput: promptTokens,
+        tokensOutput: outputTokens,
+        tokensTotal: totalTokens,
+        costUsd: cost,
+        status: 'error',
+        error: 'No document blocks could be parsed',
+      })
+      return NextResponse.json({ error: 'The document came back in an unexpected format. Please try again.' }, { status: 500 })
+    }
+
+    const output = composeFinalDocument({ ...session, final_sections: sections })
+    await updateMeetingPrep(session.id, {
+      final_sections: sections,
+      final_output: output,
+      final_doc_prompt_snapshot: promptText,
+      stage: 'complete',
+      error: null,
+    })
 
     await logUsageEvent({
       userId: user.id,
@@ -202,13 +188,13 @@ export async function POST(_request: NextRequest, { params }: Params) {
       costUsd: cost,
     })
 
-    return NextResponse.json({ output, usage: { tokens_total: totalTokens, cost_usd: cost } })
+    return NextResponse.json({ sections, output, usage: { tokens_total: totalTokens, cost_usd: cost } })
   } catch (err) {
     console.error('Meeting prep final document error:', err)
-    await supabaseAdmin
-      .from('meeting_prep_sessions')
-      .update({ stage: 'failed', error: err instanceof Error ? err.message : 'Failed to generate the final document' })
-      .eq('id', session.id)
+    await updateMeetingPrep(session.id, {
+      stage: 'planteo_pending',
+      error: 'The document could not be assembled. Try again: everything else is kept.',
+    })
     await logUsageEvent({
       userId: user.id,
       workflow: 'meeting_prep_final_document',

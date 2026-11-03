@@ -3,17 +3,15 @@ export const dynamic = 'force-dynamic'
 import { notFound, redirect } from 'next/navigation'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { supabaseAdmin } from '@/lib/supabase/admin'
-import { MEETING_PREP_SAMPLE_AUDIO_BUCKET, MEETING_PREP_SAMPLE_AUDIO_PATH } from '@/lib/meeting-prep'
+import { aperturaSamplesAvailable, sampleRecordingUrl } from '@/lib/meeting-prep-server'
 import MeetingPrepWorkspace from '@/components/meeting-prep/MeetingPrepWorkspace'
 import type { MeetingPrepSession } from '@/types'
 
 interface Props {
   params: { id: string }
-  searchParams: { generating?: string }
 }
 
-export default async function MeetingPrepDetailPage({ params, searchParams }: Props) {
+export default async function MeetingPrepDetailPage({ params }: Props) {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
 
@@ -26,19 +24,23 @@ export default async function MeetingPrepDetailPage({ params, searchParams }: Pr
 
   if (!session) notFound()
 
-  // Short-lived signed URL for the reference planteo recording (private
-  // bucket, service role). Missing file just means no player renders.
-  const { data: signedSample } = await supabaseAdmin
-    .storage
-    .from(MEETING_PREP_SAMPLE_AUDIO_BUCKET)
-    .createSignedUrl(MEETING_PREP_SAMPLE_AUDIO_PATH, 60 * 60)
+  // The reference recording (shown under the planteo script, and only there)
+  // and which apertura sample files exist, for the aperturador's downloads.
+  // Short-lived signed URL from the private bucket; a missing file just
+  // means nothing renders.
+  const [recordingUrl, samples] = await Promise.all([
+    sampleRecordingUrl(),
+    session.interviewee_type === 'aperturador'
+      ? aperturaSamplesAvailable()
+      : Promise.resolve({ apertura_letter: false, apertura_list: false }),
+  ])
 
   return (
     <MeetingPrepWorkspace
       session={session as MeetingPrepSession}
-      isGenerating={searchParams.generating === 'true'}
       isAdmin={profile.role === 'admin'}
-      sampleAudioUrl={signedSample?.signedUrl ?? null}
+      recordingUrl={recordingUrl}
+      samples={samples}
     />
   )
 }

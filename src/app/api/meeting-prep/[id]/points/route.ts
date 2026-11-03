@@ -5,6 +5,7 @@ import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_POINTS_RESERVE } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
 import { parsePoints, researchSectionsToPrompt, NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
+import { addSessionUsage, claimStage, refreshFinalOutput, updateMeetingPrep } from '@/lib/meeting-prep-server'
 import type { MeetingPrepResearchSections } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -15,9 +16,12 @@ interface Params {
 }
 
 // POST /api/meeting-prep/[id]/points
-// No body + stage 'awaiting_review' -> first-time generation of the 3 points.
-// Body {regenerateIndex, feedback} + stage 'points_pending' -> targeted or
-// full regeneration (US-028).
+// Stage 'awaiting_review' (research done) -> first-time generation of the 3
+// points, run automatically by the workspace.
+// Body {regenerateIndex, feedback} once points exist -> targeted or full
+// regeneration (US-028), also after the document is finished.
+const REGENERATE_STAGES = ['points_pending', 'planteo_pending', 'complete']
+
 export async function POST(request: NextRequest, { params }: Params) {
   const auth = await getApiUser()
   if (!auth.user) return auth.response
@@ -50,13 +54,22 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const isRegenerate = session.stage === 'points_pending'
+  const hasPoints = ((session.presentation_points || []) as string[]).length > 0
+  const isRegenerate = hasPoints && REGENERATE_STAGES.includes(session.stage)
   if (!isRegenerate && session.stage !== 'awaiting_review') {
     return NextResponse.json({ error: 'This session is not ready for presentation points.' }, { status: 409 })
   }
 
   const body = await request.json().catch(() => ({}))
   const { regenerateIndex, feedback } = body as { regenerateIndex?: number; feedback?: string }
+  if (regenerateIndex !== undefined && (!Number.isInteger(regenerateIndex) || regenerateIndex < 0 || regenerateIndex > 2)) {
+    return NextResponse.json({ error: 'Invalid point' }, { status: 400 })
+  }
+
+  // First run: claim it, so two tabs can't both pay for it.
+  if (!isRegenerate && !(await claimStage(session.id, 'awaiting_review', 'points_generating'))) {
+    return NextResponse.json({ error: 'The presentation points are already being written.' }, { status: 409 })
+  }
 
   let promptText = session.points_prompt_snapshot as string | null
   if (!promptText) {
@@ -126,30 +139,26 @@ export async function POST(request: NextRequest, { params }: Params) {
         status: 'error',
         error: 'Response contained fewer than 3 presentation points',
       })
+      await addSessionUsage(session.id, { tokensInput: promptTokens, tokensOutput: usage.outputTokens, cost })
       const errorMessage = 'The response didn’t contain all 3 presentation points. Please try again.'
+      // Back to the research checkpoint (not 'failed'): the research is kept
+      // and a retry picks up from the points.
       if (!isRegenerate) {
-        await supabaseAdmin
-          .from('meeting_prep_sessions')
-          .update({ stage: 'failed', error: errorMessage })
-          .eq('id', session.id)
+        await updateMeetingPrep(session.id, { stage: 'awaiting_review', error: errorMessage })
       }
       return NextResponse.json({ error: errorMessage }, { status: 500 })
     }
 
-    const updates: Record<string, unknown> = {
-      presentation_points: points,
-      tokens_input: (session.tokens_input || 0) + promptTokens,
-      tokens_output: (session.tokens_output || 0) + usage.outputTokens,
-      tokens_total: (session.tokens_total || 0) + totalTokens,
-      cost_usd: Number(session.cost_usd || 0) + cost,
-    }
+    const updates: Record<string, unknown> = { presentation_points: points }
     if (!isRegenerate) {
       updates.stage = 'points_pending'
       updates.points_prompt_snapshot = promptText
     }
 
-    await supabaseAdmin.from('meeting_prep_sessions').update(updates).eq('id', session.id)
+    await updateMeetingPrep(session.id, updates)
+    await addSessionUsage(session.id, { tokensInput: promptTokens, tokensOutput: usage.outputTokens, cost })
     await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
+    if (isRegenerate) await refreshFinalOutput(session.id)
 
     await logUsageEvent({
       userId: user.id,
@@ -166,10 +175,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   } catch (err) {
     console.error('Meeting prep points error:', err)
     if (!isRegenerate) {
-      await supabaseAdmin
-        .from('meeting_prep_sessions')
-        .update({ stage: 'failed', error: err instanceof Error ? err.message : 'Failed to generate presentation points' })
-        .eq('id', session.id)
+      await updateMeetingPrep(session.id, {
+        stage: 'awaiting_review',
+        error: 'The presentation points could not be written. Try again: the research is kept.',
+      })
     }
     await logUsageEvent({
       userId: user.id,

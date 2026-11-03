@@ -5,11 +5,12 @@ import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
 import { NO_PREAMBLE_INSTRUCTION, extractAfterMarker } from '@/lib/meeting-prep'
+import { addSessionUsage, updateMeetingPrep } from '@/lib/meeting-prep-server'
 import type { MeetingPrepResearchSections } from '@/types'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
-export const maxDuration = 60
+export const maxDuration = 120
 
 interface Params {
   params: { id: string }
@@ -72,8 +73,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (session.user_id !== user.id && profile.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  if (session.stage !== 'awaiting_review') {
-    return NextResponse.json({ error: 'This session is not at the research review stage.' }, { status: 409 })
+  // Any time the research exists and nothing else is mid-run — including
+  // after the document is finished (the research stays in view under it).
+  if (!['awaiting_review', 'points_pending', 'planteo_pending', 'complete'].includes(session.stage)) {
+    return NextResponse.json({ error: 'The research can’t be changed while another step is running.' }, { status: 409 })
   }
 
   const sections = (session.research_sections || {}) as MeetingPrepResearchSections
@@ -83,12 +86,12 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const otherSections = (Object.keys(SECTION_LABELS) as (keyof MeetingPrepResearchSections)[])
     .filter((k) => k !== section)
-    .map((k) => `--- ${SECTION_LABELS[k].toUpperCase()} (already accepted — do not contradict) ---\n${sections[k] || '(not yet written)'}`)
+    .map((k) => `--- ${SECTION_LABELS[k].toUpperCase()} (another research section — do not contradict) ---\n${sections[k] || '(not yet written)'}`)
     .join('\n\n')
 
   const system = `You are updating ONE section of previously generated meeting-preparation research for a TRC sales representative, per the sales rep's refinement request. Apply the same source-quality, recency and editorial-orientation rules as the original research: cite sources with dates, flag unsourced claims explicitly, and never surface negative, corrosive or reputationally damaging content. TODAY'S DATE IS ${todayStr} (${currentYear}) — treat pre-training facts as possibly stale and verify with web search where useful.
 
-Rewrite ONLY the "${SECTION_LABELS[section]}" section. Do not restate or rewrite the other sections — they are shown only for context and are already approved. The replacement text must be genuine sourced content for this section (e.g. actual quotes or news items with attribution, not your own analysis or justification of why something matters) — if the rep's feedback is vague, use your judgement on what "better" means for this section type rather than substituting commentary for content.
+Rewrite ONLY the "${SECTION_LABELS[section]}" section. Do not restate or rewrite the other sections — they are shown only for context. The replacement text must be genuine sourced content for this section (e.g. actual quotes or news items with attribution, not your own analysis or justification of why something matters) — if the rep's feedback is vague, use your judgement on what "better" means for this section type rather than substituting commentary for content.
 
 Your reply is not a comment or a diff — it is the ENTIRE, FINAL, ONLY text this section will contain afterward. There is no other mechanism that preserves anything: whatever you don't include is permanently deleted from this section, and whatever you do include is what the sales rep sees. If the section currently contains multiple quotes and multiple news items and the rep's feedback targets only one of them (e.g. "quote 2 is weak" or "the third news item isn't relevant"), you must still output ALL of it: copy every untouched quote and news item forward VERBATIM, character-for-character, in the same order, and change only the specific item the feedback names. "The rest is fine" means "reproduce the rest exactly as-is" — it is never permission to leave it out. Before you finish, count what the current version below contains (how many quotes, how many news items) and verify your reply contains at least that many, unless the feedback explicitly asked you to remove or consolidate items.
 
@@ -145,6 +148,7 @@ ${NO_PREAMBLE_INSTRUCTION}`
     const previousLength = (sections[section] || '').length
     if (previousLength > 200 && replacementText.length < previousLength * 0.2) {
       await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
+      await addSessionUsage(session.id, { tokensInput: promptTokens, tokensOutput: usage.outputTokens, webSearches: usage.webSearches ?? 0, cost })
       await logUsageEvent({
         userId: user.id,
         workflow: 'meeting_prep_research',
@@ -163,17 +167,8 @@ ${NO_PREAMBLE_INSTRUCTION}`
 
     const updatedSections: MeetingPrepResearchSections = { ...sections, [section]: replacementText }
 
-    await supabaseAdmin
-      .from('meeting_prep_sessions')
-      .update({
-        research_sections: updatedSections,
-        tokens_input: (session.tokens_input || 0) + promptTokens,
-        tokens_output: (session.tokens_output || 0) + usage.outputTokens,
-        tokens_total: (session.tokens_total || 0) + totalTokens,
-        web_searches: (session.web_searches || 0) + (usage.webSearches ?? 0),
-        cost_usd: Number(session.cost_usd || 0) + cost,
-      })
-      .eq('id', session.id)
+    await updateMeetingPrep(session.id, { research_sections: updatedSections })
+    await addSessionUsage(session.id, { tokensInput: promptTokens, tokensOutput: usage.outputTokens, webSearches: usage.webSearches ?? 0, cost })
 
     await supabaseAdmin.rpc('increment_user_tokens', { p_user_id: user.id, p_tokens: totalTokens })
 

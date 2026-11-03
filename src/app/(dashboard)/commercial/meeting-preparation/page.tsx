@@ -14,14 +14,16 @@ import { orIlikeFilter } from '@/lib/search'
 
 const PAGE_SIZE = 12
 
+// Nothing waits for the rep's approval any more (the whole prep is
+// generated in one go), so the in-between checkpoints read "In progress".
 const STAGE_LABELS: Record<string, string> = {
   input: 'Starting…',
   researching: 'Researching',
-  awaiting_review: 'Awaiting review',
+  awaiting_review: 'In progress',
   points_generating: 'Generating points',
-  points_pending: 'Points pending approval',
+  points_pending: 'In progress',
   planteo_generating: 'Generating planteo',
-  planteo_pending: 'Planteo pending approval',
+  planteo_pending: 'In progress',
   final_generating: 'Generating document',
   complete: 'Complete',
   failed: 'Failed',

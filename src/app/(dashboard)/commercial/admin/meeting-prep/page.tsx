@@ -79,6 +79,24 @@ export default async function MeetingPrepAdminPage() {
           </section>
 
           <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Apertura sample files</h2>
+                <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                  The sample apertura letter and the sample company apertura list format that the Minister / Head of
+                  Industry Association planteo links to.
+                </p>
+              </div>
+              <Link
+                href="/commercial/admin/meeting-prep/resources"
+                className="text-xs font-medium tracking-wider uppercase bg-black text-white px-4 py-2.5 hover:bg-gray-900 transition-colors flex-shrink-0"
+              >
+                Manage
+              </Link>
+            </div>
+          </section>
+
+          <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
             <h2 className="text-sm font-semibold text-gray-900">Planteo Library</h2>
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
               The approved TRC planteo build-up formula for each variant (Appendix A). Every update is versioned

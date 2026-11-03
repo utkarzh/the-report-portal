@@ -1,576 +1,546 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link'
-import { marked } from 'marked'
 import {
-  ArrowLeft, CalendarClock, Sparkles, WandSparkles, Check, Pencil,
-  Download, ShieldAlert, UserRound, Building2, Target, Newspaper, Undo2, ChevronDown,
+  ArrowLeft, CalendarClock, Download, ShieldAlert, ChevronDown, Sparkles, X, UserRound, Building2, Target, Newspaper,
 } from 'lucide-react'
-import Textarea from '@/components/ui/Textarea'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DeleteMeetingPrepButton from '@/components/meeting-prep/DeleteMeetingPrepButton'
-import MeetingPrepLoader from '@/components/meeting-prep/MeetingPrepLoader'
-import AudioPlayer from '@/components/transcriptions/AudioPlayer'
-import { useStickToBottom } from '@/lib/use-stick-to-bottom'
-import { splitPlanteoOutput, SPOKEN_PLANTEO_MARKER } from '@/lib/meeting-prep'
+import MarkdownBlock, { BlockPlaceholder } from '@/components/meeting-prep/DocumentBlock'
+import PointsBlock from '@/components/meeting-prep/PointsBlock'
+import PlanteoBlock from '@/components/meeting-prep/PlanteoBlock'
+import PipelineProgress, { type PipelineStep } from '@/components/meeting-prep/PipelineProgress'
+import { interviewTypeLabel, researchSectionsComplete } from '@/lib/meeting-prep'
+import {
+  FINAL_BLOCKS, finalBlockTitle, finalSectionsOf, POINTS_TITLE, PLANTEO_TITLE,
+  type FinalBlockKey, type ScriptResource,
+} from '@/lib/meeting-prep-document'
 import type { MeetingPrepSession, MeetingPrepResearchSections, MeetingPrepStage } from '@/types'
 
-marked.use({ gfm: true, breaks: true })
+type Step = 'research' | 'points' | 'planteo' | 'final'
 
-const SECTION_ORDER: (keyof MeetingPrepResearchSections)[] = ['interviewee', 'organisation', 'motivation_profiles', 'quotes_news']
-const SECTION_LABELS: Record<keyof MeetingPrepResearchSections, string> = {
-  interviewee: 'Interviewee Research',
-  organisation: 'Organisation Research',
-  motivation_profiles: 'Commercial Motivation Profiling',
-  quotes_news: 'Recent Quotes & Latest News',
+// The in-progress stage each step persists while it runs (compare-and-set in
+// its route), so any tab can tell a step is already running and wait for it.
+const GENERATING: Partial<Record<MeetingPrepStage, Step>> = {
+  researching: 'research',
+  points_generating: 'points',
+  planteo_generating: 'planteo',
+  final_generating: 'final',
 }
-const SECTION_ICONS: Record<keyof MeetingPrepResearchSections, typeof UserRound> = {
-  interviewee: UserRound,
-  organisation: Building2,
-  motivation_profiles: Target,
-  quotes_news: Newspaper,
+const PAUSED_STAGES: MeetingPrepStage[] = ['awaiting_review', 'points_pending', 'planteo_pending']
+
+const RESEARCH_ORDER: (keyof MeetingPrepResearchSections)[] = ['interviewee', 'organisation', 'motivation_profiles', 'quotes_news']
+const RESEARCH_LABELS: Record<keyof MeetingPrepResearchSections, string> = {
+  interviewee: 'Interviewee research',
+  organisation: 'Organisation research',
+  motivation_profiles: 'Commercial motivation profiling',
+  quotes_news: 'Recent quotes & latest news',
+}
+const RESEARCH_ICONS = { interviewee: UserRound, organisation: Building2, motivation_profiles: Target, quotes_news: Newspaper }
+
+const STEP_STATUS: Record<Step, string> = {
+  research: 'Researching the interviewee and organisation…',
+  points: 'Writing the three presentation points…',
+  planteo: 'Building the planteo…',
+  final: 'Writing the Commercial Alert, snapshot, motivations and quotes…',
 }
 
-type TabKey = 'research' | 'points' | 'planteo' | 'final'
-
-// Picks the right tab from whatever data/stage a session currently carries —
-// used both for the initial mount and for a reconnect poll landing on a new
-// stage, so the view always jumps to wherever the real work is happening.
-function tabForSession(data: {
-  stage: MeetingPrepStage
-  final_output?: string | null
-  planteo_output?: string | null
-  presentation_points?: string[] | null
-}): TabKey {
-  if (data.stage === 'final_generating' || data.stage === 'complete' || data.final_output) return 'final'
-  if (data.stage === 'planteo_generating' || data.stage === 'planteo_pending' || data.planteo_output) return 'planteo'
-  if (data.stage === 'points_generating' || data.stage === 'points_pending' || (data.presentation_points?.length ?? 0) > 0) return 'points'
-  return 'research'
-}
+// ~5 minutes of 3s polls with no change: the request that owned the step most
+// likely died without updating the row, so offer a reset instead of polling on.
+const STALL_POLLS = 100
 
 interface Props {
   session: MeetingPrepSession
-  isGenerating: boolean
   isAdmin: boolean
-  sampleAudioUrl?: string | null
+  recordingUrl: string | null
+  samples: Record<ScriptResource, boolean>
 }
 
-export default function MeetingPrepWorkspace({ session: initialSession, isGenerating, isAdmin, sampleAudioUrl }: Props) {
-  const router = useRouter()
-  const [session, setSession] = useState(initialSession)
-  const [stage, setStage] = useState<MeetingPrepStage>(initialSession.stage)
-  const [sections, setSections] = useState<MeetingPrepResearchSections>(initialSession.research_sections || {})
-  const [points, setPoints] = useState<string[]>(initialSession.presentation_points || [])
-  const [planteo, setPlanteo] = useState(initialSession.planteo_output || '')
-  const [finalOutput, setFinalOutput] = useState(initialSession.final_output || '')
-  // Seed the error from the saved session so opening an already-failed run
-  // shows the message + retry instead of a blank page.
-  const [error, setError] = useState<string | null>(
-    initialSession.stage === 'failed' ? (initialSession.error || 'The last step didn’t complete. You can run it again.') : null,
+export default function MeetingPrepWorkspace({ session: initialSession, isAdmin, recordingUrl, samples }: Props) {
+  // One copy of the session drives everything; sRef mirrors it synchronously
+  // for the pipeline loop, which can't wait for a re-render between steps.
+  const [s, setS] = useState<MeetingPrepSession>(initialSession)
+  const sRef = useRef(initialSession)
+  const patch = useCallback((u: Partial<MeetingPrepSession>) => {
+    sRef.current = { ...sRef.current, ...u }
+    setS(sRef.current)
+  }, [])
+
+  const id = s.id
+  const type = s.interviewee_type
+  const research = (s.research_sections || {}) as MeetingPrepResearchSections
+  const researchReady = researchSectionsComplete(research)
+  const points = s.presentation_points || []
+  const planteo = s.planteo_output || ''
+  const finalSections = useMemo(() => finalSectionsOf(s), [s])
+  const complete = s.stage === 'complete'
+
+  const [running, setRunning] = useState<Step | null>(null)
+  const [status, setStatus] = useState('')
+  const [pipelineError, setPipelineError] = useState<string | null>(
+    initialSession.stage === 'failed'
+      ? initialSession.error || 'The last run didn’t complete. You can run it again.'
+      : PAUSED_STAGES.includes(initialSession.stage) ? initialSession.error : null,
   )
-  const [busy, setBusy] = useState<string | null>(null) // human-readable status while a stage is running
-  const [reconnecting, setReconnecting] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabKey>(() => tabForSession(initialSession))
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [stalled, setStalled] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const pipelineRef = useRef(false)
+  const startedRef = useRef(false)
 
-  const [acceptedSections, setAcceptedSections] = useState<Set<string>>(new Set())
-  const [editingSection, setEditingSection] = useState<keyof MeetingPrepResearchSections | null>(null)
-  const [feedbackSection, setFeedbackSection] = useState<keyof MeetingPrepResearchSections | null>(null)
-  const [sectionFeedback, setSectionFeedback] = useState('')
-  const [sectionBusy, setSectionBusy] = useState<keyof MeetingPrepResearchSections | null>(null)
-  // One-level undo per section — snapshot of what was there (and whether it
-  // was accepted) right before the most recent regenerate, so a regenerate
-  // the user doesn't like can be reverted without losing the prior state.
-  const [sectionUndo, setSectionUndo] = useState<Partial<Record<keyof MeetingPrepResearchSections, { text: string; wasAccepted: boolean }>>>({})
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!running || !startedAt) return
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000))
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [running, startedAt])
 
-  const [editingPoint, setEditingPoint] = useState<number | null>(null)
-  const [pointFeedback, setPointFeedback] = useState<{ index: number | 'all'; text: string } | null>(null)
+  // Per-block activity and one-level undo of the last regenerate.
+  const [blockBusy, setBlockBusy] = useState<FinalBlockKey | null>(null)
+  const [blockUndo, setBlockUndo] = useState<Partial<Record<FinalBlockKey, string>>>({})
   const [pointBusy, setPointBusy] = useState<number | 'all' | null>(null)
   const [pointUndo, setPointUndo] = useState<Partial<Record<number, string>>>({})
   const [allPointsUndo, setAllPointsUndo] = useState<string[] | null>(null)
-
-  const [editingPlanteo, setEditingPlanteo] = useState(false)
-  const [planteoFeedback, setPlanteoFeedback] = useState('')
-  const [showPlanteoFeedback, setShowPlanteoFeedback] = useState(false)
+  const [planteoBusy, setPlanteoBusy] = useState(false)
   const [planteoUndo, setPlanteoUndo] = useState<string | null>(null)
+  const [researchBusy, setResearchBusy] = useState<keyof MeetingPrepResearchSections | null>(null)
+  const [researchUndo, setResearchUndo] = useState<Partial<Record<keyof MeetingPrepResearchSections, string>>>({})
+  // Open by default: "everything else disappears from view, all the
+  // research… I'm not sure I'm liking this" (client, SCRUM-47).
+  const [researchOpen, setResearchOpen] = useState(true)
 
-  const [usage, setUsage] = useState({
-    tokens_total: initialSession.tokens_total || 0,
-    web_searches: initialSession.web_searches || 0,
-    cost_usd: Number(initialSession.cost_usd) || 0,
-  })
+  const pipelineActive = running !== null
+  const anyBusy = pipelineActive || blockBusy !== null || pointBusy !== null || planteoBusy || researchBusy !== null
+  const disclaimer = useAiDisclaimer(pipelineActive)
 
-  const hasStartedRef = useRef(false)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const pollAttemptsRef = useRef(0)
-  const [stalled, setStalled] = useState(false)
-  const [resettingStage, setResettingStage] = useState(false)
-  const isProcessing = Boolean(busy)
-  const disclaimer = useAiDisclaimer(isProcessing || reconnecting)
+  function addUsage(u?: { tokens_total?: number; web_searches?: number; cost_usd?: number }) {
+    if (!u) return
+    patch({
+      tokens_total: (sRef.current.tokens_total || 0) + (u.tokens_total || 0),
+      web_searches: (sRef.current.web_searches || 0) + (u.web_searches || 0),
+      cost_usd: Number(sRef.current.cost_usd || 0) + (u.cost_usd || 0),
+    })
+  }
 
-  // Live elapsed-time counter for the loader, ticking for as long as any
-  // stage is busy — reset the moment a new busy period starts.
-  const [elapsedSecs, setElapsedSecs] = useState(0)
-  useEffect(() => {
-    if (!isProcessing) return
-    const startedAt = Date.now()
-    setElapsedSecs(0)
-    const ticker = setInterval(() => setElapsedSecs(Math.floor((Date.now() - startedAt) / 1000)), 1000)
-    return () => clearInterval(ticker)
-  }, [isProcessing])
-
-  // Stage-driven, not query-flag-driven: a fresh mount that finds the session
-  // already mid-stage (e.g. the user refreshed while it was generating) can
-  // never safely assume it's the tab that originally kicked things off — that
-  // tab's in-flight fetch died with the previous page. So any mount that sees
-  // an in-progress stage always polls; only 'input' (nothing has run yet)
-  // starts a fresh generation. Relying on `?generating=true` instead used to
-  // leave a refreshed page matching neither branch and sitting there forever.
-  useEffect(() => {
-    if (hasStartedRef.current) return
-    hasStartedRef.current = true
-    if (stage === 'input') {
-      startResearch()
-    } else if (['researching', 'points_generating', 'planteo_generating', 'final_generating'].includes(stage)) {
-      startReconnect()
+  async function fetchSession(): Promise<MeetingPrepSession | null> {
+    try {
+      const res = await fetch(`/api/meeting-prep/${id}`, { cache: 'no-store' })
+      return res.ok ? ((await res.json()) as MeetingPrepSession) : null
+    } catch {
+      return null
     }
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
+  }
+
+  async function postJson(path: string, body: unknown = {}): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
+    try {
+      const res = await fetch(`/api/meeting-prep/${id}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => ({}))
+      return { ok: res.ok, status: res.status, data }
+    } catch {
+      return { ok: false, status: 0, data: {} }
+    }
+  }
+
+  async function patchSession(body: Record<string, unknown>): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/meeting-prep/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setActionError(d.error || 'Your change couldn’t be saved. Please try again.')
+        return false
+      }
+      return true
+    } catch {
+      setActionError('Network error: your change couldn’t be saved.')
+      return false
+    }
+  }
+
+  // Wait for a step that is running in another request (a dropped
+  // connection, another tab, a refresh) to move the session off `stage`.
+  async function waitWhile(stage: MeetingPrepStage): Promise<MeetingPrepSession | null> {
+    for (let i = 0; i < STALL_POLLS; i++) {
+      await new Promise((r) => setTimeout(r, 3000))
+      const fresh = await fetchSession()
+      if (!fresh) continue
+      if (fresh.stage !== stage) {
+        patch(fresh)
+        return fresh
+      }
+    }
+    setStalled(true)
+    return null
+  }
+
+  async function readSSE(res: Response, onEvent: (e: Record<string, unknown>) => void) {
+    const reader = res.body?.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (reader) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const raw = line.slice(6).trim()
+        if (raw === '[DONE]') return
+        try { onEvent(JSON.parse(raw)) } catch {}
+      }
+    }
+  }
+
+  // ── The pipeline: research → points → planteo → document ────────────────
+
+  async function stepResearch(): Promise<boolean> {
+    setRunning('research')
+    setStatus(STEP_STATUS.research)
+    let settled = false
+    let ok = false
+    try {
+      const res = await fetch(`/api/meeting-prep/${id}/research`, { method: 'POST' })
+      if (res.status === 409) {
+        const after = await waitWhile('researching')
+        return Boolean(after && researchSectionsComplete(after.research_sections || {}) && after.stage !== 'failed')
+      }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setPipelineError(d.error || 'Research failed. Please try again.')
+        return false
+      }
+      patch({ stage: 'researching' })
+      await readSSE(res, (e) => {
+        if (e.error) {
+          settled = true
+          setPipelineError(String(e.error))
+          patch({ stage: 'failed' })
+        } else if (e.status === 'web_search_start') {
+          setStatus('Searching the web for the latest information…')
+        } else if (e.status === 'refining') {
+          setStatus('Organising the research into sections…')
+        } else if (e.done) {
+          settled = true
+          ok = true
+          const u = e.usage as { tokens_total?: number; web_searches?: number; cost_usd?: number } | undefined
+          // Research is stage 1: its usage replaces the session's.
+          patch({
+            research_sections: e.sections as MeetingPrepResearchSections,
+            stage: 'awaiting_review',
+            error: null,
+            ...(u ? { tokens_total: u.tokens_total || 0, web_searches: u.web_searches || 0, cost_usd: u.cost_usd || 0 } : {}),
+          })
+        }
+      })
+    } catch {
+      /* dropped: fall through to polling */
+    }
+    if (settled) return ok
+    const after = await waitWhile('researching')
+    if (!after) return false
+    if (after.stage === 'failed') {
+      setPipelineError(after.error || 'Research failed. Please try again.')
+      return false
+    }
+    return researchSectionsComplete(after.research_sections || {})
+  }
+
+  // Points, planteo and the document are plain JSON routes. A 409 means
+  // another request owns the step; a dropped connection may still have
+  // finished on the server — both are settled by reading the session back.
+  async function stepJson(step: Step, path: string, generating: MeetingPrepStage, next: MeetingPrepStage, apply: (d: Record<string, unknown>) => void): Promise<boolean> {
+    setRunning(step)
+    setStatus(STEP_STATUS[step])
+    const r = await postJson(path)
+    if (r.ok) {
+      apply(r.data)
+      patch({ stage: next, error: null })
+      addUsage(r.data.usage as { tokens_total?: number; cost_usd?: number } | undefined)
+      return true
+    }
+    if (r.status === 409 || r.status === 0) {
+      const fresh = r.status === 409 ? await fetchSession() : null
+      const after = fresh && fresh.stage !== generating ? fresh : await waitWhile(generating)
+      if (!after) return false
+      patch(after)
+      if (after.error && PAUSED_STAGES.includes(after.stage)) {
+        setPipelineError(after.error)
+        return false
+      }
+      return after.stage !== 'failed'
+    }
+    const fresh = await fetchSession()
+    if (fresh) patch(fresh)
+    setPipelineError((r.data.error as string) || 'Something went wrong. Try again: nothing is lost.')
+    return false
+  }
+
+  async function runPipeline(manual: boolean) {
+    if (pipelineRef.current) return
+    pipelineRef.current = true
+    setPipelineError(null)
+    setStalled(false)
+    setStartedAt(Date.now())
+    try {
+      for (let guard = 0; guard < 8; guard++) {
+        const st = sRef.current.stage
+        let ok: boolean
+        if (st === 'input' || st === 'failed') {
+          ok = await stepResearch()
+        } else if (GENERATING[st]) {
+          setRunning(GENERATING[st]!)
+          setStatus(STEP_STATUS[GENERATING[st]!])
+          ok = Boolean(await waitWhile(st))
+          // A page opened on a step another request was running carries on
+          // only if this session runs by itself (or the user asked).
+          if (ok && !manual && !sRef.current.auto_pipeline) break
+        } else if (st === 'awaiting_review') {
+          ok = await stepJson('points', '/points', 'points_generating', 'points_pending', (d) => patch({ presentation_points: d.points as string[] }))
+        } else if (st === 'points_pending') {
+          ok = await stepJson('planteo', '/planteo', 'planteo_generating', 'planteo_pending', (d) => patch({ planteo_output: d.planteo as string }))
+        } else if (st === 'planteo_pending') {
+          ok = await stepJson('final', '/final-document', 'final_generating', 'complete', (d) => patch({ final_sections: d.sections as MeetingPrepSession['final_sections'], final_output: d.output as string }))
+        } else {
+          break
+        }
+        // Never retry the same step in a loop: a step that "succeeded"
+        // without moving the session on is left for the user to see.
+        if (!ok || sRef.current.stage === st) break
+      }
+    } finally {
+      pipelineRef.current = false
+      setRunning(null)
+    }
+  }
+
+  // ── On open ─────────────────────────────────────────────────────────────
+  // New sessions (and any created since the one-scroll change) run through
+  // to the finished document by themselves. An older session paused half-way
+  // shows a button instead, so opening a page never spends on its own.
+  useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
+    const cur = sRef.current
+    if (cur.stage === 'input' || GENERATING[cur.stage]) {
+      void runPipeline(false)
+    } else if (cur.auto_pipeline && !cur.error && PAUSED_STAGES.includes(cur.stage)) {
+      void runPipeline(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const scroll = useStickToBottom<HTMLDivElement>(`${stage}:${Object.keys(sections).length}:${points.length}:${planteo.length}:${finalOutput.length}`)
-
-  function stopReconnect() {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-    setReconnecting(false)
-    setBusy(null)
-  }
-
-  // After this many 3s polls (~2 minutes) with no stage change, the original
-  // request likely died without updating the row (e.g. a dev-server restart
-  // mid-request) rather than still being genuinely busy — offer a manual reset
-  // instead of polling forever with no way out.
-  const STALL_THRESHOLD = 40
-
-  // `fromStage` is the in-progress stage we're waiting to move OFF of. Pass it
-  // explicitly when reconnecting from a just-dropped stream, because the closure
-  // `stage` can still be the pre-generation value ('input') and would make the
-  // poll stop the instant it sees the (still in-progress) stage.
-  function startReconnect(fromStage: string = stage) {
-    setReconnecting(true)
-    setStalled(false)
-    pollAttemptsRef.current = 0
-    setBusy('Working in the background — this will update automatically…')
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/meeting-prep/${session.id}`)
-        if (!res.ok) return
-        const data: MeetingPrepSession = await res.json()
-        setUsage({ tokens_total: data.tokens_total, web_searches: data.web_searches, cost_usd: Number(data.cost_usd) })
-        if (data.stage !== fromStage) {
-          setSession(data)
-          setStage(data.stage)
-          setSections(data.research_sections || {})
-          setPoints(data.presentation_points || [])
-          setPlanteo(data.planteo_output || '')
-          setFinalOutput(data.final_output || '')
-          setActiveTab(tabForSession(data))
-          if (data.stage === 'failed') setError(data.error || 'Something went wrong.')
-          stopReconnect()
-          return
-        }
-        pollAttemptsRef.current += 1
-        if (pollAttemptsRef.current >= STALL_THRESHOLD) {
-          setStalled(true)
-          stopReconnect()
-        }
-      } catch {
-        /* transient */
-      }
-    }
-    poll()
-    pollRef.current = setInterval(poll, 3000)
-  }
-
-  async function retryStalledStage() {
-    setResettingStage(true)
+  async function retryStalled() {
+    setResetting(true)
     try {
-      const res = await fetch(`/api/meeting-prep/${session.id}`, {
+      const res = await fetch(`/api/meeting-prep/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resetStalledStage: true }),
       })
-      if (res.ok) {
-        // Hard reload onto the clean path — simplest way to get a fresh mount
-        // that re-evaluates the (now reset) stage from scratch.
-        window.location.href = window.location.pathname
-        return
-      }
-      const data = await res.json().catch(() => ({}))
-      setError(data.error || 'Failed to reset. Please try refreshing the page.')
-    } catch {
-      setError('Network error. Please try refreshing the page.')
-    } finally {
-      setResettingStage(false)
-    }
-  }
-
-  async function readSSE(res: Response, onEvent: (parsed: Record<string, unknown>) => void) {
-    const reader = res.body?.getReader()
-    const decoder = new TextDecoder()
-    while (reader) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const chunk = decoder.decode(value, { stream: true })
-      for (const line of chunk.split('\n')) {
-        if (!line.startsWith('data: ')) continue
-        const raw = line.slice(6).trim()
-        if (raw === '[DONE]') return
-        try {
-          onEvent(JSON.parse(raw))
-        } catch {}
-      }
-    }
-  }
-
-  // ── Step 2/3: Research ────────────────────────────────────────────────────
-  async function startResearch() {
-    setError(null)
-    setStage('researching')
-    setBusy('Researching the interviewee and organisation…')
-    // Did the stream deliver a terminal verdict (done/error)? If it just ENDS
-    // (connection dropped, response cut after the server persisted, proxy
-    // timeout on a long research), we must not hang on the loader — fall back to
-    // polling, which picks up the result the server already saved.
-    let settled = false
-    try {
-      const res = await fetch(`/api/meeting-prep/${session.id}/research`, { method: 'POST' })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setError(data.error || 'Research failed. Please try again.')
-        setStage('failed')
-        setBusy(null)
-        return
-      }
-      await readSSE(res, (parsed) => {
-        if (parsed.error) {
-          settled = true
-          setError(parsed.error as string)
-          setStage('failed')
-        } else if (parsed.status === 'web_search_start') {
-          setBusy('Searching the web for the latest information…')
-        } else if (parsed.status === 'validating') {
-          setBusy('Checking the research holds together…')
-        } else if (parsed.status === 'refining') {
-          setBusy('Deepening the research…')
-        } else if (parsed.done) {
-          settled = true
-          setSections(parsed.sections as MeetingPrepResearchSections)
-          setStage('awaiting_review')
-          // Research overwrites (not accumulates) the session's usage — mirror
-          // that here rather than adding onto whatever `usage` held before.
-          const u = parsed.usage as { tokens_total?: number; web_searches?: number; cost_usd?: number } | undefined
-          if (u) setUsage({ tokens_total: u.tokens_total || 0, web_searches: u.web_searches || 0, cost_usd: u.cost_usd || 0 })
-        }
-      })
-      if (settled) {
-        setBusy(null)
-        router.refresh()
+      const fresh = await fetchSession()
+      if (fresh) patch(fresh)
+      if (res.ok || (fresh && !GENERATING[fresh.stage])) {
+        setStalled(false)
+        void runPipeline(true)
       } else {
-        // Stream ended with no verdict — poll for the persisted result.
-        startReconnect('researching')
+        setActionError('Couldn’t reset the step. Please refresh the page.')
       }
-    } catch {
-      // Network drop mid-stream: the server may still finish (or already has).
-      // Poll rather than declaring failure and losing a completed run.
-      startReconnect('researching')
-    }
-  }
-
-  // ── Step 4: Review ────────────────────────────────────────────────────────
-  function acceptSection(key: keyof MeetingPrepResearchSections) {
-    setAcceptedSections(prev => new Set(prev).add(key))
-  }
-
-  async function saveSectionEdit(key: keyof MeetingPrepResearchSections, text: string) {
-    const updated = { ...sections, [key]: text }
-    setSections(updated)
-    setEditingSection(null)
-    acceptSection(key)
-    // A deliberate manual edit supersedes any pending "undo the last
-    // regenerate" for this section — reverting to a stale AI draft after the
-    // user has since rewritten it by hand would be surprising, not helpful.
-    setSectionUndo(prev => { const next = { ...prev }; delete next[key]; return next })
-    await fetch(`/api/meeting-prep/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ researchSections: updated }),
-    })
-  }
-
-  async function regenerateSection(key: keyof MeetingPrepResearchSections) {
-    setSectionBusy(key)
-    setError(null)
-    const previousText = sections[key] || ''
-    const wasAccepted = acceptedSections.has(key)
-    try {
-      const res = await fetch(`/api/meeting-prep/${session.id}/research/regenerate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ section: key, feedback: sectionFeedback }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || 'Failed to regenerate this section.')
-        return
-      }
-      setSections(prev => ({ ...prev, [key]: data.text }))
-      setSectionUndo(prev => ({ ...prev, [key]: { text: previousText, wasAccepted } }))
-      setUsage(u => ({ ...u, tokens_total: u.tokens_total + (data.usage?.tokens_total || 0), web_searches: u.web_searches + (data.usage?.web_searches || 0), cost_usd: u.cost_usd + (data.usage?.cost_usd || 0) }))
-      setAcceptedSections(prev => { const next = new Set(prev); next.delete(key); return next })
-      setFeedbackSection(null)
-      setSectionFeedback('')
-      router.refresh()
-    } catch {
-      setError('Network error. Please try again.')
     } finally {
-      setSectionBusy(null)
+      setResetting(false)
     }
   }
 
-  // Restores whatever was in this section right before the most recent
-  // regenerate (text + whether it had been accepted) — the API spend already
-  // happened and stays on the ledger, this only reverts the saved content.
-  async function undoSectionRegenerate(key: keyof MeetingPrepResearchSections) {
-    const snapshot = sectionUndo[key]
-    if (!snapshot) return
-    const updated = { ...sections, [key]: snapshot.text }
-    setSections(updated)
-    if (snapshot.wasAccepted) acceptSection(key)
-    else setAcceptedSections(prev => { const next = new Set(prev); next.delete(key); return next })
-    setSectionUndo(prev => { const next = { ...prev }; delete next[key]; return next })
-    await fetch(`/api/meeting-prep/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ researchSections: updated }),
-    })
+  // ── Block actions ───────────────────────────────────────────────────────
+
+  async function saveBlock(key: FinalBlockKey, text: string) {
+    const prev = finalSections
+    patch({ final_sections: { ...prev, [key]: text.trim() } })
+    setBlockUndo((u) => { const n = { ...u }; delete n[key]; return n })
+    if (!(await patchSession({ finalBlock: key, finalBlockText: text }))) patch({ final_sections: prev })
   }
 
-  const allSectionsReviewed = SECTION_ORDER.every(k => acceptedSections.has(k))
-
-  async function advanceToPoints() {
-    setError(null)
-    setStage('points_generating')
-    setBusy('Drafting the three presentation points…')
-    setActiveTab('points')
+  async function regenerateBlock(key: FinalBlockKey, feedback: string, opts: { afterRecommendation?: boolean } = {}) {
+    setBlockBusy(key)
+    setActionError(null)
+    const previous = finalSections[key] || ''
     try {
-      const res = await fetch(`/api/meeting-prep/${session.id}/points`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || 'Failed to generate presentation points.')
-        setStage('awaiting_review')
-        setActiveTab('research')
-        return
+      // The CEO's recommended offer lives in the planteo and is shown in the
+      // Commercial Alert: a request about it re-decides the recommendation
+      // first, so the two never disagree.
+      let note = feedback
+      if (key === 'commercial_alert' && type === 'company_ceo' && feedback.trim() && !opts.afterRecommendation) {
+        const prevPlanteo = sRef.current.planteo_output || ''
+        const p = await postJson('/planteo', { feedback })
+        if (!p.ok) throw new Error((p.data.error as string) || 'The recommendation couldn’t be updated.')
+        patch({ planteo_output: p.data.planteo as string })
+        setPlanteoUndo(prevPlanteo)
+        addUsage(p.data.usage as { tokens_total?: number; cost_usd?: number })
+        note = `${feedback}\n\n(The internal commercial recommendation in the approved planteo has just been updated for this request: show it exactly.)`
       }
-      setPoints(data.points)
-      setUsage(u => ({ ...u, tokens_total: u.tokens_total + (data.usage?.tokens_total || 0), cost_usd: u.cost_usd + (data.usage?.cost_usd || 0) }))
-      setStage('points_pending')
-      router.refresh()
-    } catch {
-      setError('Network error. Please try again.')
-      setStage('awaiting_review')
-      setActiveTab('research')
+      const r = await postJson('/document/regenerate', { block: key, feedback: note })
+      if (!r.ok) throw new Error((r.data.error as string) || 'This section couldn’t be rewritten. Please try again.')
+      patch({ final_sections: { ...finalSectionsOf(sRef.current), [key]: r.data.text as string } })
+      setBlockUndo((u) => ({ ...u, [key]: previous }))
+      addUsage(r.data.usage as { tokens_total?: number; web_searches?: number; cost_usd?: number })
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'This section couldn’t be rewritten.')
     } finally {
-      setBusy(null)
+      setBlockBusy(null)
     }
   }
 
-  // ── Step 5: Presentation points ──────────────────────────────────────────
-  async function savePointEdit(index: number, text: string) {
-    const updated = points.map((p, i) => (i === index ? text : p))
-    setPoints(updated)
-    setEditingPoint(null)
-    // A deliberate manual edit supersedes any pending undo for this point.
-    setPointUndo(prev => { const next = { ...prev }; delete next[index]; return next })
-    await fetch(`/api/meeting-prep/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ presentationPoints: updated }),
-    })
+  async function undoBlock(key: FinalBlockKey) {
+    const prev = blockUndo[key]
+    if (prev === undefined) return
+    await saveBlock(key, prev)
+  }
+
+  async function savePoint(index: number, text: string) {
+    const updated = points.map((p, i) => (i === index ? text.trim() : p))
+    patch({ presentation_points: updated })
+    setPointUndo((u) => { const n = { ...u }; delete n[index]; return n })
+    await patchSession({ presentationPoints: updated })
   }
 
   async function regeneratePoints(target: number | 'all', feedback: string) {
     setPointBusy(target)
-    setError(null)
-    const previousPoints = points
-    try {
-      const res = await fetch(`/api/meeting-prep/${session.id}/points`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ regenerateIndex: target === 'all' ? undefined : target, feedback }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || 'Failed to regenerate.')
-        return
-      }
-      setPoints(data.points)
-      if (target === 'all') {
-        setAllPointsUndo(previousPoints)
-      } else {
-        setPointUndo(prev => ({ ...prev, [target]: previousPoints[target] || '' }))
-      }
-      setUsage(u => ({ ...u, tokens_total: u.tokens_total + (data.usage?.tokens_total || 0), cost_usd: u.cost_usd + (data.usage?.cost_usd || 0) }))
-      setPointFeedback(null)
-      router.refresh()
-    } catch {
-      setError('Network error. Please try again.')
-    } finally {
-      setPointBusy(null)
+    setActionError(null)
+    const previous = points
+    const r = await postJson('/points', { regenerateIndex: target === 'all' ? undefined : target, feedback })
+    setPointBusy(null)
+    if (!r.ok) {
+      setActionError((r.data.error as string) || 'Couldn’t regenerate. Please try again.')
+      return
     }
+    patch({ presentation_points: r.data.points as string[] })
+    if (target === 'all') setAllPointsUndo(previous)
+    else setPointUndo((u) => ({ ...u, [target]: previous[target] || '' }))
+    addUsage(r.data.usage as { tokens_total?: number; cost_usd?: number })
   }
 
-  async function undoPointRegenerate(index: number) {
-    const previous = pointUndo[index]
-    if (previous === undefined) return
-    const updated = points.map((p, i) => (i === index ? previous : p))
-    setPoints(updated)
-    setPointUndo(prev => { const next = { ...prev }; delete next[index]; return next })
-    await fetch(`/api/meeting-prep/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ presentationPoints: updated }),
-    })
+  async function undoPoint(index: number) {
+    const prev = pointUndo[index]
+    if (prev === undefined) return
+    const updated = points.map((p, i) => (i === index ? prev : p))
+    patch({ presentation_points: updated })
+    setPointUndo((u) => { const n = { ...u }; delete n[index]; return n })
+    await patchSession({ presentationPoints: updated })
   }
 
-  async function undoAllPointsRegenerate() {
+  async function undoAllPoints() {
     if (!allPointsUndo) return
-    setPoints(allPointsUndo)
+    patch({ presentation_points: allPointsUndo })
     setAllPointsUndo(null)
-    await fetch(`/api/meeting-prep/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ presentationPoints: allPointsUndo }),
-    })
+    await patchSession({ presentationPoints: allPointsUndo })
   }
 
-  async function approvePointsAndGeneratePlanteo() {
-    setError(null)
-    setStage('planteo_generating')
-    setBusy('Building the planteo…')
-    setActiveTab('planteo')
-    try {
-      const res = await fetch(`/api/meeting-prep/${session.id}/planteo`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || 'Failed to generate the planteo.')
-        setStage('points_pending')
-        setActiveTab('points')
-        return
-      }
-      setPlanteo(data.planteo)
-      setUsage(u => ({ ...u, tokens_total: u.tokens_total + (data.usage?.tokens_total || 0), cost_usd: u.cost_usd + (data.usage?.cost_usd || 0) }))
-      setStage('planteo_pending')
-      router.refresh()
-    } catch {
-      setError('Network error. Please try again.')
-      setStage('points_pending')
-      setActiveTab('points')
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  // ── Step 6: Planteo ───────────────────────────────────────────────────────
-  async function savePlanteoEdit(text: string) {
-    setPlanteo(text)
-    setEditingPlanteo(false)
-    // A deliberate manual edit supersedes any pending undo.
+  async function savePlanteo(output: string) {
+    patch({ planteo_output: output })
     setPlanteoUndo(null)
-    await fetch(`/api/meeting-prep/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ planteoOutput: text }),
-    })
+    await patchSession({ planteoOutput: output })
   }
 
-  async function regeneratePlanteo() {
-    setBusy('Regenerating the planteo…')
-    setError(null)
-    const previousPlanteo = planteo
-    try {
-      const res = await fetch(`/api/meeting-prep/${session.id}/planteo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feedback: planteoFeedback }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || 'Failed to regenerate the planteo.')
-        return
-      }
-      setPlanteo(data.planteo)
-      setPlanteoUndo(previousPlanteo)
-      setUsage(u => ({ ...u, tokens_total: u.tokens_total + (data.usage?.tokens_total || 0), cost_usd: u.cost_usd + (data.usage?.cost_usd || 0) }))
-      setShowPlanteoFeedback(false)
-      setPlanteoFeedback('')
-      router.refresh()
-    } catch {
-      setError('Network error. Please try again.')
-    } finally {
-      setBusy(null)
+  async function regeneratePlanteo(feedback: string) {
+    setPlanteoBusy(true)
+    setActionError(null)
+    const previous = planteo
+    const r = await postJson('/planteo', { feedback })
+    setPlanteoBusy(false)
+    if (!r.ok) {
+      setActionError((r.data.error as string) || 'Couldn’t regenerate the planteo. Please try again.')
+      return
+    }
+    patch({ planteo_output: r.data.planteo as string })
+    setPlanteoUndo(previous)
+    addUsage(r.data.usage as { tokens_total?: number; cost_usd?: number })
+    // A new CEO recommendation must also show in the Commercial Alert, so
+    // the document never recommends one size in section 1 and another here.
+    if (type === 'company_ceo' && sRef.current.stage === 'complete') {
+      await regenerateBlock('commercial_alert', 'The internal commercial recommendation in the approved planteo has just been updated: show it exactly as it now stands.', { afterRecommendation: true })
     }
   }
 
-  async function undoPlanteoRegenerate() {
+  async function undoPlanteo() {
     if (planteoUndo === null) return
-    const previous = planteoUndo
-    setPlanteo(previous)
+    const prev = planteoUndo
+    patch({ planteo_output: prev })
     setPlanteoUndo(null)
-    await fetch(`/api/meeting-prep/${session.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ planteoOutput: previous }),
-    })
+    await patchSession({ planteoOutput: prev })
   }
 
-  async function approvePlanteoAndGenerateFinal() {
-    setError(null)
-    setStage('final_generating')
-    setBusy('Assembling the final document…')
-    setActiveTab('final')
-    try {
-      const res = await fetch(`/api/meeting-prep/${session.id}/final-document`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || 'Failed to generate the final document.')
-        setStage('planteo_pending')
-        setActiveTab('planteo')
-        return
-      }
-      setFinalOutput(data.output)
-      setStage('complete')
-      router.refresh()
-    } catch {
-      setError('Network error. Please try again.')
-      setStage('planteo_pending')
-      setActiveTab('planteo')
-    } finally {
-      setBusy(null)
+  async function saveResearch(key: keyof MeetingPrepResearchSections, text: string) {
+    const updated = { ...research, [key]: text }
+    patch({ research_sections: updated })
+    setResearchUndo((u) => { const n = { ...u }; delete n[key]; return n })
+    await patchSession({ researchSections: updated })
+  }
+
+  async function regenerateResearch(key: keyof MeetingPrepResearchSections, feedback: string) {
+    setResearchBusy(key)
+    setActionError(null)
+    const previous = research[key] || ''
+    const r = await postJson('/research/regenerate', { section: key, feedback })
+    setResearchBusy(null)
+    if (!r.ok) {
+      setActionError((r.data.error as string) || 'Couldn’t regenerate this section. Please try again.')
+      return
     }
+    patch({ research_sections: { ...(sRef.current.research_sections || {}), [key]: r.data.text as string } })
+    setResearchUndo((u) => ({ ...u, [key]: previous }))
+    addUsage(r.data.usage as { tokens_total?: number; web_searches?: number; cost_usd?: number })
   }
 
-  const tabs: { key: TabKey; label: string; available: boolean; locked: boolean }[] = [
-    { key: 'research', label: 'Research', available: true, locked: stage !== 'awaiting_review' },
-    { key: 'points', label: 'Presentation Points', available: points.length > 0 || stage === 'points_generating', locked: stage !== 'points_pending' },
-    { key: 'planteo', label: 'Planteo', available: Boolean(planteo) || stage === 'planteo_generating', locked: stage !== 'planteo_pending' },
-    { key: 'final', label: 'Document', available: Boolean(finalOutput) || stage === 'final_generating', locked: stage === 'complete' },
+  async function undoResearch(key: keyof MeetingPrepResearchSections) {
+    const prev = researchUndo[key]
+    if (prev === undefined) return
+    await saveResearch(key, prev)
+  }
+
+  // ── View ────────────────────────────────────────────────────────────────
+
+  const steps: PipelineStep[] = [
+    { key: 'research', label: 'Research', state: researchReady ? 'done' : running === 'research' ? 'running' : s.stage === 'failed' ? 'failed' : 'waiting' },
+    { key: 'points', label: 'Presentation points', state: points.length ? 'done' : running === 'points' ? 'running' : 'waiting' },
+    { key: 'planteo', label: 'Planteo', state: planteo ? 'done' : running === 'planteo' ? 'running' : 'waiting' },
+    { key: 'final', label: 'Document', state: complete ? 'done' : running === 'final' ? 'running' : 'waiting' },
+  ]
+  const showProgress = !complete
+  const paused = !pipelineActive && PAUSED_STAGES.includes(s.stage)
+  const progressStatus = pipelineActive
+    ? status
+    : paused
+        ? 'The rest of the document hasn’t been written yet.'
+        : s.stage === 'failed'
+          ? 'The research didn’t complete.'
+          : 'Getting started…'
+
+  const writing = (step: Step) => running === step
+  const docLabel = (step: Step, what: string) =>
+    writing(step) ? `Writing ${what}…` : running ? `${what[0].toUpperCase()}${what.slice(1)} comes next.` : `Not written yet.`
+
+  const NAV_LABELS: Record<FinalBlockKey, string> = {
+    commercial_alert: 'Commercial Alert',
+    snapshot: 'Snapshot',
+    motivation: 'Motivations',
+    said_recently: 'Said recently',
+  }
+  const nav: { id: string; label: string }[] = [
+    ...FINAL_BLOCKS.map((b) => ({ id: `block-${b.key}`, label: NAV_LABELS[b.key] })),
+    { id: 'block-points', label: 'Points' },
+    { id: 'block-planteo', label: 'Planteo' },
+    { id: 'block-research', label: 'Full research' },
   ]
 
   return (
@@ -578,7 +548,7 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
       <AiDisclaimerModal open={disclaimer.open} onClose={disclaimer.dismiss} />
 
       {/* Subject side panel */}
-      <aside className="flex w-64 flex-shrink-0 flex-col border-r border-[#e5e3df] bg-white">
+      <aside className="hidden w-64 flex-shrink-0 flex-col border-r border-[#e5e3df] bg-white lg:flex">
         <div className="flex-1 overflow-y-auto p-5">
           <Link href="/commercial/meeting-preparation" className="inline-flex items-center gap-1.5 text-xs text-gray-400 transition-colors hover:text-gray-700">
             <ArrowLeft size={13} />
@@ -591,46 +561,46 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
             </div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Meeting prep</p>
           </div>
-          <h1 className="mt-3 text-sm font-semibold leading-snug text-gray-900">{session.interviewee_name}</h1>
+          <h1 className="mt-3 text-sm font-semibold leading-snug text-gray-900">{s.interviewee_name}</h1>
 
           <div className="mt-5 space-y-3.5">
-            <InfoRow label="Title" value={session.interviewee_title} />
-            <InfoRow label="Type" value={session.interviewee_type === 'company_ceo' ? 'Company Executive' : 'Government Official'} />
-            <InfoRow label="Organisation" value={session.company_org} />
-            <InfoRow label="Company Country" value={session.company_country} />
-            <InfoRow label="Publication" value={session.publication} />
-            <InfoRow label="Publication Country" value={session.publication_country} />
+            <InfoRow label="Title" value={s.interviewee_title} />
+            <InfoRow label="Meeting type" value={interviewTypeLabel(type)} />
+            <InfoRow label={type === 'company_ceo' ? 'Company' : 'Organisation'} value={s.company_org} />
+            <InfoRow label="Country" value={s.company_country} />
+            <InfoRow label="Publication" value={s.publication} />
+            <InfoRow label="Publication Country" value={s.publication_country} />
           </div>
 
           <div className="mt-6 border-t border-[#e5e3df] pt-4">
             <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Advertiser History</p>
-            <p className="text-[13px] leading-snug text-gray-700">
-              {session.advertiser_history_status === 'yes'
-                ? session.advertiser_history_details
-                : session.advertiser_history_status === 'no'
-                ? 'No previous advertising history on record.'
-                : 'Not aware / not checked.'}
+            <p className="whitespace-pre-line text-[13px] leading-snug text-gray-700">
+              {s.advertiser_history_status === 'yes'
+                ? s.advertiser_history_details
+                : s.advertiser_history_status === 'no'
+                  ? 'No previous advertising history on record.'
+                  : 'Not aware / not checked.'}
             </p>
           </div>
 
-          {usage.tokens_total > 0 && (
+          {(s.tokens_total || 0) > 0 && (
             <div className="mt-6 border-t border-[#e5e3df] pt-4">
               <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Usage</p>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-400">Tokens</span>
-                  <span className="font-medium tabular-nums text-gray-700">{formatTokens(usage.tokens_total)}</span>
+                  <span className="font-medium tabular-nums text-gray-700">{formatTokens(s.tokens_total || 0)}</span>
                 </div>
-                {usage.web_searches > 0 && (
+                {(s.web_searches || 0) > 0 && (
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Searches</span>
-                    <span className="font-medium tabular-nums text-gray-700">{usage.web_searches}</span>
+                    <span className="font-medium tabular-nums text-gray-700">{s.web_searches}</span>
                   </div>
                 )}
                 {isAdmin && (
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Cost</span>
-                    <span className="font-medium tabular-nums text-gray-700">${usage.cost_usd.toFixed(4)}</span>
+                    <span className="font-medium tabular-nums text-gray-700">${Number(s.cost_usd || 0).toFixed(4)}</span>
                   </div>
                 )}
               </div>
@@ -640,274 +610,222 @@ export default function MeetingPrepWorkspace({ session: initialSession, isGenera
 
         {isAdmin && (
           <div className="border-t border-[#e5e3df] p-5">
-            <DeleteMeetingPrepButton sessionId={session.id} title={session.interviewee_name} redirectTo="/commercial/meeting-preparation" />
+            <DeleteMeetingPrepButton sessionId={s.id} title={s.interviewee_name} redirectTo="/commercial/meeting-preparation" />
           </div>
         )}
       </aside>
 
-      {/* Main content */}
-      <div ref={scroll.ref} onScroll={scroll.onScroll} onWheel={scroll.onWheel} className="flex-1 overflow-y-auto">
-        {/* Sticky step nav — lets you jump straight to a section instead of scrolling through everything */}
+      {/* The document: one scroll, every block always in view */}
+      <div className="flex-1 overflow-y-auto">
         <div className="sticky top-0 z-10 border-b border-[#e5e3df] bg-[#f0efec]/95 backdrop-blur-sm">
-          <div className="mx-auto max-w-3xl px-6">
-            <TabNav tabs={tabs} active={activeTab} onChange={setActiveTab} />
+          <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-2.5 sm:px-6">
+            <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+              {nav.map((n) => (
+                <a key={n.id} href={`#${n.id}`} className="flex-shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-900">
+                  {n.label}
+                </a>
+              ))}
+            </nav>
+            {complete ? (
+              <a
+                href={`/api/meeting-prep/${id}/download`}
+                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-gray-900"
+              >
+                <Download size={13} /> Download .docx
+              </a>
+            ) : (
+              <span className="flex-shrink-0 text-[11px] text-gray-400">Download when ready</span>
+            )}
           </div>
         </div>
 
-        <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
+          <Link href="/commercial/meeting-preparation" className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 lg:hidden">
+            <ArrowLeft size={13} /> Meeting Preparation
+          </Link>
 
-          {error && (
-            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <p>{error}</p>
-                {stage === 'failed' && (
-                  <button
-                    onClick={() => { setError(null); startResearch() }}
-                    className="mt-1 text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
-                  >
-                    Retry
-                  </button>
-                )}
-              </div>
-            </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">{interviewTypeLabel(type)}</p>
+            <h1 className="mt-1 text-lg font-semibold leading-tight text-gray-900">{s.interviewee_name}</h1>
+            <p className="mt-0.5 text-sm text-gray-500">{[s.interviewee_title, s.company_org].filter(Boolean).join(' · ')} — for <span className="italic">{s.publication}</span></p>
+          </div>
+
+          {showProgress && (
+            <PipelineProgress steps={steps} status={progressStatus} elapsedSecs={elapsed} running={pipelineActive} />
           )}
 
-          {stalled && (
-            <div className="flex flex-col items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
-              <p>This is taking much longer than expected — the request may have been interrupted. You can retry from here without losing anything already approved.</p>
+          {paused && !stalled && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-[#e5e3df] bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-600">{pipelineError || 'Everything written so far is kept. Generate the rest to finish the document.'}</p>
               <button
-                onClick={retryStalledStage}
-                disabled={resettingStage}
-                className="inline-flex items-center gap-2 rounded-lg bg-amber-800 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-amber-900 disabled:opacity-50"
+                type="button"
+                onClick={() => runPipeline(true)}
+                className="inline-flex flex-shrink-0 items-center gap-2 rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900"
               >
-                {resettingStage ? 'Resetting…' : 'Retry this step'}
+                <Sparkles size={14} /> {pipelineError ? 'Try again' : 'Generate the rest of the document'}
               </button>
             </div>
           )}
 
-          {activeTab === 'research' && (
-            <>
-              {!stalled && ['input', 'researching'].includes(stage) && (
-                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} variant="research" />
-              )}
-
-              {!['input', 'researching'].includes(stage) && Object.keys(sections).length > 0 && (
-                <ResearchReviewCard
-                  sections={sections}
-                  locked={stage !== 'awaiting_review'}
-                  acceptedSections={acceptedSections}
-                  editingSection={editingSection}
-                  setEditingSection={setEditingSection}
-                  feedbackSection={feedbackSection}
-                  setFeedbackSection={setFeedbackSection}
-                  sectionFeedback={sectionFeedback}
-                  setSectionFeedback={setSectionFeedback}
-                  sectionBusy={sectionBusy}
-                  onAccept={acceptSection}
-                  onSaveEdit={saveSectionEdit}
-                  onRegenerate={regenerateSection}
-                  sectionUndo={sectionUndo}
-                  onUndo={undoSectionRegenerate}
-                />
-              )}
-
-              {stage === 'awaiting_review' && (
-                <div className="flex items-center justify-end gap-3">
-                  {!allSectionsReviewed && (
-                    <p className="text-xs text-gray-500">
-                      Accept all 4 sections above to continue
-                      <span className="ml-1 font-medium text-gray-700">({acceptedSections.size} of {SECTION_ORDER.length} accepted)</span>
-                    </p>
-                  )}
-                  <button
-                    onClick={advanceToPoints}
-                    disabled={!allSectionsReviewed}
-                    title={allSectionsReviewed ? undefined : 'Accept every section above first'}
-                    className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md disabled:opacity-40 disabled:hover:translate-y-0"
-                  >
-                    <Sparkles size={15} />
-                    Continue to Presentation Points
-                  </button>
-                </div>
-              )}
-
-              {/* Failed / empty research — always give a clear way forward so the
-                  page is never blank. */}
-              {stage === 'failed' && Object.keys(sections).length === 0 && (
-                <div className="flex flex-col items-start gap-4 rounded-2xl border border-[#e5e3df] bg-white p-8">
-                  <div className="rounded-full bg-[#f7f6f3] p-3 text-gray-500">
-                    <ShieldAlert size={20} />
-                  </div>
-                  <p className="text-sm text-gray-600">
-                    {error || 'The research didn’t complete last time. Running it again is safe — nothing else is affected.'}
-                  </p>
-                  <button
-                    onClick={() => { setError(null); startResearch() }}
-                    className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
-                  >
-                    <Sparkles size={15} />
-                    Retry research
-                  </button>
-                </div>
-              )}
-            </>
+          {/* Refused before anything ran (e.g. no token budget left on a new
+              session): the paused and failed cards don't cover that stage. */}
+          {pipelineError && !pipelineActive && !paused && s.stage !== 'failed' && (
+            <div className="flex flex-col items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+              <p className="flex items-start gap-2"><ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />{pipelineError}</p>
+              <button type="button" onClick={() => runPipeline(true)} className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-xs font-medium text-white hover:bg-red-800">
+                <Sparkles size={14} /> Try again
+              </button>
+            </div>
           )}
 
-          {activeTab === 'points' && (
-            <>
-              {!stalled && stage === 'points_generating' && (
-                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} variant="points" />
-              )}
-
-              {points.length > 0 && stage !== 'points_generating' && (
-                <PointsCard
-                  points={points}
-                  locked={stage !== 'points_pending'}
-                  editingPoint={editingPoint}
-                  setEditingPoint={setEditingPoint}
-                  pointFeedback={pointFeedback}
-                  setPointFeedback={setPointFeedback}
-                  pointBusy={pointBusy}
-                  onSaveEdit={savePointEdit}
-                  onRegenerate={regeneratePoints}
-                  pointUndo={pointUndo}
-                  onUndoPoint={undoPointRegenerate}
-                  allPointsUndo={allPointsUndo}
-                  onUndoAllPoints={undoAllPointsRegenerate}
-                />
-              )}
-
-              {stage === 'points_pending' && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={approvePointsAndGeneratePlanteo}
-                    className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
-                  >
-                    <Check size={15} />
-                    Approve Points &amp; Build Planteo
-                  </button>
-                </div>
-              )}
-            </>
+          {s.stage === 'failed' && !pipelineActive && (
+            <div className="flex flex-col items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+              <p className="flex items-start gap-2"><ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />{pipelineError || 'The research didn’t complete. Running it again is safe.'}</p>
+              <button type="button" onClick={() => runPipeline(true)} className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-xs font-medium text-white hover:bg-red-800">
+                <Sparkles size={14} /> Run it again
+              </button>
+            </div>
           )}
 
-          {activeTab === 'planteo' && (
-            <>
-              {sampleAudioUrl && (
-                <div className="mb-5">
-                  <p className="text-xs font-semibold text-gray-900">Sample planteo delivery</p>
-                  <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
-                    A reference recording of how a planteo should sound when delivered — listen before you present.
-                  </p>
-                  <AudioPlayer src={sampleAudioUrl} />
-                </div>
-              )}
-
-              {!stalled && stage === 'planteo_generating' && (
-                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} variant="planteo" />
-              )}
-
-              {planteo && stage !== 'planteo_generating' && (
-                <PlanteoCard
-                  planteo={planteo}
-                  locked={stage !== 'planteo_pending'}
-                  editing={editingPlanteo}
-                  setEditing={setEditingPlanteo}
-                  showFeedback={showPlanteoFeedback}
-                  setShowFeedback={setShowPlanteoFeedback}
-                  feedback={planteoFeedback}
-                  setFeedback={setPlanteoFeedback}
-                  busy={isProcessing}
-                  onSaveEdit={savePlanteoEdit}
-                  onRegenerate={regeneratePlanteo}
-                  planteoUndo={planteoUndo}
-                  onUndo={undoPlanteoRegenerate}
-                />
-              )}
-
-              {stage === 'planteo_pending' && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={approvePlanteoAndGenerateFinal}
-                    className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
-                  >
-                    <Check size={15} />
-                    Approve Planteo &amp; Generate Document
-                  </button>
-                </div>
-              )}
-            </>
+          {stalled && (
+            <div className="flex flex-col items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+              <p>This is taking much longer than expected; the request may have been interrupted. You can retry this step without losing anything already written.</p>
+              <button type="button" onClick={retryStalled} disabled={resetting} className="inline-flex items-center gap-2 rounded-lg bg-amber-800 px-4 py-2 text-xs font-medium text-white hover:bg-amber-900 disabled:opacity-50">
+                {resetting ? 'Resetting…' : 'Retry this step'}
+              </button>
+            </div>
           )}
 
-          {activeTab === 'final' && (
-            <>
-              {!stalled && stage === 'final_generating' && (
-                <MeetingPrepLoader label={busy || 'Working…'} elapsedSecs={elapsedSecs} variant="final" />
-              )}
-
-              {stage === 'complete' && finalOutput && (
-                <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold leading-tight text-gray-900">Meeting Preparation Document</h2>
-                      <p className="mt-0.5 text-[11px] leading-tight text-gray-400">Ready to download</p>
-                    </div>
-                    <a
-                      href={`/api/meeting-prep/${session.id}/download`}
-                      className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-900"
-                    >
-                      <Download size={13} />
-                      Download .docx
-                    </a>
-                  </div>
-                  <div className="prose-research mt-4 text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: marked.parse(finalOutput) as string }} />
-                </div>
-              )}
-            </>
+          {actionError && (
+            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
+              <p className="flex-1">{actionError}</p>
+              <button type="button" onClick={() => setActionError(null)} className="text-red-400 hover:text-red-700" aria-label="Dismiss"><X size={15} /></button>
+            </div>
           )}
 
+          {/* 1–4: the blocks the document pass writes */}
+          {FINAL_BLOCKS.map((b) => (
+            <MarkdownBlock
+              key={b.key}
+              id={`block-${b.key}`}
+              number={b.number}
+              title={finalBlockTitle(b.key, type)}
+              text={finalSections[b.key] || ''}
+              placeholder={complete ? undefined : <BlockPlaceholder writing={writing('final')} label={docLabel('final', 'this section')} />}
+              disabled={anyBusy && blockBusy !== b.key}
+              busy={blockBusy === b.key}
+              canUndo={blockUndo[b.key] !== undefined}
+              onSave={(t) => saveBlock(b.key, t)}
+              onRegenerate={(fb) => regenerateBlock(b.key, fb)}
+              onUndo={() => undoBlock(b.key)}
+              emptyAction="Write this section"
+              regeneratePlaceholder={
+                b.key === 'commercial_alert'
+                  ? type === 'company_ceo' ? 'e.g. Recommend a Half Page: revenue is closer to $80M.' : 'e.g. Add that they took part in the 2024 report.'
+                  : b.key === 'said_recently'
+                    ? 'e.g. Find a more recent quote on their export plans.'
+                    : 'e.g. Shorter, and lead with their international expansion.'
+              }
+              regenerateHint={
+                b.key === 'commercial_alert' && type === 'company_ceo'
+                  ? 'A request about the offer also updates the recommendation the planteo uses, so both stay the same.'
+                  : 'Searches the web only if your request needs information the research doesn’t have.'
+              }
+            />
+          ))}
+
+          {/* 5: presentation points */}
+          <PointsBlock
+            id="block-points"
+            number={5}
+            title={POINTS_TITLE}
+            points={points}
+            placeholder={<BlockPlaceholder writing={writing('points')} label={docLabel('points', 'the three presentation points')} />}
+            disabled={anyBusy && pointBusy === null}
+            busy={pointBusy}
+            pointUndo={pointUndo}
+            allUndo={allPointsUndo}
+            onSave={savePoint}
+            onRegenerate={regeneratePoints}
+            onUndoPoint={undoPoint}
+            onUndoAll={undoAllPoints}
+          />
+
+          {/* 6: planteo, with the recording directly under the script */}
+          {planteo ? (
+            <PlanteoBlock
+              id="block-planteo"
+              number={6}
+              title={PLANTEO_TITLE}
+              type={type}
+              planteoOutput={planteo}
+              librarySnapshot={s.planteo_library_snapshot}
+              recordingUrl={recordingUrl}
+              samples={samples}
+              isAdmin={isAdmin}
+              disabled={anyBusy && !planteoBusy}
+              busy={planteoBusy}
+              canUndo={planteoUndo !== null}
+              onSaveOutput={savePlanteo}
+              onRegenerate={regeneratePlanteo}
+              onUndo={undoPlanteo}
+            />
+          ) : (
+            <section id="block-planteo" className="scroll-mt-20 rounded-2xl border border-[#c8973f]/35 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-black text-xs font-semibold text-white">6</span>
+                <h2 className="text-base font-semibold leading-tight text-gray-900">{PLANTEO_TITLE}</h2>
+              </div>
+              <div className="mt-4"><BlockPlaceholder writing={writing('planteo')} label={docLabel('planteo', 'the planteo')} /></div>
+            </section>
+          )}
+
+          {/* The research behind the document: always kept, never hidden away */}
+          <section id="block-research" className="scroll-mt-20 rounded-2xl border border-[#e5e3df] bg-white/70 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setResearchOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-3 p-5 text-left sm:p-6"
+              aria-expanded={researchOpen}
+            >
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Full research behind this document</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  {researchReady ? 'Four sections, with every source. Edit or regenerate any of them.' : running === 'research' ? 'Researching now…' : 'Appears here once the research is done.'}
+                </p>
+              </div>
+              <ChevronDown size={18} className={`flex-shrink-0 text-gray-400 transition-transform ${researchOpen ? '' : '-rotate-90'}`} />
+            </button>
+            {researchOpen && (
+              <div className="flex flex-col gap-4 px-4 pb-5 sm:px-6">
+                {RESEARCH_ORDER.map((key) => {
+                  const Icon = RESEARCH_ICONS[key]
+                  return (
+                    <MarkdownBlock
+                      key={key}
+                      id={`research-${key}`}
+                      title={RESEARCH_LABELS[key]}
+                      headerRight={<Icon size={16} className="text-gray-300" />}
+                      text={research[key] || ''}
+                      placeholder={researchReady ? undefined : <BlockPlaceholder writing={writing('research')} label={writing('research') ? 'Researching…' : 'Not researched yet.'} />}
+                      disabled={anyBusy && researchBusy !== key}
+                      busy={researchBusy === key}
+                      canUndo={researchUndo[key] !== undefined}
+                      onSave={(t) => saveResearch(key, t)}
+                      onRegenerate={(fb) => regenerateResearch(key, fb)}
+                      onUndo={() => undoResearch(key)}
+                      regeneratePlaceholder="e.g. Focus more on their international expansion plans. Find stronger recent quotes."
+                      regenerateHint="Searches the web again for this section only. The document above isn’t changed; regenerate a block there to use the new research."
+                    />
+                  )
+                })}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </div>
-  )
-}
-
-function TabNav({ tabs, active, onChange }: {
-  tabs: { key: TabKey; label: string; available: boolean; locked: boolean }[]
-  active: TabKey
-  onChange: (key: TabKey) => void
-}) {
-  return (
-    <nav className="flex items-center gap-1.5 overflow-x-auto py-3">
-      {tabs.map((tab, i) => {
-        const isActive = tab.key === active
-        const isComplete = tab.available && tab.locked
-        return (
-          <button
-            key={tab.key}
-            onClick={() => tab.available && onChange(tab.key)}
-            disabled={!tab.available}
-            className={`group inline-flex flex-shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-medium transition-all ${
-              isActive
-                ? 'bg-black text-white shadow-sm'
-                : tab.available
-                  ? 'text-gray-500 hover:bg-white hover:text-gray-900'
-                  : 'cursor-not-allowed text-gray-300'
-            }`}
-          >
-            <span
-              className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
-                isActive ? 'bg-white/20 text-white' : isComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'
-              }`}
-            >
-              {isComplete ? <Check size={10} /> : i + 1}
-            </span>
-            {tab.label}
-          </button>
-        )
-      })}
-    </nav>
   )
 }
 
@@ -924,492 +842,4 @@ function InfoRow({ label, value }: { label: string; value: string | null }) {
 function formatTokens(n: number): string {
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return n.toString()
-}
-
-// ── Step 4: Research review card ──────────────────────────────────────────
-function ResearchReviewCard({
-  sections, locked, acceptedSections, editingSection, setEditingSection,
-  feedbackSection, setFeedbackSection, sectionFeedback, setSectionFeedback,
-  sectionBusy, onAccept, onSaveEdit, onRegenerate, sectionUndo, onUndo,
-}: {
-  sections: MeetingPrepResearchSections
-  locked: boolean
-  acceptedSections: Set<string>
-  editingSection: keyof MeetingPrepResearchSections | null
-  setEditingSection: (k: keyof MeetingPrepResearchSections | null) => void
-  feedbackSection: keyof MeetingPrepResearchSections | null
-  setFeedbackSection: (k: keyof MeetingPrepResearchSections | null) => void
-  sectionFeedback: string
-  setSectionFeedback: (v: string) => void
-  sectionBusy: keyof MeetingPrepResearchSections | null
-  onAccept: (k: keyof MeetingPrepResearchSections) => void
-  onSaveEdit: (k: keyof MeetingPrepResearchSections, text: string) => void
-  onRegenerate: (k: keyof MeetingPrepResearchSections) => void
-  sectionUndo: Partial<Record<keyof MeetingPrepResearchSections, { text: string; wasAccepted: boolean }>>
-  onUndo: (k: keyof MeetingPrepResearchSections) => void
-}) {
-  const [draft, setDraft] = useState('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  // Which sections are collapsed — starts empty (all expanded) so nothing
-  // changes for anyone until they choose to collapse a section themselves.
-  const [collapsed, setCollapsed] = useState<Set<keyof MeetingPrepResearchSections>>(new Set())
-  function toggleCollapsed(key: keyof MeetingPrepResearchSections) {
-    setCollapsed(prev => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
-  // Move focus (and the cursor) into the textarea the instant edit mode
-  // opens, and settle the scroll position ourselves — otherwise the sudden
-  // height change from swapping text for a tall textarea shoves the viewport
-  // around with no compensation, which reads as "the part I clicked jumps away".
-  useEffect(() => {
-    if (!editingSection || !textareaRef.current) return
-    const el = textareaRef.current
-    el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [editingSection])
-
-  return (
-    <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
-      <h2 className="text-sm font-semibold leading-tight text-gray-900">Research Review</h2>
-      <p className="mt-0.5 text-[11px] leading-tight text-gray-400">
-        {locked ? 'Accepted research (locked in for this session)' : 'Accept, edit, or regenerate each section before continuing'}
-      </p>
-
-      <div className="mt-5 flex flex-col gap-4">
-        {SECTION_ORDER.map((key) => {
-          const isAccepted = acceptedSections.has(key)
-          const text = sections[key] || ''
-          const isEditing = editingSection === key
-          const isFeedbackOpen = feedbackSection === key
-          const isBusy = sectionBusy === key
-          const Icon = SECTION_ICONS[key]
-          // Force a section open while it's being edited or regenerated —
-          // collapsing it out from under an in-progress action would hide
-          // what you're doing, not just tidy up the page.
-          const isCollapsed = collapsed.has(key) && !isEditing && !isBusy
-
-          return (
-            <div
-              key={key}
-              className={`rounded-xl border p-4 transition-colors ${
-                isEditing
-                  ? 'border-black/15 bg-white'
-                  : isAccepted
-                  ? 'border-emerald-200 bg-emerald-50'
-                  : 'border-[#e5e3df] bg-[#faf9f7]'
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => toggleCollapsed(key)}
-                className="flex w-full items-center justify-between gap-3 text-left"
-                aria-expanded={!isCollapsed}
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 shadow-sm">
-                    <Icon size={16} />
-                  </span>
-                  <h3 className="text-lg font-bold leading-tight text-gray-900">{SECTION_LABELS[key]}</h3>
-                  <ChevronDown
-                    size={16}
-                    className={`flex-shrink-0 text-gray-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
-                  />
-                </div>
-                {!locked && (
-                  isAccepted ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-600">
-                      <Check size={12} /> Accepted
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600">Needs review</span>
-                  )
-                )}
-              </button>
-
-              {!isCollapsed && <>
-              {isBusy ? (
-                // Keep the existing text on screen (dimmed) instead of collapsing
-                // to a one-line spinner — a tall section shrinking to a single
-                // loader line shoves everything below it up the page, which
-                // reads as losing your place. Same height in, same height out.
-                // No text/badge overlay here — the Regenerate button below
-                // becomes the single "this is in progress" signal.
-                <div className="relative mt-3 overflow-hidden rounded-lg">
-                  <div
-                    className="prose-research pointer-events-none select-none text-sm text-gray-800 opacity-25"
-                    dangerouslySetInnerHTML={{ __html: marked.parse(text || '_Not yet written_') as string }}
-                  />
-                  <div className="content-shimmer absolute inset-0" />
-                </div>
-              ) : isEditing ? (
-                <div className="mt-3">
-                  <Textarea ref={textareaRef} value={draft} onChange={(e) => setDraft(e.target.value)} rows={8} className="text-sm" label="" />
-                  <div className="mt-3 flex gap-3">
-                    <button onClick={() => onSaveEdit(key, draft)} className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900">Save</button>
-                    <button onClick={() => setEditingSection(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="prose-research mt-3 text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: marked.parse(text || '_Not yet written_') as string }} />
-              )}
-
-              {!locked && !isEditing && (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {!isAccepted && (
-                    <button
-                      disabled={isBusy}
-                      onClick={() => onAccept(key)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
-                    >
-                      <Check size={13} /> Accept
-                    </button>
-                  )}
-                  <button
-                    disabled={isBusy}
-                    onClick={() => { setEditingSection(key); setDraft(text) }}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
-                  >
-                    <Pencil size={13} /> Edit
-                  </button>
-                  <button
-                    disabled={isBusy}
-                    onClick={() => { setFeedbackSection(isFeedbackOpen ? null : key); setSectionFeedback('') }}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    <WandSparkles size={13} className={isBusy ? 'animate-pulse' : ''} />
-                    {isBusy ? 'Regenerating…' : 'Regenerate'}
-                  </button>
-                  {sectionUndo[key] !== undefined && !isBusy && (
-                    <button onClick={() => onUndo(key)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
-                      <Undo2 size={13} /> Undo last regenerate
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {isFeedbackOpen && (
-                <div className="mt-3 rounded-xl border border-[#e5e3df] bg-white p-4">
-                  <Textarea
-                    label="Redirect this section"
-                    placeholder="e.g. Focus more on their international expansion plans. Find stronger recent quotes."
-                    value={sectionFeedback}
-                    onChange={(e) => setSectionFeedback(e.target.value)}
-                    rows={2}
-                    disabled={isBusy}
-                  />
-                  <div className="mt-3 flex gap-3">
-                    <button
-                      disabled={isBusy}
-                      onClick={() => onRegenerate(key)}
-                      className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isBusy ? 'Regenerating…' : 'Regenerate'}
-                    </button>
-                    <button disabled={isBusy} onClick={() => setFeedbackSection(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
-                  </div>
-                </div>
-              )}
-              </>}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── Step 5: Presentation points card ──────────────────────────────────────
-function PointsCard({
-  points, locked, editingPoint, setEditingPoint, pointFeedback, setPointFeedback,
-  pointBusy, onSaveEdit, onRegenerate, pointUndo, onUndoPoint, allPointsUndo, onUndoAllPoints,
-}: {
-  points: string[]
-  locked: boolean
-  editingPoint: number | null
-  setEditingPoint: (i: number | null) => void
-  pointFeedback: { index: number | 'all'; text: string } | null
-  setPointFeedback: (v: { index: number | 'all'; text: string } | null) => void
-  pointBusy: number | 'all' | null
-  onSaveEdit: (index: number, text: string) => void
-  onRegenerate: (target: number | 'all', feedback: string) => void
-  pointUndo: Partial<Record<number, string>>
-  onUndoPoint: (index: number) => void
-  allPointsUndo: string[] | null
-  onUndoAllPoints: () => void
-}) {
-  const [draft, setDraft] = useState('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    if (editingPoint === null || !textareaRef.current) return
-    const el = textareaRef.current
-    el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [editingPoint])
-
-  return (
-    <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
-      <h2 className="text-sm font-semibold leading-tight text-gray-900">3 Presentation Points</h2>
-      <p className="mt-0.5 text-[11px] leading-tight text-gray-400">
-        {locked ? 'Approved presentation points' : 'Edit or regenerate any point before approving'}
-      </p>
-
-      <div className="mt-5 flex flex-col gap-4">
-        {points.map((point, i) => {
-          const isEditing = editingPoint === i
-          const isFeedbackOpen = pointFeedback?.index === i
-          const isBusy = pointBusy === i
-
-          return (
-            <div key={i} className={`rounded-xl border p-4 transition-colors ${isEditing ? 'border-black/15 bg-white' : 'border-[#e5e3df] bg-[#faf9f7]'}`}>
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-black text-[11px] font-semibold text-white">{i + 1}</span>
-                {isBusy ? (
-                  <div className="relative flex-1 overflow-hidden rounded-lg">
-                    <p className="pointer-events-none select-none text-sm leading-relaxed text-gray-800 opacity-25">{point}</p>
-                    <div className="content-shimmer absolute inset-0" />
-                  </div>
-                ) : isEditing ? (
-                  <div className="flex-1">
-                    <Textarea ref={textareaRef} value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="text-sm" label="" />
-                    <div className="mt-2 flex gap-3">
-                      <button onClick={() => { onSaveEdit(i, draft); setEditingPoint(null) }} className="rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-900">Save</button>
-                      <button onClick={() => setEditingPoint(null)} className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="flex-1 text-sm leading-relaxed text-gray-800">{point}</p>
-                )}
-              </div>
-
-              {!locked && !isEditing && (
-                <div className="mt-2 ml-9 flex flex-wrap items-center gap-2">
-                  <button
-                    disabled={isBusy}
-                    onClick={() => { setEditingPoint(i); setDraft(point) }}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
-                  >
-                    <Pencil size={13} /> Edit
-                  </button>
-                  <button
-                    disabled={isBusy}
-                    onClick={() => setPointFeedback(isFeedbackOpen ? null : { index: i, text: '' })}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    <WandSparkles size={13} className={isBusy ? 'animate-pulse' : ''} />
-                    {isBusy ? 'Regenerating…' : 'Regenerate'}
-                  </button>
-                  {pointUndo[i] !== undefined && !isBusy && (
-                    <button onClick={() => onUndoPoint(i)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
-                      <Undo2 size={13} /> Undo
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {isFeedbackOpen && (
-                <div className="mt-3 ml-9 rounded-xl border border-[#e5e3df] bg-white p-4">
-                  <Textarea
-                    label="What to change"
-                    value={pointFeedback!.text}
-                    onChange={(e) => setPointFeedback({ index: i, text: e.target.value })}
-                    rows={2}
-                    disabled={isBusy}
-                  />
-                  <div className="mt-3 flex gap-3">
-                    <button
-                      disabled={isBusy}
-                      onClick={() => onRegenerate(i, pointFeedback!.text)}
-                      className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isBusy ? 'Regenerating…' : 'Regenerate'}
-                    </button>
-                    <button disabled={isBusy} onClick={() => setPointFeedback(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {!locked && (
-        <div className="mt-5 border-t border-[#e5e3df] pt-4">
-          {pointFeedback?.index === 'all' ? (
-            <div className="rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-4">
-              <Textarea
-                label="Reframe all three points"
-                value={pointFeedback.text}
-                onChange={(e) => setPointFeedback({ index: 'all', text: e.target.value })}
-                rows={2}
-                disabled={pointBusy === 'all'}
-              />
-              <div className="mt-3 flex gap-3">
-                <button
-                  disabled={pointBusy === 'all'}
-                  onClick={() => onRegenerate('all', pointFeedback.text)}
-                  className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {pointBusy === 'all' ? 'Regenerating…' : 'Regenerate All'}
-                </button>
-                <button disabled={pointBusy === 'all'} onClick={() => setPointFeedback(null)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button onClick={() => setPointFeedback({ index: 'all', text: '' })} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
-                <WandSparkles size={13} /> Reframe all three
-              </button>
-              {allPointsUndo && (
-                <button onClick={onUndoAllPoints} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
-                  <Undo2 size={13} /> Undo last reframe
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Step 6: Planteo card ───────────────────────────────────────────────────
-function PlanteoCard({
-  planteo, locked, editing, setEditing, showFeedback, setShowFeedback, feedback, setFeedback, busy, onSaveEdit, onRegenerate,
-  planteoUndo, onUndo,
-}: {
-  planteo: string
-  locked: boolean
-  editing: boolean
-  setEditing: (v: boolean) => void
-  showFeedback: boolean
-  setShowFeedback: (v: boolean) => void
-  feedback: string
-  setFeedback: (v: string) => void
-  busy: boolean
-  onSaveEdit: (text: string) => void
-  onRegenerate: () => void
-  planteoUndo: string | null
-  onUndo: () => void
-}) {
-  // For the Company CEO variant, `planteo` is an internal recommendation, a
-  // marker, then the verbatim fixed script — split so the rep sees the
-  // recommendation clearly labeled as internal-only, never the raw marker,
-  // and so editing only ever touches the spoken script (the recommendation
-  // is a Regenerate concern, not a manual-edit one). Government Official
-  // sessions have no marker, so `recommendation` is always '' there and this
-  // renders exactly as it did before.
-  const { recommendation, script } = splitPlanteoOutput(planteo)
-  const [draft, setDraft] = useState(script)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    if (!editing || !textareaRef.current) return
-    const el = textareaRef.current
-    el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [editing])
-
-  function saveEdit() {
-    onSaveEdit(recommendation ? `${recommendation}\n\n${SPOKEN_PLANTEO_MARKER}\n\n${draft}` : draft)
-  }
-
-  const recommendationBox = recommendation && (
-    <div className="mb-3 rounded-lg border border-[#c8973f]/30 bg-[#c8973f]/5 p-3">
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#a07530]">Internal recommendation — not spoken to the interviewee</p>
-      <div className="prose-research text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: marked.parse(recommendation) as string }} />
-    </div>
-  )
-
-  return (
-    <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
-      <h2 className="text-sm font-semibold leading-tight text-gray-900">Planteo Build-Up</h2>
-      <p className="mt-0.5 text-[11px] leading-tight text-gray-400">
-        {locked ? 'Approved planteo' : 'Edit directly or request a targeted regeneration'}
-      </p>
-
-      <div className="mt-4">
-        {busy ? (
-          <div className="relative overflow-hidden rounded-lg">
-            <div className="pointer-events-none select-none opacity-25">
-              {recommendationBox}
-              <div
-                className="prose-research text-sm text-gray-800"
-                dangerouslySetInnerHTML={{ __html: marked.parse(script || '_Not yet written_') as string }}
-              />
-            </div>
-            <div className="content-shimmer absolute inset-0" />
-          </div>
-        ) : editing ? (
-          <div>
-            {recommendationBox}
-            <Textarea ref={textareaRef} value={draft} onChange={(e) => setDraft(e.target.value)} rows={14} className="text-sm" label="" />
-            <div className="mt-3 flex gap-3">
-              <button onClick={saveEdit} className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900">Save</button>
-              <button onClick={() => setEditing(false)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            {recommendationBox}
-            <div className="prose-research text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: marked.parse(script) as string }} />
-          </div>
-        )}
-      </div>
-
-      {!locked && !editing && (
-        <div className="mt-5 border-t border-[#e5e3df] pt-4">
-          {showFeedback ? (
-            <div className="rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-4">
-              <Textarea
-                label="What to change"
-                placeholder={recommendation
-                  ? 'e.g. Recommend a higher tier given their recent funding round.'
-                  : 'e.g. Tighten the opening paragraph. Lean more on the investment-attraction angle.'}
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-                rows={3}
-                disabled={busy}
-              />
-              {recommendation && (
-                <p className="mt-2 text-[11px] text-gray-400">Only the internal recommendation above is regenerated — the approved spoken script never changes.</p>
-              )}
-              <div className="mt-3 flex gap-3">
-                <button
-                  disabled={busy}
-                  onClick={onRegenerate}
-                  className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {busy ? 'Regenerating…' : 'Regenerate'}
-                </button>
-                <button disabled={busy} onClick={() => setShowFeedback(false)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => { setEditing(true); setDraft(script) }} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
-                <Pencil size={13} /> Edit
-              </button>
-              <button onClick={() => setShowFeedback(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
-                <WandSparkles size={13} /> Regenerate
-              </button>
-              {planteoUndo !== null && (
-                <button onClick={onUndo} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
-                  <Undo2 size={13} /> Undo last regenerate
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
 }

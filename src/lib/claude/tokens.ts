@@ -69,6 +69,9 @@ export const MEETING_PREP_RESEARCH_RESERVE = 150_000;
 export const MEETING_PREP_POINTS_RESERVE = 20_000;
 export const MEETING_PREP_PLANTEO_RESERVE = 20_000;
 export const MEETING_PREP_FINAL_DOC_RESERVE = 40_000;
+// Rewriting one document block (may search the web when the rep asks for
+// fresher material).
+export const MEETING_PREP_DOC_BLOCK_RESERVE = 40_000;
 
 // Interview Request Letter & Email Generator module — research is scoped to
 // letter-relevant facts only (not a full company/country dossier like

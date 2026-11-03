@@ -4,7 +4,8 @@ import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_RESEARCH_RESERVE, HAIKU_PRICING } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { parseResearchSections, researchSectionsComplete } from '@/lib/meeting-prep'
+import { parseResearchSections, researchSectionsComplete, interviewTypeLabel } from '@/lib/meeting-prep'
+import { claimStage } from '@/lib/meeting-prep-server'
 import type { MeetingPrepResearchSections } from '@/types'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 
@@ -46,7 +47,7 @@ Search silently — do not narrate your plan or announce what you're about to se
 function subjectBlock(session: Record<string, unknown>) {
   return `--- MEETING DETAILS ---
 Interviewee: ${session.interviewee_name} (${session.interviewee_title})
-Interviewee Type: ${session.interviewee_type === 'company_ceo' ? 'Company Executive' : 'Government Official'}
+Interviewee Type: ${interviewTypeLabel(String(session.interviewee_type))}
 Company / Organisation: ${session.company_org}
 Country of the Company: ${session.company_country}
 Publication: ${session.publication}
@@ -101,6 +102,11 @@ export async function POST(_request: NextRequest, { params }: Params) {
   }
   if (session.stage !== 'input' && session.stage !== 'failed') {
     return NextResponse.json({ error: 'Research already in progress or complete for this session' }, { status: 409 })
+  }
+  // Claim the run before spending anything, so a second tab (or a double
+  // click) gets a 409 instead of paying for the same research twice.
+  if (!(await claimStage(session.id, ['input', 'failed'], 'researching'))) {
+    return NextResponse.json({ error: 'Research is already running for this session' }, { status: 409 })
   }
 
   const { data: promptRow } = await supabaseAdmin
@@ -251,7 +257,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
       try {
         await supabaseAdmin
           .from('meeting_prep_sessions')
-          .update({ stage: 'researching', research_prompt_snapshot: researchPromptText, error: null })
+          .update({ research_prompt_snapshot: researchPromptText })
           .eq('id', session.id)
         send({ status: 'researching' })
 

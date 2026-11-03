@@ -11,11 +11,12 @@ import {
 marked.use({ gfm: true, breaks: true })
 
 // Commercial Meeting Preparation .docx template. Unlike the Business Case /
-// Editorial Brief template, this document is always the same fixed 6-section
-// shape (Commercial Alert -> Snapshot -> Motivation Ranking -> Quotes & News
-// -> 3 Presentation Points -> Planteo), so there's no numbered-heading cover
-// split or landscape-appendix logic to handle — just a simple cover block
-// followed by the full body, reusing the shared markdown->docx renderer.
+// Editorial Brief template, this document is always the same fixed shape
+// (Commercial Alert -> Snapshot -> Motivation Ranking -> Quotes & News -> 3
+// Presentation Points -> Planteo, composed by meeting-prep-document.ts), so
+// there's no numbered-heading cover split or landscape-appendix logic to
+// handle — just a simple cover block followed by the full body, reusing the
+// shared markdown->docx renderer.
 export interface MeetingPrepDocMeta {
   interviewee_name: string
   interviewee_title: string

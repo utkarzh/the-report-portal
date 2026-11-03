@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { isInterviewType } from '@/lib/meeting-prep'
+import { isMissing044Column, isPre044CheckViolation, MIGRATION_044_COLUMNS, MIGRATION_044_MESSAGE } from '@/lib/meeting-prep-server'
 import { findMediaEntry } from '@/lib/media-library-server'
 import { hasMeetingPrepProfile } from '@/lib/media-library'
 
@@ -70,27 +71,41 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { data: session, error } = await supabaseAdmin
-    .from('meeting_prep_sessions')
-    .insert({
-      user_id: user.id,
-      interviewee_name: intervieweeName,
-      interviewee_title: intervieweeTitle,
-      interviewee_type: intervieweeType,
-      company_org: companyOrg,
-      company_country: companyCountry,
-      publication: media.name,
-      publication_country: publicationCountry,
-      media_library_id: media.id,
-      media_positioning_snapshot: media.positioning_statement,
-      media_audience_reach_snapshot: media.audience_reach,
-      media_narrative_snapshot: media.editorial_narrative_focus,
-      advertiser_history_status: advertiserHistoryStatus || 'not_aware',
-      advertiser_history_details: advertiserHistoryDetails?.trim() || null,
-      stage: 'input',
-    })
-    .select('id')
-    .single()
+  const isAperturador = intervieweeType === 'aperturador'
+
+  const row: Record<string, unknown> = {
+    user_id: user.id,
+    interviewee_name: intervieweeName,
+    interviewee_title: intervieweeTitle,
+    interviewee_type: intervieweeType,
+    company_org: companyOrg,
+    company_country: companyCountry,
+    publication: media.name,
+    publication_country: publicationCountry,
+    media_library_id: media.id,
+    media_positioning_snapshot: media.positioning_statement,
+    media_audience_reach_snapshot: media.audience_reach,
+    media_narrative_snapshot: media.editorial_narrative_focus,
+    advertiser_history_status: advertiserHistoryStatus || 'not_aware',
+    advertiser_history_details: advertiserHistoryDetails?.trim() || null,
+    stage: 'input',
+    // The workspace runs research → points → planteo → document by itself
+    // for sessions created from here on (migration 044).
+    auto_pipeline: true,
+  }
+
+  let { data: session, error } = await supabaseAdmin.from('meeting_prep_sessions').insert(row).select('id').single()
+
+  // Before migration 044: the CEO and Government routes still work, without
+  // the new columns; the aperturador route needs the migration.
+  if (error && (isMissing044Column(error) || isPre044CheckViolation(error))) {
+    if (isAperturador) {
+      return NextResponse.json({ error: MIGRATION_044_MESSAGE }, { status: 422 })
+    }
+    const legacy = { ...row }
+    for (const c of MIGRATION_044_COLUMNS) delete legacy[c]
+    ;({ data: session, error } = await supabaseAdmin.from('meeting_prep_sessions').insert(legacy).select('id').single())
+  }
 
   if (error || !session) {
     return NextResponse.json({ error: error?.message || 'Failed to create session' }, { status: 500 })

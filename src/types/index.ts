@@ -413,6 +413,7 @@ export type UsageWorkflow =
   | "meeting_prep_points"
   | "meeting_prep_planteo"
   | "meeting_prep_final_document"
+  | "meeting_prep_document_block"
   | "finance_receipt_extraction"
   | "finance_receipt_verification"
   | "finance_audit_report"
@@ -632,7 +633,9 @@ export interface UserAnalytics {
 }
 
 // ── Commercial Meeting Preparation module ──────────────────────────────────
-export type InterviewType = "company_ceo" | "government_official";
+// 'aperturador' (migration 044): Ministers, heads of industry associations
+// and the like, asked to introduce TRC to a sector's CEOs, not sold a page.
+export type InterviewType = "company_ceo" | "government_official" | "aperturador";
 
 export type MeetingPrepStage =
   | "input"
@@ -651,6 +654,15 @@ export interface MeetingPrepResearchSections {
   organisation?: string;
   motivation_profiles?: string;
   quotes_news?: string;
+}
+
+// The four document blocks the final assembly pass writes (migration 044).
+// Blocks 5 and 6 (presentation points, planteo) come from their own columns.
+export interface MeetingPrepFinalSections {
+  commercial_alert?: string;
+  snapshot?: string;
+  motivation?: string;
+  said_recently?: string;
 }
 
 export interface MeetingPrepSession {
@@ -678,6 +690,9 @@ export interface MeetingPrepSession {
   planteo_prompt_snapshot: string | null;
   final_doc_prompt_snapshot: string | null;
   planteo_library_snapshot: string | null;
+  // Migration 044 — absent (undefined) on a database that hasn't run it.
+  final_sections?: MeetingPrepFinalSections | null;
+  auto_pipeline?: boolean;
   stage: MeetingPrepStage;
   error: string | null;
   tokens_input: number;
