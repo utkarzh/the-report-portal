@@ -54,8 +54,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (error) return error
 
   // Already have a job (or a finished transcript)? Don't resubmit — this makes
-  // retries and double-mounts harmless.
-  if (row!.transcribe_job_id) {
+  // retries and double-mounts harmless. A job that failed is the exception: it can
+  // never recover, so "Try again" has to submit a new one.
+  if (row!.transcribe_job_id && row!.status !== 'failed') {
     return NextResponse.json({ jobId: row!.transcribe_job_id, resumed: true })
   }
 

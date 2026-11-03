@@ -77,6 +77,25 @@ function CopyButton({ text }: { text: string }) {
 
 type RefineSource = 'raw' | 'translated'
 
+const STREAM_LOST_MESSAGE = 'The connection was lost before this finished. Please try again.'
+
+interface StreamEvent {
+  error?: string
+  text?: string
+  usage?: { tokens_total: number; cost_usd: number }
+  // Translate only: how many parts of the transcript are finished.
+  progress?: { done: number; total: number }
+}
+
+// A translation under way, kept apart from the saved one so that unfinished text
+// is never offered to Refine, Copy or Download.
+interface TranslationRun {
+  language: string
+  text: string
+  done: number
+  total: number
+}
+
 interface Props {
   transcription: Transcription
   audioUrl: string | null
@@ -85,19 +104,24 @@ interface Props {
   canDownloadAudio?: boolean
 }
 
-// Reads an SSE stream produced by the transcribe/refine routes, calling
-// onDelta for each text chunk and onUsage for the final usage payload. Resolves
-// when the stream ends; throws on an { error } event or a non-OK response.
+// Reads an SSE stream produced by the transcribe/refine/translate routes, calling
+// onDelta for each text chunk, onUsage for the final usage payload and onEvent for
+// every event. Resolves only on [DONE], which the routes send after saving; throws
+// on an { error } event, a non-OK response, or a stream that stops without [DONE], because then the server was cut off or the connection
+// dropped and nothing says the result was saved.
 async function consumeStream(
   url: string,
   onDelta: (text: string) => void,
   onUsage?: (usage: { tokens_total: number; cost_usd: number }) => void,
   body?: Record<string, unknown>,
+  onEvent?: (event: StreamEvent) => void,
 ) {
   const res = await fetch(url, {
     method: 'POST',
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
+  }).catch(() => {
+    throw new Error(STREAM_LOST_MESSAGE)
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
@@ -109,7 +133,9 @@ async function consumeStream(
   let buffer = ''
 
   while (reader) {
-    const { done, value } = await reader.read()
+    const { done, value } = await reader.read().catch(() => {
+      throw new Error(STREAM_LOST_MESSAGE)
+    })
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
@@ -121,17 +147,20 @@ async function consumeStream(
       if (!line.startsWith('data: ')) continue
       const raw = line.slice(6).trim()
       if (raw === '[DONE]') return
-      let parsed: { error?: string; text?: string; usage?: { tokens_total: number; cost_usd: number } }
+      let parsed: StreamEvent
       try {
         parsed = JSON.parse(raw)
       } catch {
         continue // ignore malformed / partial JSON
       }
       if (parsed.error) throw new Error(parsed.error)
+      onEvent?.(parsed)
       if (parsed.usage && onUsage) onUsage(parsed.usage)
       else if (parsed.text) onDelta(parsed.text)
     }
   }
+
+  throw new Error(STREAM_LOST_MESSAGE)
 }
 
 export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmin = false, canDownloadAudio = false }: Props) {
@@ -156,16 +185,24 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   const [refined, setRefined] = useState(transcription.refined_transcript || '')
   const [transcribing, setTranscribing] = useState(false)
   const [refining, setRefining] = useState(false)
-  const [transcribeError, setTranscribeError] = useState<string | null>(null)
+  // A failed row needs its Try again on a fresh page load too, not only in the
+  // visit where it failed.
+  const [transcribeError, setTranscribeError] = useState<string | null>(
+    transcription.status === 'failed' && !transcription.raw_transcript
+      ? 'Transcription failed. Please try again.'
+      : null,
+  )
   const [refineError, setRefineError] = useState<string | null>(null)
   const [waitSecs, setWaitSecs] = useState(0)
-  // Translation (single slot). `translatedLang` is the language of the saved
-  // translation; `selectedLang` is the dropdown choice for the next translate.
+  // Translation (single slot). `translated` is the saved translation and
+  // `translatedLang` its language; `selectedLang` is the dropdown choice for the
+  // next translate. `translationRun` is a run under way.
   const [translated, setTranslated] = useState(transcription.translated_transcript || '')
   const [translatedLang, setTranslatedLang] = useState<string | null>(transcription.translation_language)
   const [selectedLang, setSelectedLang] = useState<TranslationLanguage>(
     (transcription.translation_language as TranslationLanguage) || TRANSLATION_LANGUAGES[0],
   )
+  const [translationRun, setTranslationRun] = useState<TranslationRun | null>(null)
   const [translating, setTranslating] = useState(false)
   const [translateError, setTranslateError] = useState<string | null>(null)
   const [showLangPicker, setShowLangPicker] = useState(false)
@@ -196,8 +233,11 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   const [refinedIsPrimary, setRefinedIsPrimary] = useState(() => Boolean(transcription.refined_transcript))
   // Download picker — which transcript variant is being downloaded.
   const [downloadVariant, setDownloadVariant] = useState<'raw' | 'translated' | 'refined' | null>(null)
+  const hasTranslation = Boolean(translated)
+  const shownTranslation = translationRun ? translationRun.text : translated
+  const shownTranslationLang = translationRun ? translationRun.language : translatedLang
   const rawScroll = useStickToBottom<HTMLDivElement>(raw.length)
-  const translatedScroll = useStickToBottom<HTMLDivElement>(translated.length)
+  const translatedScroll = useStickToBottom<HTMLDivElement>(shownTranslation.length)
   const refinedScroll = useStickToBottom<HTMLDivElement>(refined.length)
 
   // Auto-start transcription for a record that still has pending chunks.
@@ -301,6 +341,8 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
     setRefineSource(source)
     setRefineError(null)
     setRefining(true)
+    // A refine that fails saves nothing, so the screen goes back to what's saved.
+    const savedRefined = refined
     setRefined('')
     let acc = ''
     try {
@@ -317,6 +359,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
       setRawCollapsed(true)
       setTranslatedCollapsed(true)
     } catch (e) {
+      setRefined(savedRefined)
       setRefineError(e instanceof Error ? e.message : 'Refining failed. Please try again.')
     } finally {
       setRefining(false)
@@ -367,24 +410,38 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   }
 
   // Translate the raw transcript into the selected language (single slot —
-  // overwrites any previous translation). Streams like refine.
+  // replaces any previous translation once finished). The server translates the
+  // parts side by side and sends each one here once it has passed its check.
   async function startTranslate() {
     setTranslateError(null)
     setTranslating(true)
-    setTranslated('')
+    const language = selectedLang
     let acc = ''
+    let progress = { done: 0, total: 0 }
+    setTranslationRun({ language, text: '', ...progress })
     try {
       await consumeStream(
         `/api/transcriptions/${transcription.id}/translate`,
-        (text) => { acc += text; setTranslated(acc) },
+        (text) => {
+          acc += text
+          setTranslationRun({ language, text: acc, ...progress })
+        },
         (u) => setUsage(u),
-        { language: selectedLang },
+        { language },
+        (event) => {
+          if (event.progress) {
+            progress = event.progress
+            setTranslationRun({ language, text: acc, ...progress })
+          }
+        },
       )
-      setTranslatedLang(selectedLang)
+      setTranslated(acc)
+      setTranslatedLang(language)
       router.refresh()
     } catch (e) {
       setTranslateError(e instanceof Error ? e.message : 'Translation failed. Please try again.')
     } finally {
+      setTranslationRun(null)
       setTranslating(false)
     }
   }
@@ -397,7 +454,6 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
 
   const rawReady = Boolean(raw) && !transcribing
   const hasRefined = Boolean(refined)
-  const hasTranslation = Boolean(translated)
 
   // Fact-checking reminder — pops whenever a Claude refine or translate starts.
   const disclaimer = useAiDisclaimer(refining || translating)
@@ -622,13 +678,15 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
             >
               <ChevronDown size={14} className={`transition-transform ${translatedCollapsed ? '-rotate-90' : ''}`} />
               <Languages size={13} />
-              <span>Translated transcript{translatedLang ? ` · ${translatedLang}` : ''}</span>
+              <span>Translated transcript{shownTranslationLang ? ` · ${shownTranslationLang}` : ''}</span>
             </button>
             <div className="flex items-center gap-1">
               {translating ? (
                 <span className="flex items-center gap-2 pr-2 text-xs text-gray-500">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#c8973f]" />
-                  Translating…
+                  {translationRun && translationRun.total > 1
+                    ? `Translating… ${translationRun.done} of ${translationRun.total} parts done`
+                    : 'Translating…'}
                 </span>
               ) : hasTranslation ? (
                 <>
@@ -654,9 +712,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               onWheel={translatedScroll.onWheel}
             className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto whitespace-pre-wrap px-5 py-4 font-mono text-[13px] leading-6 text-gray-600"
           >
-            {translated ? (
+            {shownTranslation ? (
               <>
-                {translated}
+                {shownTranslation}
                 {translating && <span className="cursor-blink select-none text-gray-300">▋</span>}
               </>
             ) : translating ? (
