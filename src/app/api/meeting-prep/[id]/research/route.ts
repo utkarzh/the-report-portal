@@ -4,7 +4,7 @@ import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, MEETING_PREP_RESEARCH_RESERVE, HAIKU_PRICING } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
-import { parseResearchSections, researchSectionsComplete, interviewTypeLabel } from '@/lib/meeting-prep'
+import { parseResearchSections, researchSectionsComplete, interviewTypePromptLabel } from '@/lib/meeting-prep'
 import { claimStage } from '@/lib/meeting-prep-server'
 import type { MeetingPrepResearchSections } from '@/types'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
@@ -47,7 +47,7 @@ Search silently — do not narrate your plan or announce what you're about to se
 function subjectBlock(session: Record<string, unknown>) {
   return `--- MEETING DETAILS ---
 Interviewee: ${session.interviewee_name} (${session.interviewee_title})
-Interviewee Type: ${interviewTypeLabel(String(session.interviewee_type))}
+Interviewee Type: ${interviewTypePromptLabel(String(session.interviewee_type))}
 Company / Organisation: ${session.company_org}
 Country of the Company: ${session.company_country}
 Publication: ${session.publication}

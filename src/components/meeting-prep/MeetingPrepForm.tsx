@@ -7,7 +7,7 @@ import Select from '@/components/ui/Select'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import MediaSelect from '@/components/ui/MediaSelect'
-import { INTERVIEW_TYPES } from '@/lib/meeting-prep'
+import { SELECTABLE_INTERVIEW_TYPES } from '@/lib/meeting-prep'
 import { hasMeetingPrepProfile, toMediaOption } from '@/lib/media-library'
 import type { MediaLibraryEntry } from '@/types'
 
@@ -155,7 +155,7 @@ export default function MeetingPrepForm({ mediaLibrary, isAtLimit }: Props) {
 
       <Select
         label="Interviewee Type *"
-        options={INTERVIEW_TYPES.map(t => ({ value: t.value, label: t.label }))}
+        options={SELECTABLE_INTERVIEW_TYPES.map(t => ({ value: t.value, label: t.label }))}
         value={form.intervieweeType}
         onChange={(e) => handleChange('intervieweeType', e.target.value)}
         required

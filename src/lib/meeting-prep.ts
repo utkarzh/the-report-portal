@@ -6,18 +6,43 @@ import type { InterviewType, MeetingPrepPromptKey, MeetingPrepResearchSections }
 export const MEETING_PREP_SAMPLE_AUDIO_BUCKET = 'meeting-prep-samples'
 export const MEETING_PREP_SAMPLE_AUDIO_PATH = 'planteo-example.mp3'
 
-export const INTERVIEW_TYPES: { value: InterviewType; label: string }[] = [
-  { value: 'company_ceo', label: 'Company Executive' },
-  { value: 'government_official', label: 'Government Official' },
-  { value: 'aperturador', label: 'Minister / Head of Industry Association (apertura)' },
+// `label` is what people see. `promptLabel` is what the AI is told: the prompts
+// refer to these names, so renaming an option on screen must not change it.
+//
+// `hidden` takes a type off the New Meeting Prep dropdown and the admin Planteo
+// Library list, and stops new meetings being created with it. Past meetings of
+// that type keep working. Government Official was hidden at Rafa's request
+// (5 Nov 2026); to bring it back, delete its `hidden: true`. Nothing else is
+// needed, no migration, and its Planteo Library text is still in place.
+export const INTERVIEW_TYPES: { value: InterviewType; label: string; promptLabel: string; hidden?: boolean }[] = [
+  { value: 'company_ceo', label: 'CEO', promptLabel: 'Company Executive' },
+  { value: 'government_official', label: 'Government Official', promptLabel: 'Government Official', hidden: true },
+  {
+    value: 'aperturador',
+    label: 'Minister / Head of Industry Association etc. (apertura)',
+    promptLabel: 'Minister / Head of Industry Association (apertura)',
+  },
 ]
 
+export const SELECTABLE_INTERVIEW_TYPES = INTERVIEW_TYPES.filter((t) => !t.hidden)
+
+// True for every type a meeting can have, hidden ones included, so past
+// meetings and the hidden type's Planteo Library page keep working.
 export function isInterviewType(v: unknown): v is InterviewType {
-  return v === 'company_ceo' || v === 'government_official' || v === 'aperturador'
+  return INTERVIEW_TYPES.some((t) => t.value === v)
+}
+
+// Only the types a new meeting can be created with.
+export function isSelectableInterviewType(v: unknown): v is InterviewType {
+  return SELECTABLE_INTERVIEW_TYPES.some((t) => t.value === v)
 }
 
 export function interviewTypeLabel(type: string): string {
   return INTERVIEW_TYPES.find((t) => t.value === type)?.label ?? type
+}
+
+export function interviewTypePromptLabel(type: string): string {
+  return INTERVIEW_TYPES.find((t) => t.value === type)?.promptLabel ?? type
 }
 
 // The CEO and aperturador formulas are fixed scripts the client wants spoken

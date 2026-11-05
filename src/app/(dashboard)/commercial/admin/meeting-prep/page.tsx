@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
-import { INTERVIEW_TYPES, MEETING_PREP_PROMPT_KEYS } from '@/lib/meeting-prep'
+import { SELECTABLE_INTERVIEW_TYPES, MEETING_PREP_PROMPT_KEYS } from '@/lib/meeting-prep'
 import { mediaLibraryHref, hasMeetingPrepProfile } from '@/lib/media-library'
 
 export default async function MeetingPrepAdminPage() {
@@ -103,7 +103,7 @@ export default async function MeetingPrepAdminPage() {
               and logged.
             </p>
             <div className="flex flex-col gap-2 mt-4">
-              {INTERVIEW_TYPES.map(({ value, label }) => (
+              {SELECTABLE_INTERVIEW_TYPES.map(({ value, label }) => (
                 <Link
                   key={value}
                   href={`/commercial/admin/meeting-prep/planteo-library/${value}`}

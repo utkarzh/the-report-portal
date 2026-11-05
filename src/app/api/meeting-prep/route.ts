@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
-import { isInterviewType } from '@/lib/meeting-prep'
+import { isSelectableInterviewType } from '@/lib/meeting-prep'
 import { isMissing044Column, isPre044CheckViolation, MIGRATION_044_COLUMNS, MIGRATION_044_MESSAGE } from '@/lib/meeting-prep-server'
 import { findMediaEntry } from '@/lib/media-library-server'
 import { hasMeetingPrepProfile } from '@/lib/media-library'
@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
   if (!intervieweeName || !intervieweeTitle || !companyOrg || !companyCountry || !publication || !publicationCountry) {
     return NextResponse.json({ error: 'All fields are required.' }, { status: 400 })
   }
-  if (!isInterviewType(intervieweeType)) {
-    return NextResponse.json({ error: 'Invalid interviewee type.' }, { status: 400 })
+  if (!isSelectableInterviewType(intervieweeType)) {
+    return NextResponse.json({ error: 'Please choose one of the interviewee types listed.' }, { status: 400 })
   }
   // Optional: reps often genuinely don't know, so a blank answer defaults to
   // 'not_aware' rather than forcing a guess just to submit the form.
