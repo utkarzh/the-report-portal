@@ -12,8 +12,8 @@ marked.use({ gfm: true, breaks: true })
 
 // Commercial Meeting Preparation .docx template. Unlike the Business Case /
 // Editorial Brief template, this document is always the same fixed shape
-// (Commercial Alert -> Snapshot -> Motivation Ranking -> Quotes & News -> 3
-// Presentation Points -> Planteo, composed by meeting-prep-document.ts), so
+// (Recommended Space & Commercial Alerts -> Three Points -> Planteo -> Snapshot
+// -> Motivation Ranking -> Quotes & News, composed by meeting-prep-document.ts), so
 // there's no numbered-heading cover split or landscape-appendix logic to
 // handle — just a simple cover block followed by the full body, reusing the
 // shared markdown->docx renderer.

@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { buildMeetingPrepDocx } from '@/lib/meeting-prep-docx'
 import { composeFinalDocument } from '@/lib/meeting-prep-document'
-import { currentFinalSections } from '@/lib/meeting-prep-server'
+import { currentFinalSections, loadAdvertiserRecord } from '@/lib/meeting-prep-server'
 import { joinIdentityForFilename, sanitizeFilename } from '@/lib/docx-standard-format'
 import type { MeetingPrepSession } from '@/types'
 
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   const markdown = Object.keys(sections).length
     ? composeFinalDocument(
         { ...session, final_sections: sections },
-        { resourceUrl: (r) => `${origin}/api/meeting-prep/resources/${r}/download` },
+        { resourceUrl: (r) => `${origin}/api/meeting-prep/resources/${r}/download`, advertiser: await loadAdvertiserRecord(session) },
       )
     : session.final_output
   if (!markdown) {

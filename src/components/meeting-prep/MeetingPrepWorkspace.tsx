@@ -7,16 +7,18 @@ import {
 } from 'lucide-react'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DeleteMeetingPrepButton from '@/components/meeting-prep/DeleteMeetingPrepButton'
-import MarkdownBlock, { BlockPlaceholder } from '@/components/meeting-prep/DocumentBlock'
+import MarkdownBlock, { BlockPlaceholder, renderMarkdown } from '@/components/meeting-prep/DocumentBlock'
+import MobileDetailsToggle from '@/components/layout/MobileDetailsToggle'
 import PointsBlock from '@/components/meeting-prep/PointsBlock'
 import PlanteoBlock from '@/components/meeting-prep/PlanteoBlock'
 import PipelineProgress, { type PipelineStep } from '@/components/meeting-prep/PipelineProgress'
 import { interviewTypeLabel, researchSectionsComplete } from '@/lib/meeting-prep'
 import {
-  FINAL_BLOCKS, finalBlockTitle, finalSectionsOf, POINTS_TITLE, PLANTEO_TITLE,
+  COLLAPSIBLE_BLOCKS, MINISTER_GUIDANCE, POINTS_NUMBER, PLANTEO_NUMBER, advertiserRecordMarkdown, finalBlockTitle, finalSectionsOf, showsMinisterGuidance, POINTS_TITLE, PLANTEO_TITLE, type AdvertiserRecord,
   type FinalBlockKey, type ScriptResource,
 } from '@/lib/meeting-prep-document'
 import type { MeetingPrepSession, MeetingPrepResearchSections, MeetingPrepStage } from '@/types'
+import { useKeepScreenOn } from '@/lib/use-mobile'
 
 type Step = 'research' | 'points' | 'planteo' | 'final'
 
@@ -55,9 +57,10 @@ interface Props {
   isAdmin: boolean
   recordingUrl: string | null
   samples: Record<ScriptResource, boolean>
+  advertiser: AdvertiserRecord
 }
 
-export default function MeetingPrepWorkspace({ session: initialSession, isAdmin, recordingUrl, samples }: Props) {
+export default function MeetingPrepWorkspace({ session: initialSession, isAdmin, recordingUrl, samples, advertiser }: Props) {
   // One copy of the session drives everything; sRef mirrors it synchronously
   // for the pipeline loop, which can't wait for a re-render between steps.
   const [s, setS] = useState<MeetingPrepSession>(initialSession)
@@ -111,9 +114,14 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
   const [researchUndo, setResearchUndo] = useState<Partial<Record<keyof MeetingPrepResearchSections, string>>>({})
   // Open by default: "everything else disappears from view, all the
   // research… I'm not sure I'm liking this" (client, SCRUM-47).
-  const [researchOpen, setResearchOpen] = useState(true)
+  // Blocks 4–6 and the research, once opened. Closed by default.
+  const [openBlocks, setOpenBlocks] = useState<Record<string, boolean>>({})
+  const toggleBlock = (blockId: string) => setOpenBlocks((o) => ({ ...o, [blockId]: !o[blockId] }))
+  const researchOpen = Boolean(openBlocks['block-research'])
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   const pipelineActive = running !== null
+  useKeepScreenOn(pipelineActive)
   const anyBusy = pipelineActive || blockBusy !== null || pointBusy !== null || planteoBusy || researchBusy !== null
   const disclaimer = useAiDisclaimer(pipelineActive)
 
@@ -388,6 +396,10 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
         setPlanteoUndo(prevPlanteo)
         addUsage(p.data.usage as { tokens_total?: number; cost_usd?: number })
         note = `${feedback}\n\n(The internal commercial recommendation in the approved planteo has just been updated for this request: show it exactly.)`
+      } else if (key === 'commercial_alert' && !opts.afterRecommendation) {
+        // The offer didn't change this time, so undoing this rewrite must not
+        // roll it back to an earlier one.
+        setPlanteoUndo(null)
       }
       const r = await postJson('/document/regenerate', { block: key, feedback: note })
       if (!r.ok) throw new Error((r.data.error as string) || 'This section couldn’t be rewritten. Please try again.')
@@ -405,6 +417,8 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
     const prev = blockUndo[key]
     if (prev === undefined) return
     await saveBlock(key, prev)
+    // The offer behind Block 1 isn't shown any more, so it has to follow its undo.
+    if (key === 'commercial_alert' && type === 'company_ceo') await undoPlanteo()
   }
 
   async function savePoint(index: number, text: string) {
@@ -531,39 +545,27 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
     writing(step) ? `Writing ${what}…` : running ? `${what[0].toUpperCase()}${what.slice(1)} comes next.` : `Not written yet.`
 
   const NAV_LABELS: Record<FinalBlockKey, string> = {
-    commercial_alert: 'Commercial Alert',
+    commercial_alert: 'Space & alerts',
     snapshot: 'Snapshot',
     motivation: 'Motivations',
     said_recently: 'Said recently',
   }
+  // Printed by code from the tracker: the record never goes through the model.
+  const advertiserRecord = (
+    <div className="prose-research rounded-xl bg-[#faf9f7] p-4 text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: renderMarkdown(advertiserRecordMarkdown(advertiser, type)) }} />
+  )
+
   const nav: { id: string; label: string }[] = [
-    ...FINAL_BLOCKS.map((b) => ({ id: `block-${b.key}`, label: NAV_LABELS[b.key] })),
-    { id: 'block-points', label: 'Points' },
+    { id: 'block-commercial_alert', label: NAV_LABELS.commercial_alert },
+    { id: 'block-points', label: 'Why you' },
     { id: 'block-planteo', label: 'Planteo' },
+    ...COLLAPSIBLE_BLOCKS.map((b) => ({ id: `block-${b.key}`, label: NAV_LABELS[b.key] })),
     { id: 'block-research', label: 'Full research' },
   ]
 
-  return (
-    <div className="flex h-full bg-[#f0efec]">
-      <AiDisclaimerModal open={disclaimer.open} onClose={disclaimer.dismiss} />
-
-      {/* Subject side panel */}
-      <aside className="hidden w-64 flex-shrink-0 flex-col border-r border-[#e5e3df] bg-white lg:flex">
-        <div className="flex-1 overflow-y-auto p-5">
-          <Link href="/commercial/meeting-preparation" className="inline-flex items-center gap-1.5 text-xs text-gray-400 transition-colors hover:text-gray-700">
-            <ArrowLeft size={13} />
-            <span>Meeting Preparation</span>
-          </Link>
-
-          <div className="mt-5 flex items-center gap-2.5">
-            <div className="flex-shrink-0 rounded-lg bg-black p-2 text-white">
-              <CalendarClock size={15} />
-            </div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Meeting prep</p>
-          </div>
-          <h1 className="mt-3 text-sm font-semibold leading-snug text-gray-900">{s.interviewee_name}</h1>
-
-          <div className="mt-5 space-y-3.5">
+  const subjectDetails = (
+    <>
+          <div className="space-y-3.5">
             <InfoRow label="Title" value={s.interviewee_title} />
             <InfoRow label="Meeting type" value={interviewTypeLabel(type)} />
             <InfoRow label={type === 'company_ceo' ? 'Company' : 'Organisation'} value={s.company_org} />
@@ -606,6 +608,30 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
               </div>
             </div>
           )}
+    </>
+  )
+
+  return (
+    <div className="bg-[#f0efec] lg:flex lg:h-full">
+      <AiDisclaimerModal open={disclaimer.open} onClose={disclaimer.dismiss} />
+
+      {/* Subject side panel */}
+      <aside className="hidden w-64 flex-shrink-0 flex-col border-r border-[#e5e3df] bg-white lg:flex">
+        <div className="flex-1 overflow-y-auto p-5">
+          <Link href="/commercial/meeting-preparation" className="inline-flex items-center gap-1.5 touch:py-2.5 text-xs text-gray-400 transition-colors hover:text-gray-700">
+            <ArrowLeft size={13} />
+            <span>Meeting Preparation</span>
+          </Link>
+
+          <div className="mt-5 flex items-center gap-2.5">
+            <div className="flex-shrink-0 rounded-lg bg-black p-2 text-white">
+              <CalendarClock size={15} />
+            </div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Meeting prep</p>
+          </div>
+          <h1 className="mt-3 text-sm font-semibold leading-snug text-gray-900">{s.interviewee_name}</h1>
+
+          <div className="mt-5">{subjectDetails}</div>
         </div>
 
         {isAdmin && (
@@ -616,12 +642,12 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
       </aside>
 
       {/* The document: one scroll, every block always in view */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="sticky top-0 z-10 border-b border-[#e5e3df] bg-[#f0efec]/95 backdrop-blur-sm">
-          <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-2.5 sm:px-6">
+      <div className="min-w-0 lg:flex-1 lg:overflow-y-auto">
+        <div className="sticky top-14 z-10 border-b border-[#e5e3df] bg-[#f0efec]/95 backdrop-blur-sm lg:top-0">
+          <div className="mx-auto flex max-w-3xl items-center gap-3 px-3 py-2 sm:px-6 sm:py-2.5">
             <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
               {nav.map((n) => (
-                <a key={n.id} href={`#${n.id}`} className="flex-shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-900">
+                <a key={n.id} href={`#${n.id}`} onClick={() => setOpenBlocks((o) => ({ ...o, [n.id]: true }))} className="flex-shrink-0 rounded-md px-2.5 py-1.5 touch:py-2.5 text-[11px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-900">
                   {n.label}
                 </a>
               ))}
@@ -629,20 +655,34 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
             {complete ? (
               <a
                 href={`/api/meeting-prep/${id}/download`}
-                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-gray-900"
+                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-black px-3 py-1.5 touch:py-2.5 text-xs font-medium text-white shadow-sm hover:bg-gray-900"
               >
-                <Download size={13} /> Download .docx
+                <Download size={13} /> <span className="hidden sm:inline">Download .docx</span><span className="sm:hidden">.docx</span>
               </a>
             ) : (
-              <span className="flex-shrink-0 text-[11px] text-gray-400">Download when ready</span>
+              <span className="hidden flex-shrink-0 text-[11px] text-gray-400 sm:inline">Download when ready</span>
             )}
           </div>
         </div>
 
-        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
-          <Link href="/commercial/meeting-preparation" className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 lg:hidden">
-            <ArrowLeft size={13} /> Meeting Preparation
-          </Link>
+        <div className="mx-auto flex max-w-3xl flex-col gap-4 px-3 py-4 sm:gap-5 sm:px-6 sm:py-6">
+          <div className="flex items-center justify-between gap-3 lg:hidden">
+            <Link href="/commercial/meeting-preparation" className="inline-flex items-center gap-1.5 touch:py-2.5 text-xs text-gray-400 hover:text-gray-700">
+              <ArrowLeft size={13} /> Meeting Preparation
+            </Link>
+            <MobileDetailsToggle open={detailsOpen} onToggle={() => setDetailsOpen((v) => !v)} />
+          </div>
+
+          {detailsOpen && (
+            <div className="rounded-2xl border border-[#e5e3df] bg-white p-4 lg:hidden">
+              {subjectDetails}
+              {isAdmin && (
+                <div className="mt-5 border-t border-[#e5e3df] pt-4">
+                  <DeleteMeetingPrepButton sessionId={s.id} title={s.interviewee_name} redirectTo="/commercial/meeting-preparation" />
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">{interviewTypeLabel(type)}</p>
@@ -704,41 +744,35 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
             </div>
           )}
 
-          {/* 1–4: the blocks the document pass writes */}
-          {FINAL_BLOCKS.map((b) => (
-            <MarkdownBlock
-              key={b.key}
-              id={`block-${b.key}`}
-              number={b.number}
-              title={finalBlockTitle(b.key, type)}
-              text={finalSections[b.key] || ''}
-              placeholder={complete ? undefined : <BlockPlaceholder writing={writing('final')} label={docLabel('final', 'this section')} />}
-              disabled={anyBusy && blockBusy !== b.key}
-              busy={blockBusy === b.key}
-              canUndo={blockUndo[b.key] !== undefined}
-              onSave={(t) => saveBlock(b.key, t)}
-              onRegenerate={(fb) => regenerateBlock(b.key, fb)}
-              onUndo={() => undoBlock(b.key)}
-              emptyAction="Write this section"
-              regeneratePlaceholder={
-                b.key === 'commercial_alert'
-                  ? type === 'company_ceo' ? 'e.g. Recommend a Half Page: revenue is closer to $80M.' : 'e.g. Add that they took part in the 2024 report.'
-                  : b.key === 'said_recently'
-                    ? 'e.g. Find a more recent quote on their export plans.'
-                    : 'e.g. Shorter, and lead with their international expansion.'
-              }
-              regenerateHint={
-                b.key === 'commercial_alert' && type === 'company_ceo'
-                  ? 'A request about the offer also updates the recommendation the planteo uses, so both stay the same.'
-                  : 'Searches the web only if your request needs information the research doesn’t have.'
-              }
-            />
-          ))}
+          {/* 1: what to pitch, always open */}
+          <MarkdownBlock
+            id="block-commercial_alert"
+            number={1}
+            title={finalBlockTitle('commercial_alert', type)}
+            text={finalSections.commercial_alert || ''}
+            lead={showsMinisterGuidance(type) ? (
+              <div className="mb-4 flex flex-col gap-3">
+                <div className="prose-research rounded-xl border-l-4 border-[#c8973f] bg-[#fbf7ed] p-4 text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: renderMarkdown(MINISTER_GUIDANCE) }} />
+                {advertiserRecord}
+              </div>
+            ) : undefined}
+            trail={showsMinisterGuidance(type) ? undefined : <div className="mt-4">{advertiserRecord}</div>}
+            placeholder={complete ? undefined : <BlockPlaceholder writing={writing('final')} label={docLabel('final', 'this section')} />}
+            disabled={anyBusy && blockBusy !== 'commercial_alert'}
+            busy={blockBusy === 'commercial_alert'}
+            canUndo={blockUndo.commercial_alert !== undefined}
+            onSave={(t) => saveBlock('commercial_alert', t)}
+            onRegenerate={(fb) => regenerateBlock('commercial_alert', fb)}
+            onUndo={() => undoBlock('commercial_alert')}
+            emptyAction="Write this section"
+            regeneratePlaceholder={type === 'company_ceo' ? 'e.g. Recommend a Half Page: revenue is closer to $80M.' : 'e.g. Add that they took part in the 2024 report.'}
+            regenerateHint="Searches the web only if your request needs information the research doesn’t have."
+          />
 
-          {/* 5: presentation points */}
+          {/* 2: presentation points, always open */}
           <PointsBlock
             id="block-points"
-            number={5}
+            number={POINTS_NUMBER}
             title={POINTS_TITLE}
             points={points}
             placeholder={<BlockPlaceholder writing={writing('points')} label={docLabel('points', 'the three presentation points')} />}
@@ -752,11 +786,11 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
             onUndoAll={undoAllPoints}
           />
 
-          {/* 6: planteo, with the recording directly under the script */}
+          {/* 3: planteo, with the recording directly under the script, always open */}
           {planteo ? (
             <PlanteoBlock
               id="block-planteo"
-              number={6}
+              number={PLANTEO_NUMBER}
               title={PLANTEO_TITLE}
               type={type}
               planteoOutput={planteo}
@@ -774,18 +808,42 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
           ) : (
             <section id="block-planteo" className="scroll-mt-20 rounded-2xl border border-[#c8973f]/35 bg-white p-5 shadow-sm sm:p-6">
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-black text-xs font-semibold text-white">6</span>
+                <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-black text-xs font-semibold text-white">{PLANTEO_NUMBER}</span>
                 <h2 className="text-base font-semibold leading-tight text-gray-900">{PLANTEO_TITLE}</h2>
               </div>
               <div className="mt-4"><BlockPlaceholder writing={writing('planteo')} label={docLabel('planteo', 'the planteo')} /></div>
             </section>
           )}
 
-          {/* The research behind the document: always kept, never hidden away */}
+          {/* 4–6: collapsed until opened, as asked by the CEO */}
+          {COLLAPSIBLE_BLOCKS.map((b) => (
+            <MarkdownBlock
+              key={b.key}
+              id={`block-${b.key}`}
+              number={b.number}
+              title={finalBlockTitle(b.key, type)}
+              subtitle={!finalSections[b.key] && writing('final') ? 'Being written…' : undefined}
+              collapsed={!openBlocks[`block-${b.key}`]}
+              onToggle={() => toggleBlock(`block-${b.key}`)}
+              text={finalSections[b.key] || ''}
+              placeholder={complete ? undefined : <BlockPlaceholder writing={writing('final')} label={docLabel('final', 'this section')} />}
+              disabled={anyBusy && blockBusy !== b.key}
+              busy={blockBusy === b.key}
+              canUndo={blockUndo[b.key] !== undefined}
+              onSave={(t) => saveBlock(b.key, t)}
+              onRegenerate={(fb) => regenerateBlock(b.key, fb)}
+              onUndo={() => undoBlock(b.key)}
+              emptyAction="Write this section"
+              regeneratePlaceholder={b.key === 'said_recently' ? 'e.g. Find a more recent quote on their export plans.' : 'e.g. Shorter, and lead with their international expansion.'}
+              regenerateHint="Searches the web only if your request needs information the research doesn’t have."
+            />
+          ))}
+
+          {/* The research behind the document */}
           <section id="block-research" className="scroll-mt-20 rounded-2xl border border-[#e5e3df] bg-white/70 shadow-sm">
             <button
               type="button"
-              onClick={() => setResearchOpen((v) => !v)}
+              onClick={() => toggleBlock('block-research')}
               className="flex w-full items-center justify-between gap-3 p-5 text-left sm:p-6"
               aria-expanded={researchOpen}
             >

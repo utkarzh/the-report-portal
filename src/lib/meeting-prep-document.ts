@@ -5,11 +5,16 @@ import { splitPlanteoOutput, hasFixedScript } from '@/lib/meeting-prep'
 // "generate the document at once … for each block you put regenerate, edit …
 // just have everything in view"). This file owns its shape, shared by the
 // workspace (screen), the final-document route (what the model writes) and
-// the .docx export, so the three can't drift:
-//   1–4  written by the final assembly pass, stored per block in
-//        meeting_prep_sessions.final_sections (FINAL_BLOCKS below);
-//   5    the presentation points, from presentation_points;
-//   6    the planteo, from planteo_output (the Planteo Library script).
+// the .docx export, so the three can't drift.
+//
+// Order set by the CEO (Nov 2026): the three blocks a rep needs in the room
+// come first and open; the rest collapse, in their previous order.
+//   1    Recommended Space to Pitch and Commercial Alerts
+//   2    the presentation points, from presentation_points
+//   3    the planteo, from planteo_output (the Planteo Library script)
+//   4–6  Snapshot, Motivation, What They've Said
+// Blocks 1 and 4–6 are written by the final assembly pass, stored per block in
+// meeting_prep_sessions.final_sections (FINAL_BLOCKS below).
 // Client-safe: no server imports.
 
 export type FinalBlockKey = keyof MeetingPrepFinalSections
@@ -18,11 +23,14 @@ export type FinalBlockKey = keyof MeetingPrepFinalSections
 // section's own title repeated at the top of its body (narrower: "### Quotes"
 // opens What They've Said Recently and must stay).
 export const FINAL_BLOCKS: { key: FinalBlockKey; marker: string; number: number; heading: RegExp; title: RegExp }[] = [
-  { key: 'commercial_alert', marker: 'COMMERCIAL_ALERT', number: 1, heading: /commercial alert/i, title: /commercial alert/i },
-  { key: 'snapshot', marker: 'SNAPSHOT', number: 2, heading: /snapshot/i, title: /snapshot/i },
-  { key: 'motivation', marker: 'MOTIVATION', number: 3, heading: /motivation/i, title: /motivation profile/i },
-  { key: 'said_recently', marker: 'SAID_RECENTLY', number: 4, heading: /said recently|quotes|news/i, title: /said recently/i },
+  { key: 'commercial_alert', marker: 'COMMERCIAL_ALERT', number: 1, heading: /commercial alert/i, title: /commercial alert|recommended space/i },
+  { key: 'snapshot', marker: 'SNAPSHOT', number: 4, heading: /snapshot/i, title: /snapshot/i },
+  { key: 'motivation', marker: 'MOTIVATION', number: 5, heading: /motivation/i, title: /motivation profile/i },
+  { key: 'said_recently', marker: 'SAID_RECENTLY', number: 6, heading: /said recently|quotes|news/i, title: /said recently/i },
 ]
+
+// The blocks after the planteo, which start collapsed.
+export const COLLAPSIBLE_BLOCKS = FINAL_BLOCKS.filter((b) => b.key !== 'commercial_alert')
 
 export function isFinalBlockKey(v: unknown): v is FinalBlockKey {
   return FINAL_BLOCKS.some((b) => b.key === v)
@@ -31,7 +39,7 @@ export function isFinalBlockKey(v: unknown): v is FinalBlockKey {
 export function finalBlockTitle(key: FinalBlockKey, type: InterviewType | string): string {
   switch (key) {
     case 'commercial_alert':
-      return 'Commercial Alert'
+      return 'Recommended Space to Pitch and Commercial Alerts'
     case 'snapshot':
       return type === 'company_ceo' ? 'Interviewee & Company Snapshot' : 'Interviewee & Organisation Snapshot'
     case 'motivation':
@@ -41,8 +49,10 @@ export function finalBlockTitle(key: FinalBlockKey, type: InterviewType | string
   }
 }
 
-export const POINTS_TITLE = '3 Presentation Points'
+export const POINTS_TITLE = 'Three Points for Your Presentation (“Why You”)'
+export const POINTS_NUMBER = 2
 export const PLANTEO_TITLE = 'Planteo Build-Up'
+export const PLANTEO_NUMBER = 3
 // The client's words: "Deliver this script for the planteo … this is exactly
 // what they have to say, and they are missing it."
 export const DELIVER_SCRIPT_TITLE = 'Deliver this exact script for the planteo'
@@ -60,13 +70,64 @@ ${FINAL_BLOCKS.map((b) => `<<<BLOCK:${b.marker}>>>`).join('\n')}
 Write the section's content directly under its marker. Do not repeat the section title as a heading. Inside a section use ### sub-headings only where they help (for example "### Quotes" and "### News"). Write nothing after the fourth section.`
 }
 
-// The aperturador route sells nothing to the interviewee ("we're not
-// offering him a full page… what we want out of him is to get in touch with
-// these CEOs"), so the admin prompt's CEO recommendation rules can't apply
-// to its Commercial Alert.
+// The CEO's standing guidance, word for word, shown at the top of Block 1 for
+// every meeting that isn't with a company CEO ("the default text to put in this
+// block for everyone"). Printed by code, so no model or edit can change it.
+export const MINISTER_GUIDANCE = `As a general rule, aim for aperturas (referrals) to companies and other entities. See below in this page how this is done.
+
+If you are meeting a Prime Minister, President or any other individual you believe may have the authority to sign a deal directly (e.g. the Ministry has been a previous advertiser), always consult your manager. There may be exceptions where we pursue a direct pitch to the Minister instead of company aperturas. There are also hybrid approaches where we can pursue both.`
+
+export function showsMinisterGuidance(type: InterviewType | string): boolean {
+  return type !== 'company_ceo'
+}
+
+// Ministers and heads of associations aren't sold a page by default, so the
+// admin prompt's CEO recommendation rules can't apply to their Commercial
+// Alert, and code already prints the guidance and advertiser record above it.
 export function meetingTypeNoteForDocument(type: string): string {
-  if (type !== 'aperturador') return ''
-  return `\n\n--- MEETING TYPE: APERTURA (OPENING) MEETING ---\nThe interviewee is a Minister, the head of an industry association or a similar leader. No page, size or price is offered to them, so the CEO recommendation rules do not apply. In the Commercial Alert, state that this is an apertura meeting: the objective is for the interviewee to introduce TRC to the CEOs of the most important companies in the sector, by phone calls or with a letter. Then give the organisation's advertiser history. Do not show a Recommended Pitch.`
+  if (!showsMinisterGuidance(type)) return ''
+  return `\n\n--- MEETING TYPE: MINISTER OR HEAD OF AN ORGANISATION ---\nThe interviewee is a Minister, the head of an industry association or a similar leader. No page, size or price is recommended for them, so the CEO recommendation rules do not apply: do not show a Recommended Pitch. The system prints the standing guidance for these meetings (aim for aperturas) and the organisation's advertiser record at the top of this section: do not repeat either. In the Commercial Alert, write only what is specific to this person or organisation that the representative should know before the meeting. If there is nothing, say so in one short sentence.`
+}
+
+// ── Advertiser record ────────────────────────────────────────────────────
+// Whether the company or organisation has advertised with TRC or a competitor.
+// Printed by code in Block 1 from the rep's answer and the advertiser tracker,
+// never by the model, so it can't be invented or dropped.
+export interface AdvertiserRecord {
+  // False when the tracker couldn't be searched, so "nothing found" would mislead.
+  checked: boolean
+  trc: string[]
+  competitor: string[]
+  unverified: string[]
+}
+
+const MAX_RECORD_LINES = 5
+
+function recordList(label: string, lines: string[]): string {
+  const shown = lines.slice(0, MAX_RECORD_LINES).map((l) => `- ${escapeMd(l)}`)
+  if (lines.length > MAX_RECORD_LINES) shown.push(`- and ${lines.length - MAX_RECORD_LINES} more`)
+  return `**${label}**\n\n${shown.join('\n')}`
+}
+
+export function advertiserRecordMarkdown(record: AdvertiserRecord, type: InterviewType | string): string {
+  const who = type === 'company_ceo' ? 'This company' : 'This organisation'
+  const { trc, competitor, unverified, checked } = record
+  const headline = trc.length && competitor.length
+    ? `${who} has advertised with TRC and with a competitor.`
+    : trc.length
+      ? `${who} has advertised with TRC.`
+      : competitor.length
+        ? `${who} has advertised with a competitor, not with TRC.`
+        : !checked
+          ? 'Not checked against the advertiser tracker.'
+          : unverified.length
+            ? 'No confirmed advertising with TRC or a competitor.'
+            : 'No previous advertising found with TRC or a competitor.'
+  const parts = [`**Previous advertising:** ${headline}`]
+  if (trc.length) parts.push(recordList('With TRC', trc))
+  if (competitor.length) parts.push(recordList('With a competitor', competitor))
+  if (unverified.length) parts.push(recordList('Possible placements, source not verified', unverified))
+  return parts.join('\n\n')
 }
 
 // Strip what a block should never start or end with: a repeated title line
@@ -124,7 +185,7 @@ export function parseFinalSections(text: string): MeetingPrepFinalSections {
     if (title.length > 70) continue
     // Sections 5 and 6 are never taken from the text: they come from their
     // own columns. Matching them here would let "quotes" swallow a heading.
-    if (/presentation points|planteo/i.test(title)) continue
+    if (/presentation points|three points|planteo/i.test(title)) continue
     const block = FINAL_BLOCKS.find((fb) => fb.heading.test(title))
     if (!block || out[block.key]) continue
     const end = b + 1 < boundaries.length ? boundaries[b + 1] : lines.length
@@ -268,7 +329,7 @@ export function usesVerbatimScript(type: InterviewType | string, segments: Scrip
   return hasFixedScript(type) && segments.some((s) => s.kind === 'spoken')
 }
 
-// The planteo as it appears in the document (section 6). Fixed scripts are
+// The planteo as it appears in the document (block 3). Fixed scripts are
 // rebuilt from parseScript(): the words to say in bold italics under "Deliver
 // this exact script" ("put it in cursive and bold"), instructions in bold.
 // The Government Official planteo is the model's own write-up, kept as
@@ -324,14 +385,29 @@ export interface ComposeInput {
   planteo_output?: string | null
 }
 
-export function composeFinalDocument(s: ComposeInput, opts: { resourceUrl?: (r: ScriptResource) => string | null } = {}): string {
+// Same order as the screen. The advertiser record is read live from the tracker,
+// so only the download passes it; the stored final_output leaves it out.
+export function composeFinalDocument(
+  s: ComposeInput,
+  opts: { resourceUrl?: (r: ScriptResource) => string | null; advertiser?: AdvertiserRecord } = {},
+): string {
   const sections = s.final_sections || {}
-  const parts: string[] = []
-  for (const b of FINAL_BLOCKS) {
-    parts.push(`## ${b.number}. ${finalBlockTitle(b.key, s.interviewee_type)}\n\n${demoteHeadings(sections[b.key]?.trim() || '_Not written yet._')}`)
-  }
+  const type = s.interviewee_type
+  const blockBody = (key: FinalBlockKey) => demoteHeadings(sections[key]?.trim() || '_Not written yet._')
+  const record = opts.advertiser ? advertiserRecordMarkdown(opts.advertiser, type) : ''
+
+  // Ministers: the standing guidance and record lead. CEOs: the recommended
+  // space leads, then the record.
+  const alert = showsMinisterGuidance(type)
+    ? [MINISTER_GUIDANCE, record, blockBody('commercial_alert')]
+    : [blockBody('commercial_alert'), record]
+
   const points = (s.presentation_points || []).filter((p) => p.trim())
-  parts.push(`## 5. ${POINTS_TITLE}\n\n${points.length ? points.map((p, i) => `${i + 1}. ${p.trim()}`).join('\n\n') : '_Not written yet._'}`)
-  parts.push(`## 6. ${PLANTEO_TITLE}\n\n${planteoMarkdown(s.interviewee_type, s.planteo_output || '', opts)}`)
+  const parts = [
+    `## 1. ${finalBlockTitle('commercial_alert', type)}\n\n${alert.filter(Boolean).join('\n\n')}`,
+    `## ${POINTS_NUMBER}. ${POINTS_TITLE}\n\n${points.length ? points.map((p, i) => `${i + 1}. ${p.trim()}`).join('\n\n') : '_Not written yet._'}`,
+    `## ${PLANTEO_NUMBER}. ${PLANTEO_TITLE}\n\n${planteoMarkdown(type, s.planteo_output || '', opts)}`,
+    ...COLLAPSIBLE_BLOCKS.map((b) => `## ${b.number}. ${finalBlockTitle(b.key, type)}\n\n${blockBody(b.key)}`),
+  ]
   return parts.join('\n\n')
 }

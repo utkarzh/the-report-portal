@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound, redirect } from 'next/navigation'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { aperturaSamplesAvailable, sampleRecordingUrl } from '@/lib/meeting-prep-server'
+import { aperturaSamplesAvailable, loadAdvertiserRecord, sampleRecordingUrl } from '@/lib/meeting-prep-server'
 import MeetingPrepWorkspace from '@/components/meeting-prep/MeetingPrepWorkspace'
 import type { MeetingPrepSession } from '@/types'
 
@@ -28,11 +28,12 @@ export default async function MeetingPrepDetailPage({ params }: Props) {
   // and which apertura sample files exist, for the aperturador's downloads.
   // Short-lived signed URL from the private bucket; a missing file just
   // means nothing renders.
-  const [recordingUrl, samples] = await Promise.all([
+  const [recordingUrl, samples, advertiser] = await Promise.all([
     sampleRecordingUrl(),
     session.interviewee_type === 'aperturador'
       ? aperturaSamplesAvailable()
       : Promise.resolve({ apertura_letter: false, apertura_list: false }),
+    loadAdvertiserRecord(session as MeetingPrepSession),
   ])
 
   return (
@@ -41,6 +42,7 @@ export default async function MeetingPrepDetailPage({ params }: Props) {
       isAdmin={profile.role === 'admin'}
       recordingUrl={recordingUrl}
       samples={samples}
+      advertiser={advertiser}
     />
   )
 }

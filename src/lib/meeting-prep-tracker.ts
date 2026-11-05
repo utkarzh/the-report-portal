@@ -348,6 +348,29 @@ function placementLine(e: TrackerEntry, withSource: boolean): string {
   return `• ${parts.join(' — ')}${withSource ? ` (${placementSourceLabel(e)})` : ''}`
 }
 
+// The company's placements split by who ran them, for the record in Block 1. The
+// rep's own answer counts as TRC history too: they may know of a contract the
+// tracker doesn't have ("Ministers may also have signed contracts with us").
+export function advertiserRecordFrom(
+  entries: TrackerEntry[],
+  session: { company_org: string; company_country?: string | null; advertiser_history_status?: string | null; advertiser_history_details?: string | null },
+  checked: boolean,
+): { checked: boolean; trc: string[]; competitor: string[]; unverified: string[] } {
+  const placements = matchAdvertiserHistory(entries, session.company_org, session.company_country || '').matchedRows.filter(isPlacement)
+  const clean = (e: TrackerEntry) => placementLine(e, false).replace(/^•\s*/, '')
+  const stated = session.advertiser_history_status === 'yes'
+    ? (session.advertiser_history_details || '').split('\n').map((l) => l.replace(/^\s*[•*-]\s*/, '').trim()).filter(Boolean)
+    : []
+  return {
+    // A name the tracker can't match on (see isUsableCompanyName) was never
+    // really looked up, so it mustn't read as "nothing found".
+    checked: (checked && isUsableCompanyName(session.company_org)) || stated.length > 0,
+    trc: [...new Set([...stated, ...placements.filter((e) => placementSource(e) === 'trc').map(clean)])],
+    competitor: [...new Set(placements.filter((e) => placementSource(e) === 'competitor').map((e) => (e.agency ? `${clean(e)} (${e.agency.trim()})` : clean(e))))],
+    unverified: [...new Set(placements.filter((e) => placementSource(e) === 'unverified').map(clean))],
+  }
+}
+
 // Find the interviewee's company in the pooled tracker entries and derive an
 // editable Commercial Alert. Only usable names, only same-company matches
 // (isSameCompany), and only TRC placements count as history. Rows from the

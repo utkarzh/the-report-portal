@@ -221,7 +221,7 @@ export function advertiserHistoryToPrompt(session: { advertiser_history_status?:
   return session.advertiser_history_status === 'yes'
     ? `Previously advertised with TRC: ${session.advertiser_history_details}`
     : session.advertiser_history_status === 'no'
-    ? 'No previous advertising history on record.'
+    ? 'No previous advertising with TRC on record. Whether they advertised with a competitor is not known here: do not state that they have never advertised.'
     : 'Not checked / unknown.'
 }
 

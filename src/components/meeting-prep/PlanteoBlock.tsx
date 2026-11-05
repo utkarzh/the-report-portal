@@ -99,32 +99,21 @@ export default function PlanteoBlock({
     wasBusy.current = busy
   }, [busy])
 
-  // Only the script is hand-edited; the CEO recommendation ahead of the
-  // marker is regenerated, never typed.
+  // Only the script is hand-edited. The CEO recommendation ahead of the marker
+  // isn't shown here (the CEO, Nov 2026: it "may cause confusion" with the three
+  // points), but Block 1's recommended pitch is built from it, so it's kept.
   function joinScript(newScript: string): string {
     return notes ? `${notes}\n\n${SPOKEN_PLANTEO_MARKER}\n\n${newScript.trim()}` : newScript.trim()
   }
   const approved = (librarySnapshot || '').trim()
   const edited = verbatim && approved && script.trim() !== approved
 
-  // The script is fixed for the aperturador, so there is nothing for the
-  // model to regenerate; for the CEO only the recommendation is.
-  const canRegenerate = type !== 'aperturador' || !verbatim
+  // A fixed script is never rewritten by the model: there is nothing to
+  // regenerate. Changing the CEO's offer is done from Block 1.
+  const canRegenerate = !verbatim
 
   return (
     <BlockShell id={id} number={number} title={title} tone="gold">
-      {/* The CEO's internal recommendation is the first block, then the
-          script to deliver (client, video 1 at 3:55: "this would be the
-          first block, and then you put deliver the planteo with this exact
-          script… and then you put underneath or before [the recording]"). */}
-      {type === 'company_ceo' && notes && (
-        <div className="relative mb-5 overflow-hidden rounded-xl border border-[#c8973f]/30 bg-[#c8973f]/5 p-4">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[#a07530]">Internal recommendation — not spoken to the interviewee</p>
-          <div className={`prose-research text-sm text-gray-800 ${busy ? 'opacity-25' : ''}`} dangerouslySetInnerHTML={{ __html: renderMarkdown(notes) }} />
-          {busy && <div className="content-shimmer absolute inset-0" />}
-        </div>
-      )}
-
       {editing ? (
         <div>
           <Textarea ref={textareaRef} value={draft} onChange={(e) => setDraft(e.target.value)} rows={18} className="text-sm" label={verbatim ? 'Script' : 'Planteo'} />
@@ -166,7 +155,7 @@ export default function PlanteoBlock({
       )}
 
       {downloads.length > 0 && (
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {downloads.map((d, i) => {
             const r = d.resource!
             const available = samples[r]
@@ -219,7 +208,7 @@ export default function PlanteoBlock({
           {canRegenerate && (
             <ActionButton disabled={disabled || busy} onClick={() => setAsking((v) => !v)}>
               <WandSparkles size={13} className={busy ? 'animate-pulse' : ''} />
-              {busy ? 'Working…' : type === 'company_ceo' && verbatim ? 'Regenerate recommendation' : 'Regenerate'}
+              {busy ? 'Working…' : 'Regenerate'}
             </ActionButton>
           )}
           {edited && (
@@ -227,8 +216,8 @@ export default function PlanteoBlock({
               <RotateCcw size={13} /> Restore the approved script
             </ActionButton>
           )}
-          {canUndo && !busy && (
-            <button type="button" disabled={disabled} onClick={onUndo} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+          {canUndo && canRegenerate && !busy && (
+            <button type="button" disabled={disabled} onClick={onUndo} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
               <Undo2 size={13} /> Undo last regenerate
             </button>
           )}
@@ -238,8 +227,7 @@ export default function PlanteoBlock({
       {asking && !editing && (
         <RegeneratePanel
           busy={busy}
-          placeholder={type === 'company_ceo' ? 'e.g. Recommend a higher tier given their recent funding round.' : 'e.g. Tighten the opening paragraph. Lean more on the investment-attraction angle.'}
-          hint={type === 'company_ceo' && verbatim ? 'Only the internal recommendation above is regenerated — the approved spoken script never changes.' : undefined}
+          placeholder="e.g. Tighten the opening paragraph. Lean more on the investment-attraction angle."
           onSubmit={(fb) => onRegenerate(fb)}
           onCancel={() => setAsking(false)}
         />

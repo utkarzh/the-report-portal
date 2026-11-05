@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { marked } from 'marked'
-import { Pencil, WandSparkles, Undo2 } from 'lucide-react'
+import { ChevronDown, Pencil, WandSparkles, Undo2 } from 'lucide-react'
 import Textarea from '@/components/ui/Textarea'
 
 marked.use({ gfm: true, breaks: true })
@@ -15,7 +15,7 @@ export function renderMarkdown(md: string): string {
 // The frame every block of the meeting prep document sits in: a numbered
 // title, optional header actions, and an anchor for the section nav.
 export function BlockShell({
-  id, number, title, subtitle, headerRight, children, tone = 'default',
+  id, number, title, subtitle, headerRight, children, tone = 'default', collapsed, onToggle,
 }: {
   id: string
   number?: number | string
@@ -24,7 +24,32 @@ export function BlockShell({
   headerRight?: ReactNode
   children: ReactNode
   tone?: 'default' | 'gold'
+  // Set both to make the block collapsible. The body stays mounted while
+  // closed, so an edit in progress survives closing and reopening it.
+  collapsed?: boolean
+  onToggle?: () => void
 }) {
+  if (onToggle) {
+    return (
+      <section id={id} className="scroll-mt-28 rounded-2xl border border-[#e5e3df] bg-white shadow-sm lg:scroll-mt-20">
+        <button type="button" onClick={onToggle} aria-expanded={!collapsed} className="flex w-full items-start justify-between gap-3 p-5 text-left sm:p-6">
+          <span className="flex min-w-0 items-start gap-3">
+            {number !== undefined && (
+              <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-black text-xs font-semibold text-white">
+                {number}
+              </span>
+            )}
+            <span className="min-w-0">
+              <span className="block text-base font-semibold leading-tight text-gray-900">{title}</span>
+              {subtitle && <span className="mt-1 block text-xs leading-snug text-gray-500">{subtitle}</span>}
+            </span>
+          </span>
+          <ChevronDown size={18} className={`mt-0.5 flex-shrink-0 text-gray-400 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+        </button>
+        <div className={collapsed ? 'hidden' : 'px-5 pb-5 sm:px-6 sm:pb-6'}>{children}</div>
+      </section>
+    )
+  }
   return (
     <section
       id={id}
@@ -72,7 +97,7 @@ export function ActionButton({ onClick, disabled, children, title }: { onClick: 
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
     >
       {children}
     </button>
@@ -128,6 +153,7 @@ export function RegeneratePanel({
 export default function MarkdownBlock({
   id, number, title, subtitle, headerRight, text, placeholder, disabled, busy,
   canUndo, onSave, onRegenerate, onUndo, regeneratePlaceholder, regenerateHint, regenerateLabel = 'Regenerate', emptyAction,
+  lead, trail, collapsed, onToggle,
 }: {
   id: string
   number?: number
@@ -148,6 +174,11 @@ export default function MarkdownBlock({
   regenerateLabel?: string
   // Label for the button that writes a missing block.
   emptyAction?: string
+  // Fixed content printed by code above and below the editable text.
+  lead?: ReactNode
+  trail?: ReactNode
+  collapsed?: boolean
+  onToggle?: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -171,7 +202,8 @@ export default function MarkdownBlock({
   const hasText = Boolean(text.trim())
 
   return (
-    <BlockShell id={id} number={number} title={title} subtitle={subtitle} headerRight={headerRight}>
+    <BlockShell id={id} number={number} title={title} subtitle={subtitle} headerRight={headerRight} collapsed={collapsed} onToggle={onToggle}>
+      {lead}
       {!hasText && placeholder ? (
         placeholder
       ) : busy ? (
@@ -200,6 +232,7 @@ export default function MarkdownBlock({
       ) : (
         <p className="text-sm text-gray-400">This section is empty.</p>
       )}
+      {trail}
 
       {!editing && (hasText || emptyAction) && !(placeholder && !hasText) && (
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#f0eee9] pt-3">
@@ -213,7 +246,7 @@ export default function MarkdownBlock({
             {busy ? 'Working…' : hasText ? regenerateLabel : emptyAction}
           </ActionButton>
           {canUndo && !busy && (
-            <button type="button" disabled={disabled} onClick={onUndo} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-40">
+            <button type="button" disabled={disabled} onClick={onUndo} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-40">
               <Undo2 size={13} /> Undo last regenerate
             </button>
           )}

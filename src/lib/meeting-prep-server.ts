@@ -3,7 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
-import { composeFinalDocument, finalSectionsOf } from '@/lib/meeting-prep-document'
+import { composeFinalDocument, finalSectionsOf, type AdvertiserRecord } from '@/lib/meeting-prep-document'
+import { advertiserRecordFrom, type TrackerEntry } from '@/lib/meeting-prep-tracker'
 import {
   MEETING_PREP_SAMPLE_AUDIO_BUCKET,
   MEETING_PREP_SAMPLE_AUDIO_PATH,
@@ -182,6 +183,15 @@ const BUCKET = MEETING_PREP_SAMPLE_AUDIO_BUCKET
 
 // The reference recording (migration 030's fixed path), shown under the
 // planteo script. Null when it hasn't been uploaded.
+// Read live, so every meeting shows what the tracker says today, including ones
+// created before this was added. A failed read never blocks the document: it
+// reports "not checked" rather than "nothing found".
+export async function loadAdvertiserRecord(session: MeetingPrepSession): Promise<AdvertiserRecord> {
+  const { data: trackers, error } = await supabaseAdmin.from('meeting_prep_advertiser_tracker').select('entries')
+  const entries = (trackers || []).flatMap((t) => (t.entries as TrackerEntry[]) || [])
+  return advertiserRecordFrom(entries, session, !error && (trackers || []).length > 0)
+}
+
 export async function sampleRecordingUrl(): Promise<string | null> {
   const { data } = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(MEETING_PREP_SAMPLE_AUDIO_PATH, 60 * 60)
   return data?.signedUrl ?? null
