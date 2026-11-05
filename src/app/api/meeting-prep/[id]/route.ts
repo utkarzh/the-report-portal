@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
-import { isFinalBlockKey } from '@/lib/meeting-prep-document'
+import { splitPlanteoOutput } from '@/lib/meeting-prep'
+import { isFinalBlockKey, parseScript, usesVerbatimScript } from '@/lib/meeting-prep-document'
 import { currentFinalSections, refreshFinalOutput, saveFinalSections, updateMeetingPrep } from '@/lib/meeting-prep-server'
 import type { MeetingPrepSession } from '@/types'
 
@@ -32,8 +33,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // PATCH — owner or admin, direct manual edits (no AI call). Restricted to the
 // fields a user is allowed to hand-edit: research sections, presentation
-// points, the planteo text, and one document block at a time ({finalBlock,
-// finalBlockText}).
+// points and one document block at a time ({finalBlock, finalBlockText}).
+// planteoOutput only serves Undo and Restore, never a hand edit: see below.
 export async function PATCH(request: NextRequest, { params }: Params) {
   const auth = await getApiUser()
   if (!auth.user) return auth.response
@@ -95,7 +96,22 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (Array.isArray(presentationPoints)) {
     updates.presentation_points = presentationPoints.filter((p: unknown) => typeof p === 'string').slice(0, 3)
   }
-  if (typeof planteoOutput === 'string') updates.planteo_output = planteoOutput
+  if (typeof planteoOutput === 'string') {
+    // Nobody may change a fixed script by hand (5 Nov 2026). Two callers remain:
+    // Undo on Block 1, which rolls back the CEO's recommendation and leaves the
+    // script alone, and Restore, which puts back the approved text. A planteo
+    // the model wrote (older Government Official meetings) has no fixed text to
+    // compare with, and Undo of its Regenerate needs this field.
+    const current = splitPlanteoOutput(session.planteo_output || '').script.trim()
+    if (usesVerbatimScript(session.interviewee_type, parseScript(current))) {
+      const next = splitPlanteoOutput(planteoOutput).script.trim()
+      const approved = String(session.planteo_library_snapshot || '').trim()
+      if (next !== current && next !== approved) {
+        return NextResponse.json({ error: 'The planteo script can’t be edited.' }, { status: 403 })
+      }
+    }
+    updates.planteo_output = planteoOutput
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No editable fields provided' }, { status: 400 })

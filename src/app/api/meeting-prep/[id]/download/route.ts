@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { buildMeetingPrepDocx } from '@/lib/meeting-prep-docx'
 import { composeFinalDocument } from '@/lib/meeting-prep-document'
-import { currentFinalSections, loadAdvertiserRecord } from '@/lib/meeting-prep-server'
+import { aperturaSamplesAvailable, currentFinalSections, loadAdvertiserRecord } from '@/lib/meeting-prep-server'
 import { joinIdentityForFilename, sanitizeFilename } from '@/lib/docx-standard-format'
 import type { MeetingPrepSession } from '@/types'
 
@@ -40,10 +40,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   // otherwise the stored text as it was written.
   const sections = currentFinalSections(session)
   const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || request.nextUrl.origin
+  const samples = session.interviewee_type === 'aperturador' ? await aperturaSamplesAvailable() : null
   const markdown = Object.keys(sections).length
     ? composeFinalDocument(
         { ...session, final_sections: sections },
-        { resourceUrl: (r) => `${origin}/api/meeting-prep/resources/${r}/download`, advertiser: await loadAdvertiserRecord(session) },
+        { resourceUrl: (r) => (samples?.[r] ? `${origin}/api/meeting-prep/resources/${r}/download` : null), advertiser: await loadAdvertiserRecord(session) },
       )
     : session.final_output
   if (!markdown) {

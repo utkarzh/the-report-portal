@@ -361,7 +361,8 @@ export function planteoMarkdown(type: InterviewType | string, planteoOutput: str
       case 'download': {
         const url = seg.resource ? opts.resourceUrl?.(seg.resource) : null
         const label = seg.resource ? scriptResourceLabel(seg.resource) : 'Sample file'
-        out.push(url ? `${label}: [download](${url})` : `${label}: download it from the meeting prep in the app.`)
+        // Only a file an admin has actually uploaded gets a line.
+        if (url) out.push(`${label}: [download](${url})`)
         break
       }
       case 'tips_heading':

@@ -1,9 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
-import { Pencil, WandSparkles, Undo2, Headphones, Hand, FileDown, CheckCircle2, RotateCcw, Lightbulb } from 'lucide-react'
-import Textarea from '@/components/ui/Textarea'
+import { WandSparkles, Undo2, Headphones, Hand, FileDown, CheckCircle2, RotateCcw, Lightbulb } from 'lucide-react'
 import AudioPlayer from '@/components/transcriptions/AudioPlayer'
 import { BlockShell, ActionButton, RegeneratePanel, renderMarkdown } from '@/components/meeting-prep/DocumentBlock'
 import { splitPlanteoOutput, SPOKEN_PLANTEO_MARKER } from '@/lib/meeting-prep'
@@ -63,7 +61,7 @@ function ScriptView({ segments }: { segments: ScriptSegment[] }) {
 }
 
 export default function PlanteoBlock({
-  id, number, title, type, planteoOutput, librarySnapshot, recordingUrl, samples, isAdmin,
+  id, number, title, type, planteoOutput, librarySnapshot, recordingUrl, samples,
   disabled, busy, canUndo, onSaveOutput, onRegenerate, onUndo,
 }: {
   id: string
@@ -74,7 +72,6 @@ export default function PlanteoBlock({
   librarySnapshot: string | null
   recordingUrl: string | null
   samples: Record<ScriptResource, boolean>
-  isAdmin: boolean
   disabled: boolean
   busy: boolean
   canUndo: boolean
@@ -85,23 +82,23 @@ export default function PlanteoBlock({
   const { recommendation: notes, script } = splitPlanteoOutput(planteoOutput)
   const segments = parseScript(script)
   const verbatim = usesVerbatimScript(type, segments)
-  const downloads = segments.filter((s) => s.kind === 'download' && s.resource)
+  // A sample file only shows once an admin has uploaded it under Admin →
+  // Apertura sample files. Until then there's nothing to show here.
+  const downloads = segments.filter((s) => s.kind === 'download' && s.resource && samples[s.resource])
   const tips = segments.filter((s) => s.kind === 'tip')
 
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
   const [asking, setAsking] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => { if (editing) textareaRef.current?.focus() }, [editing])
   const wasBusy = useRef(busy)
   useEffect(() => {
     if (wasBusy.current && !busy) setAsking(false)
     wasBusy.current = busy
   }, [busy])
 
-  // Only the script is hand-edited. The CEO recommendation ahead of the marker
-  // isn't shown here (the CEO, Nov 2026: it "may cause confusion" with the three
-  // points), but Block 1's recommended pitch is built from it, so it's kept.
+  // Nobody hand-edits the pitch (5 Nov 2026: "It is what it is"). Older meetings
+  // edited before that can still be put back to the approved script. The CEO
+  // recommendation ahead of the marker isn't shown here (the CEO, Nov 2026: it
+  // "may cause confusion" with the three points), but Block 1's recommended
+  // pitch is built from it, so it's kept.
   function joinScript(newScript: string): string {
     return notes ? `${notes}\n\n${SPOKEN_PLANTEO_MARKER}\n\n${newScript.trim()}` : newScript.trim()
   }
@@ -114,16 +111,7 @@ export default function PlanteoBlock({
 
   return (
     <BlockShell id={id} number={number} title={title} tone="gold">
-      {editing ? (
-        <div>
-          <Textarea ref={textareaRef} value={draft} onChange={(e) => setDraft(e.target.value)} rows={18} className="text-sm" label={verbatim ? 'Script' : 'Planteo'} />
-          {verbatim && <p className="mt-2 text-[11px] text-gray-500">Keep the words to say inside quotation marks and your actions in capitals, so they stay told apart.</p>}
-          <div className="mt-3 flex gap-3">
-            <button type="button" onClick={async () => { await onSaveOutput(joinScript(draft)); setEditing(false) }} className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-900">Save</button>
-            <button type="button" onClick={() => setEditing(false)} className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
-          </div>
-        </div>
-      ) : verbatim ? (
+      {verbatim ? (
         <div className="rounded-xl border-l-4 border-[#c8973f] bg-[#fbf7ed] p-5">
           <p className="text-sm font-extrabold uppercase tracking-wide text-gray-900">{DELIVER_SCRIPT_TITLE}</p>
           <p className="mb-4 mt-1 text-xs leading-relaxed text-gray-600">
@@ -140,7 +128,8 @@ export default function PlanteoBlock({
         </div>
       )}
 
-      {/* The reference recording lives here and only here (client request). */}
+      {/* The reference recording lives here and only here (client request), and
+          only for CEO meetings: the page passes no URL for any other type. */}
       {recordingUrl && (
         <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-4">
           <div className="flex items-start gap-2.5">
@@ -158,8 +147,7 @@ export default function PlanteoBlock({
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {downloads.map((d, i) => {
             const r = d.resource!
-            const available = samples[r]
-            return available ? (
+            return (
               <a
                 key={i}
                 href={`/api/meeting-prep/resources/${r}/download`}
@@ -171,16 +159,6 @@ export default function PlanteoBlock({
                   <span className="block text-[11px] text-gray-500">Download</span>
                 </span>
               </a>
-            ) : (
-              <div key={i} className="flex items-center gap-3 rounded-xl border border-dashed border-[#e5e3df] bg-[#faf9f7] p-3">
-                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-400"><FileDown size={16} /></span>
-                <span>
-                  <span className="block text-xs font-semibold text-gray-500">{scriptResourceLabel(r)}</span>
-                  <span className="block text-[11px] text-gray-400">
-                    {isAdmin ? <Link href="/commercial/admin/meeting-prep/resources" className="underline hover:text-gray-700">Upload it in Apertura sample files</Link> : 'Not uploaded yet'}
-                  </span>
-                </span>
-              </div>
             )
           })}
         </div>
@@ -200,11 +178,8 @@ export default function PlanteoBlock({
         </div>
       )}
 
-      {!editing && (
+      {(canRegenerate || edited) && (
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#f0eee9] pt-3">
-          <ActionButton disabled={disabled || busy} onClick={() => { setDraft(script); setEditing(true); setAsking(false) }}>
-            <Pencil size={13} /> Edit {verbatim ? 'script' : 'planteo'}
-          </ActionButton>
           {canRegenerate && (
             <ActionButton disabled={disabled || busy} onClick={() => setAsking((v) => !v)}>
               <WandSparkles size={13} className={busy ? 'animate-pulse' : ''} />
@@ -224,7 +199,7 @@ export default function PlanteoBlock({
         </div>
       )}
 
-      {asking && !editing && (
+      {asking && (
         <RegeneratePanel
           busy={busy}
           placeholder="e.g. Tighten the opening paragraph. Lean more on the investment-attraction angle."

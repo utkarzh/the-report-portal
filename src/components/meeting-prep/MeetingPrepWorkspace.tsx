@@ -797,7 +797,6 @@ export default function MeetingPrepWorkspace({ session: initialSession, isAdmin,
               librarySnapshot={s.planteo_library_snapshot}
               recordingUrl={recordingUrl}
               samples={samples}
-              isAdmin={isAdmin}
               disabled={anyBusy && !planteoBusy}
               busy={planteoBusy}
               canUndo={planteoUndo !== null}

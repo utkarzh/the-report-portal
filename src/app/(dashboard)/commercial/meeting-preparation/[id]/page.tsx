@@ -24,12 +24,13 @@ export default async function MeetingPrepDetailPage({ params }: Props) {
 
   if (!session) notFound()
 
-  // The reference recording (shown under the planteo script, and only there)
-  // and which apertura sample files exist, for the aperturador's downloads.
+  // The reference recording (CEO meetings only, shown under the planteo script
+  // and nowhere else) and which apertura sample files exist, for the
+  // aperturador's downloads.
   // Short-lived signed URL from the private bucket; a missing file just
   // means nothing renders.
   const [recordingUrl, samples, advertiser] = await Promise.all([
-    sampleRecordingUrl(),
+    session.interviewee_type === 'company_ceo' ? sampleRecordingUrl() : Promise.resolve(null),
     session.interviewee_type === 'aperturador'
       ? aperturaSamplesAvailable()
       : Promise.resolve({ apertura_letter: false, apertura_list: false }),
