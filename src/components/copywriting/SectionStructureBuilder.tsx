@@ -237,7 +237,7 @@ export default function SectionStructureBuilder({ library, value, onChange, show
                       onDragStart={(e) => startDrag(e, { from: 'library', sectionId: s.id })}
                       onDragEnd={endDrag}
                       title={s.description ? `${s.name}: ${s.description}` : s.name}
-                      className={`group flex items-center gap-1 border bg-white py-1 pl-1.5 pr-1 text-xs text-gray-800 transition-colors ${
+                      className={`group flex items-center gap-1 border bg-white py-1 touch:py-2 pl-1.5 pr-1 text-xs text-gray-800 transition-colors ${
                         atLimit ? 'cursor-not-allowed border-[#e5e3df] opacity-50' : 'cursor-grab border-[#e5e3df] hover:border-gray-400 active:cursor-grabbing'
                       }`}
                     >
@@ -252,7 +252,7 @@ export default function SectionStructureBuilder({ library, value, onChange, show
                         type="button"
                         onClick={() => insertAt(s, value.length)}
                         disabled={atLimit}
-                        className="ml-0.5 flex h-5 w-5 items-center justify-center text-gray-400 transition-colors hover:bg-gray-100 hover:text-black disabled:pointer-events-none"
+                        className="ml-0.5 flex h-5 w-5 touch:h-9 touch:w-9 items-center justify-center text-gray-400 transition-colors hover:bg-gray-100 hover:text-black disabled:pointer-events-none"
                         aria-label={`Add ${s.name} to the end of the article`}
                         title="Add to the end"
                       >
@@ -281,12 +281,12 @@ export default function SectionStructureBuilder({ library, value, onChange, show
 
         {value.length === 0 ? (
           <div
-            className={`flex flex-col items-center justify-center border border-dashed px-6 py-10 text-center transition-colors ${
+            className={`flex flex-col items-center justify-center border border-dashed px-4 sm:px-6 py-10 text-center transition-colors ${
               dragging?.from === 'library' ? 'border-black bg-[#faf9f7]' : showErrors ? 'border-red-300' : 'border-[#d9d6d0]'
             }`}
           >
             <LayoutList size={18} className={dragging ? 'text-gray-700' : 'text-gray-300'} />
-            <p className="mt-2 text-sm text-gray-700">{dragging ? 'Drop to add it here' : 'Drag sections here to build the article'}</p>
+            <p className="mt-2 text-sm text-gray-700">{dragging ? 'Drop to add it here' : <><span className="touch:hidden">Drag sections here to build the article</span><span className="hidden touch:inline">Tap + on a section to add it to the article</span></>}</p>
             <p className="mt-0.5 text-xs text-gray-400">Then give each one its length, in characters or words.</p>
           </div>
         ) : (
@@ -399,7 +399,7 @@ export default function SectionStructureBuilder({ library, value, onChange, show
                             type="button"
                             onClick={() => moveTo(it.key, i - 1)}
                             disabled={i === 0}
-                            className="p-1 text-gray-400 transition-colors hover:text-black disabled:opacity-25"
+                            className="p-1 touch:p-2.5 text-gray-400 transition-colors hover:text-black disabled:opacity-25"
                             aria-label={`Move ${it.name} up`}
                           >
                             <ChevronUp size={14} />
@@ -408,7 +408,7 @@ export default function SectionStructureBuilder({ library, value, onChange, show
                             type="button"
                             onClick={() => moveTo(it.key, i + 2)}
                             disabled={i === value.length - 1}
-                            className="p-1 text-gray-400 transition-colors hover:text-black disabled:opacity-25"
+                            className="p-1 touch:p-2.5 text-gray-400 transition-colors hover:text-black disabled:opacity-25"
                             aria-label={`Move ${it.name} down`}
                           >
                             <ChevronDown size={14} />
@@ -416,7 +416,7 @@ export default function SectionStructureBuilder({ library, value, onChange, show
                           <button
                             type="button"
                             onClick={() => remove(it.key)}
-                            className="p-1 text-gray-300 transition-colors hover:text-red-500"
+                            className="p-1 touch:p-2.5 text-gray-300 transition-colors hover:text-red-500"
                             aria-label={`Remove ${it.name}`}
                           >
                             <X size={14} />

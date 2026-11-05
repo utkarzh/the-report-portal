@@ -61,7 +61,7 @@ export default function ReviewQueue({ entries, canEdit, basePath }: { entries: R
 
   if (entries.length === 0) {
     return (
-      <div className="flex flex-col items-center rounded-2xl border border-dashed border-[#d9d5cc] bg-white/60 px-6 py-14 text-center">
+      <div className="flex flex-col items-center rounded-2xl border border-dashed border-[#d9d5cc] bg-white/60 px-4 sm:px-6 py-14 text-center">
         <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#eceae5] bg-white text-emerald-600 shadow-sm">
           <Inbox size={19} strokeWidth={1.75} />
         </span>
@@ -115,12 +115,12 @@ export default function ReviewQueue({ entries, canEdit, basePath }: { entries: R
               {(e.link_url || e.attachment_path) && (
                 <div className="mt-2.5 flex flex-wrap gap-2 text-xs">
                   {e.link_url && (
-                    <a href={e.link_url} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1 text-gray-600 hover:border-gray-400 hover:text-black">
+                    <a href={e.link_url} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1 touch:py-2 text-gray-600 hover:border-gray-400 hover:text-black">
                       <ExternalLink size={12} /> <span className="truncate">{e.link_url.length > 60 ? `${e.link_url.slice(0, 57)}…` : e.link_url}</span>
                     </a>
                   )}
                   {e.attachment_path && (
-                    <a href={`/api/knowledge/feedback/${e.id}/attachment`} className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1 text-gray-600 hover:border-gray-400 hover:text-black">
+                    <a href={`/api/knowledge/feedback/${e.id}/attachment`} className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1 touch:py-2 text-gray-600 hover:border-gray-400 hover:text-black">
                       <Paperclip size={12} /> {e.attachment_name}
                     </a>
                   )}
@@ -173,11 +173,11 @@ export default function ReviewQueue({ entries, canEdit, basePath }: { entries: R
                           type="button"
                           onClick={() => act(e.id, 'decline', { note })}
                           disabled={busy === e.id}
-                          className="rounded-lg bg-black px-3.5 py-1.5 text-xs font-medium text-white hover:bg-gray-900 disabled:opacity-50"
+                          className="rounded-lg bg-black px-3.5 py-1.5 touch:py-2.5 text-xs font-medium text-white hover:bg-gray-900 disabled:opacity-50"
                         >
                           Decline
                         </button>
-                        <button type="button" onClick={() => setDeclining(null)} className="rounded-lg px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100">
+                        <button type="button" onClick={() => setDeclining(null)} className="rounded-lg px-3 py-1.5 touch:py-2.5 text-xs text-gray-600 hover:bg-gray-100">
                           Cancel
                         </button>
                       </div>
@@ -188,7 +188,7 @@ export default function ReviewQueue({ entries, canEdit, basePath }: { entries: R
                         type="button"
                         onClick={() => act(e.id, 'accept')}
                         disabled={busy === e.id}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-black px-3.5 py-1.5 text-xs font-medium text-white hover:bg-gray-900 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-black px-3.5 py-1.5 touch:py-2.5 text-xs font-medium text-white hover:bg-gray-900 disabled:opacity-50"
                       >
                         <Check size={12} /> Accept &amp; edit
                       </button>
@@ -199,7 +199,7 @@ export default function ReviewQueue({ entries, canEdit, basePath }: { entries: R
                           setNote('')
                         }}
                         disabled={busy === e.id}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-3.5 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-400"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-3.5 py-1.5 touch:py-2.5 text-xs font-medium text-gray-700 hover:border-gray-400"
                       >
                         <X size={12} /> Decline
                       </button>
@@ -207,7 +207,7 @@ export default function ReviewQueue({ entries, canEdit, basePath }: { entries: R
                         type="button"
                         onClick={() => act(e.id, 'done')}
                         disabled={busy === e.id}
-                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-[#f7f6f3] hover:text-gray-900"
+                        className="rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 hover:bg-[#f7f6f3] hover:text-gray-900"
                       >
                         Mark done
                       </button>
@@ -220,7 +220,7 @@ export default function ReviewQueue({ entries, canEdit, basePath }: { entries: R
                       type="button"
                       onClick={() => act(e.id, 'reopen')}
                       disabled={busy === e.id}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-black"
+                      className="inline-flex touch:py-2.5 items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-black"
                     >
                       <RotateCcw size={11} /> Reopen
                     </button>

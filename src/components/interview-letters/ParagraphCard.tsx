@@ -69,7 +69,7 @@ export default function ParagraphCard({ paragraph, disabled, onApprove, onRegene
                 setUnlocking(false)
               }}
               disabled={disabled || unlocking}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 transition-colors hover:bg-gray-100 hover:text-black disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 touch:py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 transition-colors hover:bg-gray-100 hover:text-black disabled:opacity-50"
             >
               {unlocking ? <Loader2 size={9} className="animate-spin" /> : <Pencil size={9} />} Edit
             </button>

@@ -51,10 +51,10 @@ export default function EntityCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: Math.min(index * 0.04, 0.3), ease: [0.22, 1, 0.36, 1] }}
-      className="group relative"
+      className="group relative min-w-0"
     >
       {deleteSlot && (
-        <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100">
           {deleteSlot}
         </div>
       )}
@@ -65,22 +65,22 @@ export default function EntityCard({
         href={href}
         onClick={handleClick}
         aria-busy={busy}
-        className={`block rounded-xl border border-[#e5e3df] bg-white p-5 shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:border-[#c8973f]/40 hover:shadow-lg ${busy ? 'pointer-events-none' : ''}`}
+        className={`block rounded-xl border border-[#e5e3df] bg-white p-4 sm:p-5 shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:border-[#c8973f]/40 hover:shadow-lg ${busy ? 'pointer-events-none' : ''}`}
       >
-        <div className="flex items-start justify-between gap-3 pr-8">
-          <div className="flex min-w-0 items-start gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 pr-8 sm:flex-nowrap">
+          <div className="flex min-w-0 flex-1 basis-[13rem] items-start gap-3 sm:flex-initial sm:basis-auto">
             <div className="flex-shrink-0 rounded-lg bg-black p-2 text-white transition-transform duration-300 group-hover:scale-105">
               {icon}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-gray-900">{title}</p>
-              <p className="mt-1 truncate text-xs text-gray-500">{subtitle}</p>
+              <p className="line-clamp-2 text-sm font-semibold text-gray-900 sm:line-clamp-none sm:truncate">{title}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-gray-500 sm:line-clamp-none sm:truncate">{subtitle}</p>
             </div>
           </div>
           {badge && <div className="flex-shrink-0">{badge}</div>}
         </div>
 
-        <div className="mt-4 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-[11px] text-gray-400 sm:flex-nowrap">
           <span className="flex min-w-0 items-center gap-1.5 truncate">
             <CalendarDays size={12} className="flex-shrink-0" />
             <span className="flex-shrink-0">{date}</span>

@@ -17,7 +17,7 @@ export default function AuthCard({
     <div className="w-full max-w-md">
       {/* thin red accent echoing the logo dot */}
       <div className="h-[3px] bg-[#db3030]" />
-      <div className={`bg-white border border-[#e5e3df] border-t-0 p-8 ${className}`}>
+      <div className={`bg-white border border-[#e5e3df] border-t-0 p-4 sm:p-8 ${className}`}>
         <div className="flex mb-8">
           <Image
             src="/logo.png"

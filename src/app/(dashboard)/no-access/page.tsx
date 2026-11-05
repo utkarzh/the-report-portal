@@ -12,7 +12,7 @@ export default function NoAccessPage() {
   if (landing !== '/no-access') redirect(landing)
 
   return (
-    <div className="p-8 flex items-center justify-center min-h-[60vh]">
+    <div className="p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[60vh]">
       <div className="max-w-md text-center">
         <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[#f7f6f3] text-gray-500">
           <Lock size={20} />

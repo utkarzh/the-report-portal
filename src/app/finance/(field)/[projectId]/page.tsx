@@ -95,8 +95,8 @@ export default async function FieldProjectPage({ params }: Props) {
   const closed = project.status === 'closed'
 
   return (
-    <div className="p-8 max-w-5xl">
-      <Link href="/finance" className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 mb-3">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
+      <Link href="/finance" className="inline-flex items-center gap-1.5 touch:py-2.5 text-xs text-gray-500 hover:text-gray-900 mb-3">
         <ArrowLeft size={13} /> My Projects
       </Link>
       <div className="mb-6 flex justify-between items-start flex-wrap gap-3">

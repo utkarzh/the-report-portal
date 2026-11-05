@@ -142,7 +142,7 @@ export default function AdminPromptEditor({ promptKey, label, initialText, initi
               Live v{liveVersion}
             </span>
           </div>
-          <button onClick={() => setVersionsOpen((v) => !v)} className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-black transition-colors">
+          <button onClick={() => setVersionsOpen((v) => !v)} className="inline-flex touch:py-2.5 items-center gap-1.5 text-xs text-gray-500 hover:text-black transition-colors">
             <History size={13} /> Version history
           </button>
         </div>
@@ -194,7 +194,7 @@ export default function AdminPromptEditor({ promptKey, label, initialText, initi
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteId(v.id)}
-                      className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                      className="p-1.5 touch:p-2.5 text-gray-300 hover:text-red-500 transition-colors"
                       title="Delete version"
                       aria-label={`Delete version ${v.prompt_version}`}
                     >

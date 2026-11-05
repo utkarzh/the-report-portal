@@ -143,7 +143,7 @@ export default function NeedsAttentionSection({ settlementCurrency, rejectedExpe
               {(e.logged_by === currentUserId || isDirector) && (
                 <button
                   onClick={() => setReplyTarget(e)}
-                  className="inline-flex items-center gap-1 text-xs font-medium bg-black text-white rounded-lg px-3 py-1.5 hover:bg-gray-800"
+                  className="inline-flex items-center gap-1 text-xs font-medium bg-black text-white rounded-lg px-3 py-1.5 touch:py-2.5 hover:bg-gray-800"
                 >
                   <Undo2 size={12} /> Reply &amp; send back
                 </button>
@@ -154,14 +154,14 @@ export default function NeedsAttentionSection({ settlementCurrency, rejectedExpe
                 <>
                   <button
                     onClick={() => setReuploadTarget(e)}
-                    className="text-xs font-medium border border-[#e5e3df] bg-white rounded-lg px-3 py-1.5 hover:bg-gray-50"
+                    className="text-xs font-medium border border-[#e5e3df] bg-white rounded-lg px-3 py-1.5 touch:py-2.5 hover:bg-gray-50"
                   >
                     Fix &amp; resubmit
                   </button>
                   <button
                     onClick={() => handleWithdraw(e.id)}
                     disabled={busyId === e.id}
-                    className="text-xs font-medium text-red-600 border border-red-200 bg-white rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50"
+                    className="text-xs font-medium text-red-600 border border-red-200 bg-white rounded-lg px-3 py-1.5 touch:py-2.5 hover:bg-red-50 disabled:opacity-50"
                   >
                     Withdraw
                   </button>
@@ -237,16 +237,16 @@ function FixExpenseModal({ expense, settlementCurrency, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6">
+      <div className="modal-sheet relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-4 sm:p-6">
         <h3 className="text-sm font-semibold mb-4">Fix &amp; resubmit</h3>
         {error && <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded">{error}</div>}
         <div className="flex flex-col gap-3">
           <input className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={concept} onChange={e => setConcept(e.target.value)} placeholder="Concept" />
           <input type="date" className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={date} onChange={e => setDate(e.target.value)} />
           <input className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={vendor} onChange={e => setVendor(e.target.value)} placeholder="Vendor" />
-          <input type="number" step="0.01" className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={localAmount} onChange={e => setLocalAmount(e.target.value)} placeholder={`Local amount (${expense.local_currency})`} />
+          <input type="number" inputMode="decimal" step="0.01" className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={localAmount} onChange={e => setLocalAmount(e.target.value)} placeholder={`Local amount (${expense.local_currency})`} />
           <p className="text-[11px] text-gray-500">
             Converted to {settlementCurrency} at this ticket&apos;s rate on save: 1 {settlementCurrency} = {expense.exchange_rate_used} {expense.local_currency}.
           </p>
@@ -300,9 +300,9 @@ function ReplyModal({ expense, onClose, onSent }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-md shadow-2xl rounded-xl p-6">
+      <div className="modal-sheet relative bg-white w-full max-w-md shadow-2xl rounded-xl p-4 sm:p-6">
         <h3 className="text-sm font-semibold mb-1">Reply &amp; send back for review</h3>
         <p className="text-xs text-gray-500 mb-4">
           {expense.concept} — if the ticket is correct as it is, explain why. It goes back to Finance as pending; nothing needs uploading again.

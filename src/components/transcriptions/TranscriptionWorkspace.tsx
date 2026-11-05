@@ -16,6 +16,7 @@ import AudioPlayer from './AudioPlayer'
 import TranscribingLoader from './TranscribingLoader'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DownloadTemplateModal from '@/components/ui/DownloadTemplateModal'
+import { useKeepScreenOn } from '@/lib/use-mobile'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -67,7 +68,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       onClick={copy}
       title="Copy to clipboard"
-      className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+      className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
     >
       {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
       <span>{copied ? 'Copied' : 'Copy'}</span>
@@ -204,6 +205,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   )
   const [translationRun, setTranslationRun] = useState<TranslationRun | null>(null)
   const [translating, setTranslating] = useState(false)
+  useKeepScreenOn(transcribing || refining || translating)
   const [translateError, setTranslateError] = useState<string | null>(null)
   const [showLangPicker, setShowLangPicker] = useState(false)
   // One unified refine dialog: pick the source (only when a translation exists)
@@ -236,9 +238,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   const hasTranslation = Boolean(translated)
   const shownTranslation = translationRun ? translationRun.text : translated
   const shownTranslationLang = translationRun ? translationRun.language : translatedLang
-  const rawScroll = useStickToBottom<HTMLDivElement>(raw.length)
-  const translatedScroll = useStickToBottom<HTMLDivElement>(shownTranslation.length)
-  const refinedScroll = useStickToBottom<HTMLDivElement>(refined.length)
+  const rawScroll = useStickToBottom<HTMLDivElement>(raw.length, { startAtTopOnPhones: true })
+  const translatedScroll = useStickToBottom<HTMLDivElement>(shownTranslation.length, { startAtTopOnPhones: true })
+  const refinedScroll = useStickToBottom<HTMLDivElement>(refined.length, { startAtTopOnPhones: true })
 
   // Auto-start transcription for a record that still has pending chunks.
   useEffect(() => {
@@ -488,14 +490,14 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
         variantTone={downloadVariant === 'refined' ? 'final' : 'caution'}
       />
       {/* Header + audio */}
-      <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
+      <div className="rounded-2xl border border-[#e5e3df] bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="flex min-w-0 items-start gap-3">
-            <div className="rounded-xl border border-[#e5e3df] bg-[#f7f6f3] p-2.5 text-gray-700">
+            <div className="flex-shrink-0 rounded-xl border border-[#e5e3df] bg-[#f7f6f3] p-2.5 text-gray-700">
               <AudioLines size={18} />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold text-gray-900">{transcription.title}</h1>
+              <h1 className="text-base font-semibold text-gray-900 sm:truncate">{transcription.title}</h1>
               <p className="mt-1 truncate text-sm text-gray-500">
                 {transcription.audio_filename || 'audio'}
               </p>
@@ -519,7 +521,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
           {isAdmin && usage.tokens_total > 0 && (
             <div
               title="Claude usage for AI refine & translation on this transcript. Transcription (speaker detection) is not billed."
-              className="flex flex-shrink-0 items-center gap-4 rounded-xl border border-[#e5e3df] bg-[#f7f6f3] px-4 py-2.5"
+              className="flex flex-shrink-0 items-center gap-4 self-start rounded-xl border border-[#e5e3df] bg-[#f7f6f3] px-4 py-2.5"
             >
               <div className="text-right">
                 <p className="flex items-center justify-end gap-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
@@ -547,7 +549,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               <div className="mt-2 flex justify-end">
                 <a
                   href={`/api/transcriptions/${transcription.id}/audio`}
-                  className="inline-flex items-center gap-1.5 text-xs text-gray-500 transition hover:text-gray-900"
+                  className="inline-flex items-center gap-1.5 touch:py-2.5 text-xs text-gray-500 transition hover:text-gray-900"
                 >
                   <Download size={12} /> Download recording
                 </a>
@@ -562,17 +564,17 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
       {/* Raw transcript — only the main event until a refined version exists;
           demoted below it (via CSS order, not DOM position, so nothing
           re-mounts) the moment one is. */}
-      <div className={`rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm ${refinedIsPrimary ? 'order-2' : 'order-1'}`}>
-        <div className="flex items-center justify-between">
+      <div className={`rounded-2xl border border-[#e5e3df] bg-white p-4 shadow-sm sm:p-6 ${refinedIsPrimary ? 'order-2' : 'order-1'}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <button
             onClick={() => setRawCollapsed((v) => !v)}
-            className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 transition-colors hover:text-gray-800"
+            className="flex items-center gap-2 touch:py-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 transition-colors hover:text-gray-800"
           >
             <ChevronDown size={14} className={`transition-transform ${rawCollapsed ? '-rotate-90' : ''}`} />
             <Mic size={13} />
             <span>Raw transcript</span>
           </button>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {transcribing ? (
               <span className="flex items-center gap-2 pr-2 text-xs text-gray-500">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#c8973f]" />
@@ -585,7 +587,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                     onClick={openRefineModal}
                     disabled={refining || translating}
                     title="Refine — clean up the transcript for a polished final result"
-                    className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 touch:py-2.5 text-xs font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {refining ? <Loader2 size={13} className="animate-spin" /> : <WandSparkles size={13} />}
                     <span>{refining ? 'Refining…' : 'Refine'}</span>
@@ -595,7 +597,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                 <button
                   onClick={handleRawDownloadClick}
                   title="Download raw transcript — reference only, not for sending out"
-                  className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                  className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                 >
                   <Download size={13} />
                   <span>Download raw</span>
@@ -615,7 +617,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               ref={rawScroll.ref}
               onScroll={rawScroll.onScroll}
               onWheel={rawScroll.onWheel}
-              className="scroll-fade max-h-[440px] min-h-[160px] overflow-y-auto whitespace-pre-wrap px-5 py-4 font-mono text-[13px] leading-6 text-gray-600"
+              className="scroll-fade max-h-[60dvh] min-h-[160px] overflow-y-auto whitespace-pre-wrap px-4 py-4 sm:max-h-[440px] sm:px-5 font-mono text-[13px] leading-6 text-gray-600"
             >
               {raw ? (
                 <>
@@ -638,11 +640,11 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
             </div>
 
             {transcribeError && (
-              <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 <span>{transcribeError}</span>
                 <button
                   onClick={startTranscribe}
-                  className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
+                  className="whitespace-nowrap touch:py-2 text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
                 >
                   Try again
                 </button>
@@ -670,17 +672,17 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
 
       {/* Translated transcript */}
       {(translating || hasTranslation || translateError) && (
-        <div className={`rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm ${refinedIsPrimary ? 'order-3' : 'order-2'}`}>
-          <div className="flex items-center justify-between">
+        <div className={`rounded-2xl border border-[#e5e3df] bg-white p-4 shadow-sm sm:p-6 ${refinedIsPrimary ? 'order-3' : 'order-2'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <button
               onClick={() => setTranslatedCollapsed((v) => !v)}
-              className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 transition-colors hover:text-gray-800"
+              className="flex items-center gap-2 touch:py-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 transition-colors hover:text-gray-800"
             >
               <ChevronDown size={14} className={`transition-transform ${translatedCollapsed ? '-rotate-90' : ''}`} />
               <Languages size={13} />
               <span>Translated transcript{shownTranslationLang ? ` · ${shownTranslationLang}` : ''}</span>
             </button>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {translating ? (
                 <span className="flex items-center gap-2 pr-2 text-xs text-gray-500">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#c8973f]" />
@@ -694,7 +696,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                   <button
                     onClick={() => setDownloadVariant('translated')}
                     title="Download translation — reference only, not for sending out"
-                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                   >
                     <Download size={13} />
                     <span>Download translation</span>
@@ -710,7 +712,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
             ref={translatedScroll.ref}
             onScroll={translatedScroll.onScroll}
               onWheel={translatedScroll.onWheel}
-            className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto whitespace-pre-wrap px-5 py-4 font-mono text-[13px] leading-6 text-gray-600"
+            className="scroll-fade max-h-[60dvh] min-h-[120px] overflow-y-auto whitespace-pre-wrap px-4 py-4 sm:max-h-[440px] sm:px-5 font-mono text-[13px] leading-6 text-gray-600"
           >
             {shownTranslation ? (
               <>
@@ -728,11 +730,11 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
           )}
 
           {translateError && (
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               <span>{translateError}</span>
               <button
                 onClick={startTranslate}
-                className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
+                className="whitespace-nowrap touch:py-2 text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
               >
                 Try again
               </button>
@@ -744,17 +746,17 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
       {/* Refined transcript — promoted to lead the page (CSS order) once it
           exists; see refinedIsPrimary. */}
       {(refining || hasRefined || refineError) && (
-        <div className={`rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm ${refinedIsPrimary ? 'order-1' : 'order-3'}`}>
-          <div className="flex items-center justify-between">
+        <div className={`rounded-2xl border border-[#e5e3df] bg-white p-4 shadow-sm sm:p-6 ${refinedIsPrimary ? 'order-1' : 'order-3'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <button
               onClick={() => setRefinedCollapsed((v) => !v)}
-              className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 transition-colors hover:text-gray-800"
+              className="flex items-center gap-2 touch:py-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 transition-colors hover:text-gray-800"
             >
               <ChevronDown size={14} className={`transition-transform ${refinedCollapsed ? '-rotate-90' : ''}`} />
               <FileText size={13} />
               <span>Refined transcript</span>
             </button>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {refining ? (
                 <span className="flex items-center gap-2 pr-2 text-xs text-gray-500">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#c8973f]" />
@@ -765,7 +767,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                   <button
                     onClick={openRefineModal}
                     title="Refine again — choose the source and add an optional instruction"
-                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                   >
                     <WandSparkles size={13} />
                     <span>Refine again</span>
@@ -774,7 +776,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
                   <button
                     onClick={() => setDownloadVariant('refined')}
                     title="Download the final refined transcript — this is the one to submit"
-                    className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-800"
+                    className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-1.5 touch:py-2.5 text-xs font-semibold text-white transition-colors hover:bg-gray-800"
                   >
                     <Download size={13} />
                     <span>Download final</span>
@@ -791,7 +793,7 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
             ref={refinedScroll.ref}
             onScroll={refinedScroll.onScroll}
             onWheel={refinedScroll.onWheel}
-            className="scroll-fade max-h-[440px] min-h-[120px] overflow-y-auto px-5 py-4 font-serif text-[15px] leading-7 text-gray-800"
+            className="scroll-fade max-h-[60dvh] min-h-[120px] overflow-y-auto px-4 py-4 sm:max-h-[440px] sm:px-5 font-serif text-[15px] leading-7 text-gray-800"
           >
             {refined ? (
               <>
@@ -814,11 +816,11 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
           )}
 
           {refineError && (
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               <span>{refineError}</span>
               <button
                 onClick={() => startRefine(refineSource)}
-                className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
+                className="whitespace-nowrap touch:py-2 text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
               >
                 Try again
               </button>
@@ -828,9 +830,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
       )}
       {/* Language picker popup */}
       {showLangPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowLangPicker(false)} />
-          <div className="relative mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+          <div className="modal-sheet relative mx-4 w-full max-w-sm rounded-2xl bg-white p-4 sm:p-6 shadow-xl">
             <div className="flex items-center gap-2 text-gray-900">
               <Languages size={16} />
               <h3 className="text-sm font-semibold">Translate transcript</h3>
@@ -880,9 +882,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
       {/* Unified refine dialog: source choice (only when a translation exists)
           + an optional, non-stored instruction for this refine. */}
       {showRefineModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowRefineModal(false)} />
-          <div className="relative mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="modal-sheet relative mx-4 w-full max-w-md rounded-2xl bg-white p-4 sm:p-6 shadow-xl">
             <div className="flex items-center gap-2 text-gray-900">
               <WandSparkles size={16} />
               <h3 className="text-sm font-semibold">{hasRefined ? 'Refine again' : 'Refine transcript'}</h3>
@@ -966,9 +968,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
           refined: raw is reference-only and must never be sent to an
           interviewee as-is. "Don't show this again" persists per-browser. */}
       {showRefineRecommend && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={closeRefineRecommend} />
-          <div className="relative mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+          <div className="modal-sheet relative mx-4 w-full max-w-sm rounded-2xl bg-white p-4 sm:p-6 shadow-xl">
             <div className="flex items-center gap-2 text-gray-900">
               <WandSparkles size={16} />
               <h3 className="text-sm font-semibold">This is the raw transcript</h3>

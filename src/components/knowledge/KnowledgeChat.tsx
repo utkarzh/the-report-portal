@@ -27,6 +27,7 @@ import {
   ThumbsUp,
   Handshake,
 } from 'lucide-react'
+import { isTouchDevice } from '@/lib/use-mobile'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { renderAnswerHtml } from '@/lib/knowledge/markdown'
 import { ITEM_TYPE_LABELS, RATING_LABELS, stripCitations } from '@/lib/knowledge/constants'
@@ -122,11 +123,11 @@ function SourceCard({ source, anchorId, highlighted }: { source: KnowledgeSource
           )}
           <span className="ml-auto flex items-center gap-3">
             {source.type === 'document' && (
-              <a href={`/api/knowledge/items/${source.item_id}/download`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-gray-600 hover:text-black">
+              <a href={`/api/knowledge/items/${source.item_id}/download`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 touch:py-2.5 font-medium text-gray-600 hover:text-black">
                 <Download size={11} /> Download
               </a>
             )}
-            <a href={openHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-gray-600 hover:text-black">
+            <a href={openHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 touch:py-2.5 font-medium text-gray-600 hover:text-black">
               <ExternalLink size={11} /> {source.type === 'video' && external ? 'Watch' : 'Open'}
             </a>
           </span>
@@ -147,7 +148,7 @@ function SourcesBlock({ messageId, sources, highlightRef }: { messageId: string;
           <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
             Sources <span className="font-medium text-gray-300">{cited.length}</span>
           </p>
-          <ul className="grid gap-3 sm:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {cited.map((s) => (
               <SourceCard key={s.ref} source={s} anchorId={`src-${messageId}-${s.ref}`} highlighted={highlightRef === s.ref} />
             ))}
@@ -156,11 +157,11 @@ function SourcesBlock({ messageId, sources, highlightRef }: { messageId: string;
       )}
       {related.length > 0 && (
         <details className="group mt-3">
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium text-gray-500 hover:text-gray-900">
+          <summary className="inline-flex touch:py-2.5 cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium text-gray-500 hover:text-gray-900">
             <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
             {plural(related.length, 'related item')} also matched
           </summary>
-          <ul className="mt-2.5 grid gap-3 sm:grid-cols-2">
+          <ul className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {related.map((s) => (
               <SourceCard key={s.ref} source={s} anchorId={`src-${messageId}-${s.ref}`} highlighted={highlightRef === s.ref} />
             ))}
@@ -197,11 +198,28 @@ export default function KnowledgeChat({
   const [mobileHistory, setMobileHistory] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const lastText = messages[messages.length - 1]?.content
+  // On a phone the module header sits above the chat, which would leave the
+  // composer below the fold. Once there's a conversation, bring the whole chat
+  // panel into view, just under the sticky top bar.
+  const chatPanelRef = useRef<HTMLElement>(null)
+  const hasConversation = messages.length > 0
+  useEffect(() => {
+    if (!hasConversation || !window.matchMedia('(max-width: 1023px)').matches) return
+    const top = chatPanelRef.current?.getBoundingClientRect().top
+    if (top !== undefined) window.scrollBy({ top: top - 64 })
+  }, [hasConversation])
+
   const { ref: scrollRef, onScroll, onWheel } = useStickToBottom<HTMLDivElement>(`${messages.length}:${lastText ?? ''}`)
 
   const hasDepartments = departments.length > 0
   const currentTitle = chatId ? chats.find((c) => c.id === chatId)?.title ?? null : null
   const questionCount = messages.filter((m) => m.role === 'user').length
+
+  // The "What was wrong?" options open below the buttons, which can be under the
+  // composer on a short screen.
+  useEffect(() => {
+    if (problemFor) document.getElementById(`problem-${problemFor}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [problemFor])
 
   // Grow the question box with its content (up to ~8 lines).
   useEffect(() => {
@@ -395,7 +413,7 @@ export default function KnowledgeChat({
   )
 
   return (
-    <div className={`grid gap-5 lg:min-h-[560px] lg:grid-cols-[268px_minmax(0,1fr)] ${heightClass}`}>
+    <div className={`grid grid-cols-1 gap-5 lg:min-h-[560px] lg:grid-cols-[268px_minmax(0,1fr)] ${heightClass}`}>
       {/* History (US-112) */}
       <aside className="hidden min-h-0 flex-col rounded-2xl border border-[#e5e3df] bg-white shadow-sm lg:flex">
         <div className="border-b border-[#eceae5] p-3">
@@ -431,7 +449,7 @@ export default function KnowledgeChat({
         </div>
       </aside>
 
-      <section className="relative flex h-[calc(100dvh-11rem)] min-h-[520px] flex-col rounded-2xl border border-[#e5e3df] bg-white shadow-sm lg:h-auto lg:min-h-0">
+      <section ref={chatPanelRef} className="relative flex h-[calc(100dvh-4.5rem)] min-h-[420px] min-w-0 flex-col rounded-2xl border border-[#e5e3df] bg-white shadow-sm lg:h-auto lg:min-h-0">
         <div className="flex items-center justify-between gap-3 border-b border-[#eceae5] px-4 py-3 sm:px-6">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-gray-900">{currentTitle ?? 'New question'}</p>
@@ -446,11 +464,11 @@ export default function KnowledgeChat({
             <button
               type="button"
               onClick={() => setMobileHistory((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1.5 text-xs font-medium text-gray-700"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1.5 touch:py-2.5 text-xs font-medium text-gray-700"
             >
               <History size={13} /> History <ChevronDown size={12} className={mobileHistory ? 'rotate-180' : ''} />
             </button>
-            <Link href="/knowledge" className="inline-flex items-center gap-1 rounded-lg bg-black px-2.5 py-1.5 text-xs font-medium text-white">
+            <Link href="/knowledge" className="inline-flex items-center gap-1 rounded-lg bg-black px-2.5 py-1.5 touch:py-2.5 text-xs font-medium text-white">
               <Plus size={13} /> New
             </Link>
           </div>
@@ -480,7 +498,7 @@ export default function KnowledgeChat({
                   <p className="mt-1.5 max-w-lg text-sm leading-6 text-gray-500">
                     Ask in plain language. Answers come only from knowledge your department Guardians have approved and published — and every answer shows its sources.
                   </p>
-                  <div className="mt-6 grid w-full gap-2.5 sm:grid-cols-2">
+                  <div className="mt-6 grid grid-cols-1 w-full gap-2.5 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                     {STARTERS.map(({ icon: Icon, text }) => (
                       <button
                         key={text}
@@ -527,7 +545,7 @@ export default function KnowledgeChat({
                     </div>
                   )}
 
-                  <div className="mt-8 grid w-full gap-3 text-left sm:grid-cols-3">
+                  <div className="mt-8 grid grid-cols-1 w-full gap-3 text-left sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
                     {[
                       { icon: ShieldCheck, title: 'Approved sources only', body: 'Drafts, personal files and the open web are never used.' },
                       { icon: BookOpen, title: 'Every claim is cited', body: 'Click a number in an answer to jump to its source.' },
@@ -616,7 +634,7 @@ export default function KnowledgeChat({
                             type="button"
                             onClick={() => setFeedbackTarget({ mode: 'rating', messageId: m.id, rating: 'missing' })}
                             disabled={rating === 'missing'}
-                            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-900 disabled:bg-amber-100 disabled:text-amber-800"
+                            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-black px-3 py-1.5 touch:py-2.5 text-xs font-medium text-white transition-colors hover:bg-gray-900 disabled:bg-amber-100 disabled:text-amber-800"
                           >
                             {rating === 'missing' ? (
                               <>
@@ -640,7 +658,7 @@ export default function KnowledgeChat({
                             <button
                               type="button"
                               onClick={() => rateHelpful(m.id)}
-                              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 touch:py-2 text-[11px] font-medium transition-colors ${
                                 rating === 'helpful' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-[#e5e3df] text-gray-600 hover:border-gray-300 hover:text-gray-900'
                               }`}
                             >
@@ -649,7 +667,7 @@ export default function KnowledgeChat({
                             <button
                               type="button"
                               onClick={() => setProblemFor((id) => (id === m.id ? null : m.id))}
-                              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 touch:py-2 text-[11px] font-medium transition-colors ${
                                 reported || problemFor === m.id ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-[#e5e3df] text-gray-600 hover:border-gray-300 hover:text-gray-900'
                               }`}
                             >
@@ -659,7 +677,7 @@ export default function KnowledgeChat({
                               <button
                                 type="button"
                                 onClick={() => copyAnswer(m)}
-                                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 touch:py-2 text-[11px] font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                               >
                                 {copiedId === m.id ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
                                 {copiedId === m.id ? 'Copied' : 'Copy'}
@@ -670,14 +688,14 @@ export default function KnowledgeChat({
                                   const first = m.sources.find((s) => s.cited) ?? m.sources[0]
                                   setFeedbackTarget({ mode: 'suggest-change', messageId: m.id, itemTitle: first?.title, departmentId: first?.department_id })
                                 }}
-                                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 touch:py-2 text-[11px] font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                               >
                                 <Lightbulb size={12} /> Suggest a change
                               </button>
                             </span>
                           </div>
                           {problemFor === m.id && (
-                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-xl bg-[#faf9f7] px-3 py-2.5">
+                            <div id={`problem-${m.id}`} className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-xl bg-[#faf9f7] px-3 py-2.5">
                               <span className="mr-1 text-[11px] text-gray-500">What was wrong?</span>
                               {PROBLEM_RATINGS.map((r) => (
                                 <button
@@ -687,7 +705,7 @@ export default function KnowledgeChat({
                                     setProblemFor(null)
                                     setFeedbackTarget({ mode: 'rating', messageId: m.id, rating: r })
                                   }}
-                                  className="rounded-full border border-[#e5e3df] bg-white px-2.5 py-1 text-[11px] font-medium text-gray-700 transition-colors hover:border-gray-400"
+                                  className="rounded-full border border-[#e5e3df] bg-white px-2.5 py-1 touch:py-2 text-[11px] font-medium text-gray-700 transition-colors hover:border-gray-400"
                                 >
                                   {RATING_LABELS[r]}
                                 </button>
@@ -729,14 +747,14 @@ export default function KnowledgeChat({
               e.preventDefault()
               ask(input)
             }}
-            className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-[#e5e3df] bg-white p-1.5 pl-4 shadow-sm transition-colors focus-within:border-gray-900"
+            className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-[#e5e3df] bg-white p-1.5 touch:p-2.5 pl-4 shadow-sm transition-colors focus-within:border-gray-900"
           >
             <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === 'Enter' && !e.shiftKey && !isTouchDevice()) {
                   e.preventDefault()
                   ask(input)
                 }

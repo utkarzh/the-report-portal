@@ -59,13 +59,13 @@ export default async function KnowledgeManageDepartmentPage({
   ]
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-7xl mx-auto">
         <KnowledgeHeader ctx={ctx} active="manage" adminBar={false} subtitle="Write, publish and keep your department’s knowledge up to date, and act on what colleagues send you." />
         <Breadcrumbs items={[{ label: 'Manage', href: '/knowledge/manage' }, { label: department.name }]} />
 
         <div className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-          <div className="flex flex-col gap-5 p-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-5 p-4 sm:p-6 xl:flex-row xl:items-start xl:justify-between">
             <div className="flex min-w-0 items-start gap-4">
               <DeptMonogram name={department.name} size="lg" muted={!!department.archived_at} />
               <div className="min-w-0">
@@ -114,11 +114,11 @@ export default async function KnowledgeManageDepartmentPage({
                 </>
               )
               return s.href ? (
-                <Link key={s.label} href={s.href} className="block px-6 py-3.5 transition-colors hover:bg-[#faf9f7]">
+                <Link key={s.label} href={s.href} className="block px-4 sm:px-6 py-3.5 transition-colors hover:bg-[#faf9f7]">
                   {inner}
                 </Link>
               ) : (
-                <div key={s.label} className="px-6 py-3.5">
+                <div key={s.label} className="px-4 sm:px-6 py-3.5">
                   {inner}
                 </div>
               )
@@ -163,7 +163,7 @@ export default async function KnowledgeManageDepartmentPage({
         </nav>
 
         {tab === 'content' ? (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
             <TopicsManager departmentId={department.id} topics={topics} counts={counts} activeTopic={topic} canEdit={canEdit} basePath={basePath} />
             <ContentTable rows={filtered} itemHrefBase={`${basePath}/items`} canEdit={canEdit} />
           </div>

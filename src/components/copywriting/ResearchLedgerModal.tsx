@@ -49,10 +49,10 @@ export default function ResearchLedgerModal({ open, onClose, entries, projectId,
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#e5e3df] sticky top-0 bg-white">
+      <div className="modal-sheet relative bg-white w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-xl">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[#e5e3df] sticky top-0 bg-white">
           <h3 className="text-sm font-semibold text-gray-900">Research Ledger</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
             <X size={16} />
@@ -62,7 +62,7 @@ export default function ResearchLedgerModal({ open, onClose, entries, projectId,
         {/* After approving findings, the writer can go straight to working them
             into the draft — runs as a refine in the chat on the draft screen. */}
         {!readOnly && applyCount > 0 && onApplyApproved && (
-          <div className="sticky top-[53px] z-10 flex flex-wrap items-center justify-between gap-3 border-b border-emerald-200 bg-emerald-50 px-6 py-3">
+          <div className="sticky top-[53px] z-10 flex flex-wrap items-center justify-between gap-3 border-b border-emerald-200 bg-emerald-50 px-4 sm:px-6 py-3">
             <p className="text-xs text-emerald-900">
               {applyCount} approved finding{applyCount === 1 ? '' : 's'} not in the draft yet
             </p>
@@ -72,7 +72,7 @@ export default function ResearchLedgerModal({ open, onClose, entries, projectId,
           </div>
         )}
 
-        <div className="p-6 flex flex-col gap-4">
+        <div className="p-4 sm:p-6 flex flex-col gap-4">
           {entries.length === 0 && <p className="text-sm text-gray-400">No research has been run on this article yet.</p>}
           {entries.map((e) => (
             <div key={e.id} className="border border-[#e5e3df] p-4">

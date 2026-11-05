@@ -105,10 +105,10 @@ export default function MediaLibraryManager({ initialEntries, guideCounts, from 
                     </div>
                   </div>
                   <div className="flex flex-shrink-0 items-center gap-1">
-                    <Link href={mediaLibraryHref(from, m.id)} className="p-1.5 text-gray-400 transition-colors hover:text-black" title="Edit">
+                    <Link href={mediaLibraryHref(from, m.id)} className="p-1.5 touch:p-2.5 text-gray-400 transition-colors hover:text-black" title="Edit">
                       <Pencil size={14} />
                     </Link>
-                    <button type="button" onClick={() => setDeleting(m)} className="p-1.5 text-gray-300 transition-colors hover:text-red-500" title="Delete">
+                    <button type="button" onClick={() => setDeleting(m)} className="p-1.5 touch:p-2.5 text-gray-300 transition-colors hover:text-red-500" title="Delete">
                       <Trash2 size={14} />
                     </button>
                   </div>

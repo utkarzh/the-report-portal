@@ -137,7 +137,7 @@ function GuideList({
 }) {
   const [viewing, setViewing] = useState<string | null>(null)
   return (
-    <div className="bg-white border border-[#e5e3df] p-6">
+    <div className="bg-white border border-[#e5e3df] p-4 sm:p-6">
       <FileViewerModal endpoint={viewing ? `/api/copywriting/admin/trc-guides/${viewing}` : null} onClose={() => setViewing(null)} />
       <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
       <p className="text-xs text-gray-500 mt-1">{description}</p>
@@ -153,7 +153,7 @@ function GuideList({
               <button onClick={() => setViewing(g.id)} className="inline-flex items-center gap-1 text-gray-500 hover:text-black">
                 <Eye size={12} /> View
               </button>
-              <button onClick={() => onRemove(g.id)} className="text-gray-400 hover:text-red-500" aria-label="Remove">
+              <button onClick={() => onRemove(g.id)} className="touch:p-2.5 text-gray-400 hover:text-red-500" aria-label="Remove">
                 <Trash2 size={12} />
               </button>
             </span>
@@ -162,7 +162,7 @@ function GuideList({
         {items.length === 0 && <p className="text-xs text-gray-400">None uploaded yet.</p>}
       </div>
 
-      <label className="mt-3 inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-black cursor-pointer transition-colors">
+      <label className="mt-3 inline-flex touch:py-2.5 items-center gap-1.5 text-xs text-gray-500 hover:text-black cursor-pointer transition-colors">
         {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
         Upload (multiple allowed)
         <input type="file" multiple className="hidden" onChange={(e) => onUpload(e.target.files)} />

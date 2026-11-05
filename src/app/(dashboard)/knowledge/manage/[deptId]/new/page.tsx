@@ -48,7 +48,7 @@ export default async function KnowledgeNewItemPage({
   const heading = type === 'text' ? 'Write a guide' : 'Add a video or link'
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <KnowledgeHeader ctx={ctx} active="manage" adminBar={false} subtitle="Write, publish and keep your department’s knowledge up to date, and act on what colleagues send you." />
         <Breadcrumbs items={[{ label: 'Manage', href: '/knowledge/manage' }, { label: department.name, href: basePath }, { label: heading }]} />
@@ -58,7 +58,7 @@ export default async function KnowledgeNewItemPage({
           <p className="mt-1 text-sm text-gray-500">For {department.name}. It’s saved as a draft first — you publish it from the next screen.</p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="min-w-0">
             {feedback && (
               <div className="mb-5 rounded-2xl border border-[#c8973f]/25 bg-[#fbf7ed] p-5 text-sm text-gray-700">

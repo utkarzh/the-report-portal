@@ -28,7 +28,7 @@ export default async function CountryIntelligencePage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div className="flex items-start gap-3">
           <div className="rounded-xl border border-[#e5e3df] bg-[#f7f6f3] p-2.5 text-gray-700"><Radar size={18} /></div>
@@ -60,11 +60,11 @@ export default async function CountryIntelligencePage() {
       </div>
 
       {isMissingCiTable(error) ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">{CI_NOT_INSTALLED}</div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-6 text-sm text-amber-800">{CI_NOT_INSTALLED}</div>
       ) : projects.length === 0 ? (
-        <div className="rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500 shadow-sm">No research yet. Start one to build a country&apos;s company list.</div>
+        <div className="rounded-xl border border-[#e5e3df] bg-white p-4 sm:p-8 text-sm text-gray-500 shadow-sm">No research yet. Start one to build a country&apos;s company list.</div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects.map((p, i) => {
             const st = STATUS[p.status] || STATUS.draft
             return (

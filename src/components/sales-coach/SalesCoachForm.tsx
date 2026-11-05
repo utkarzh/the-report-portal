@@ -12,6 +12,7 @@ import { getSupabaseBrowserClient, ensureFreshSession } from '@/lib/supabase/cli
 import { SALES_COACH_OUTCOMES } from '@/lib/sales-coach'
 import { postWithRetry } from '@/lib/post-with-retry'
 import type { MediaOption, SalesCoachOutcome, SalesCoachParticipant } from '@/types'
+import { useKeepScreenOn } from '@/lib/use-mobile'
 
 const AUDIO_BUCKET = 'sales-coach-audio'
 const MAX_BYTES = 500 * 1024 * 1024
@@ -46,6 +47,7 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const busy = phase !== 'idle' && phase !== 'error'
+  useKeepScreenOn(busy)
 
   function setC(k: keyof typeof ctx, v: string) { setCtx((p) => ({ ...p, [k]: v })) }
   function setD(k: string, v: string | boolean) { setDetails((p) => ({ ...p, [k]: v })) }
@@ -153,12 +155,12 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
       {/* ── Step 1: context ─────────────────────────────────────────── */}
-      <section className="rounded-2xl border border-[#e5e3df] bg-white p-6">
+      <section className="rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold text-gray-900">Context</h2>
         <p className="mt-1 text-xs text-gray-500">
           This information helps the coach identify the participants, understand the commercial context and interpret the audio accurately.
         </p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label="Country *" value={ctx.country} onChange={(e) => setC('country', e.target.value)} placeholder="e.g. Italy" />
           <MediaSelect label="Media / Publication *" options={media} value={ctx.mediaPublication} onChange={(name) => setC('mediaPublication', name)} />
           <Input label="Company *" value={ctx.company} onChange={(e) => setC('company', e.target.value)} placeholder="e.g. Acme Corp (or leave blank to use the recording's filename)" />
@@ -187,9 +189,9 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
       </section>
 
       {/* ── Step 2: declared outcome ────────────────────────────────── */}
-      <section className="rounded-2xl border border-[#e5e3df] bg-white p-6">
+      <section className="rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold text-gray-900">What was the final outcome of this negotiation? *</h2>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {SALES_COACH_OUTCOMES.map((o) => (
             <button
               key={o.value}
@@ -204,7 +206,7 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
 
         {/* Conditional fields per the declared outcome (US-036) */}
         {outcome === 'signed' && (
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Input label="Space / product signed *" value={s(details.space)} onChange={(e) => setD('space', e.target.value)} placeholder="e.g. Half page" />
             <Input label="Price *" value={s(details.price)} onChange={(e) => setD('price', e.target.value)} placeholder="e.g. 30000" />
             <CurrencySelect value={s(details.currency)} onChange={(v) => setD('currency', v)} />
@@ -224,7 +226,7 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
               <>
                 <div className="rounded-xl border border-[#e5e3df] p-4">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Option 1</p>
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <Input label="Space / product" value={s(details.opt1Space)} onChange={(e) => setD('opt1Space', e.target.value)} />
                     <Input label="Price" value={s(details.opt1Price)} onChange={(e) => setD('opt1Price', e.target.value)} />
                     <CurrencySelect value={s(details.opt1Currency)} onChange={(v) => setD('opt1Currency', v)} />
@@ -232,7 +234,7 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
                 </div>
                 <div className="rounded-xl border border-[#e5e3df] p-4">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Option 2 <span className="font-normal normal-case text-gray-400">(optional)</span></p>
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <Input label="Space / product" value={s(details.opt2Space)} onChange={(e) => setD('opt2Space', e.target.value)} />
                     <Input label="Price" value={s(details.opt2Price)} onChange={(e) => setD('opt2Price', e.target.value)} />
                     <CurrencySelect value={s(details.opt2Currency)} onChange={(v) => setD('opt2Currency', v)} />
@@ -242,7 +244,7 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
             )}
             <div className="rounded-xl border border-[#e5e3df] p-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Follow-up <span className="font-normal normal-case text-gray-400">(all optional — leave blank if not secured)</span></p>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input label="Next decision-maker / signatory name" value={s(details.nextDmName)} onChange={(e) => setD('nextDmName', e.target.value)} />
                 <Input label="Their position" value={s(details.nextDmPosition)} onChange={(e) => setD('nextDmPosition', e.target.value)} />
               </div>
@@ -250,7 +252,7 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
                 <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={Boolean(details.ceoIntroduced)} onChange={(e) => setD('ceoIntroduced', e.target.checked)} /> The CEO directly introduced or contacted them</label>
                 <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={Boolean(details.meetingAgreed)} onChange={(e) => setD('meetingAgreed', e.target.checked)} /> A further decision meeting was agreed</label>
               </div>
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input type="date" label="Meeting date" value={s(details.meetingDate)} onChange={(e) => setD('meetingDate', e.target.value)} />
                 <Input type="time" label="Meeting time" value={s(details.meetingTime)} onChange={(e) => setD('meetingTime', e.target.value)} />
               </div>
@@ -270,7 +272,7 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
       </section>
 
       {/* ── Step 3: upload ──────────────────────────────────────────── */}
-      <section className="rounded-2xl border border-[#e5e3df] bg-white p-6">
+      <section className="rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold text-gray-900">Recording or transcript</h2>
         <div className="mt-3 flex gap-2">
           <TabButton active={inputMode === 'audio'} onClick={() => setInputMode('audio')} icon={<FileAudio size={14} />} label="Upload audio" />
@@ -285,14 +287,17 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
                 {!busy && <button type="button" onClick={() => { setAudioFile(null); if (audioRef.current) audioRef.current.value = '' }} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>}
               </div>
             ) : (
-              <button type="button" onClick={() => audioRef.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-[#d4d0c8] bg-[#fcfbf8] px-6 py-8 text-sm text-gray-600 hover:border-gray-400">
+              <button type="button" onClick={() => audioRef.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-[#d4d0c8] bg-[#fcfbf8] px-4 sm:px-6 py-8 text-sm text-gray-600 hover:border-gray-400">
                 <Upload size={18} /> Drop or choose an audio file
                 <span className="text-xs text-gray-400">MP3, WAV, M4A, WEBM · long recordings supported</span>
               </button>
             )}
             <input ref={audioRef} type="file" accept="audio/*" className="sr-only" onChange={(e) => pickAudio(e.target.files?.[0])} />
             {(phase === 'transcoding' || phase === 'uploading') && (
+              <>
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#efece7]"><div className="h-full rounded-full bg-black transition-all" style={{ width: phase === 'transcoding' ? `${Math.round(progress * 100)}%` : '100%' }} /></div>
+              <p className="mt-2 hidden text-xs text-gray-500 touch:block">Keep this screen open until it finishes.</p>
+              </>
             )}
           </div>
         ) : (
@@ -344,13 +349,13 @@ function ParticipantList({ title, nameLabel, roleLabel, items, setItems }: {
       <div className="mt-2 flex flex-col gap-2">
         {items.map((it, i) => (
           <div key={i} className="flex items-end gap-2">
-            <div className="flex-1"><Input label={i === 0 ? nameLabel : ''} value={it.name} onChange={(e) => update(i, 'name', e.target.value)} placeholder="Name" /></div>
-            <div className="flex-1"><Input label={i === 0 ? roleLabel : ''} value={it.role} onChange={(e) => update(i, 'role', e.target.value)} placeholder={roleLabel} /></div>
-            <button type="button" onClick={() => setItems(items.length > 1 ? items.filter((_, idx) => idx !== i) : [{ name: '', role: '' }])} className="mb-2 rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><X size={15} /></button>
+            <div className="min-w-0 flex-1"><Input label={i === 0 ? nameLabel : ''} value={it.name} onChange={(e) => update(i, 'name', e.target.value)} placeholder="Name" /></div>
+            <div className="min-w-0 flex-1"><Input label={i === 0 ? roleLabel : ''} value={it.role} onChange={(e) => update(i, 'role', e.target.value)} placeholder={roleLabel} /></div>
+            <button type="button" onClick={() => setItems(items.length > 1 ? items.filter((_, idx) => idx !== i) : [{ name: '', role: '' }])} className="mb-2 rounded-full p-1.5 touch:p-2.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><X size={15} /></button>
           </div>
         ))}
       </div>
-      <button type="button" onClick={() => setItems([...items, { name: '', role: '' }])} className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-black">
+      <button type="button" onClick={() => setItems([...items, { name: '', role: '' }])} className="mt-2 inline-flex items-center gap-1.5 touch:py-2.5 text-xs font-medium text-gray-600 hover:text-black">
         <Plus size={13} /> Add another
       </button>
     </div>

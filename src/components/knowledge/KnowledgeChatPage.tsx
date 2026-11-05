@@ -64,7 +64,7 @@ export default async function KnowledgeChatPage({ chatId, initialQuestion }: { c
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-7xl mx-auto">
         <KnowledgeHeader ctx={ctx} active="ask" />
         <KnowledgeChat

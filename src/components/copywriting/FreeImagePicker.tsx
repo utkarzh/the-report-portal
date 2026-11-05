@@ -86,15 +86,15 @@ export default function FreeImagePicker({ projectId, slot, description, hasImage
     `/api/copywriting/${projectId}/images/suggest/download?${new URLSearchParams({ url: img.downloadUrl, name: img.title })}`
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8" role="dialog" aria-modal="true" aria-label={`Free images for image ${slot}`}>
+    <div className="modal-overlay fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8" role="dialog" aria-modal="true" aria-label={`Free images for image ${slot}`}>
       <div className="fixed inset-0 bg-black/40" onClick={() => !usingId && onClose()} />
-      <div ref={panelRef} tabIndex={-1} className="relative w-full max-w-4xl bg-white shadow-xl focus:outline-none">
+      <div ref={panelRef} tabIndex={-1} className="modal-sheet relative w-full max-w-4xl bg-white shadow-xl focus:outline-none">
         <div className="flex items-start justify-between gap-4 border-b border-[#e5e3df] px-5 py-4 sm:px-6">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-gray-900">Free images for Image {slot}</h2>
             {description && <p className="mt-0.5 text-xs italic text-gray-500">{description}</p>}
           </div>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-700" aria-label="Close">
+          <button onClick={onClose} className="p-1 touch:p-2.5 text-gray-400 hover:text-gray-700" aria-label="Close">
             <X size={18} />
           </button>
         </div>
@@ -193,7 +193,7 @@ export default function FreeImagePicker({ projectId, slot, description, hasImage
                         type="button"
                         onClick={() => applyImage(img)}
                         disabled={!!usingId}
-                        className="inline-flex flex-1 items-center justify-center gap-1.5 bg-black px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-900 disabled:opacity-50"
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 bg-black px-3 py-1.5 touch:py-2.5 text-xs font-medium text-white transition-colors hover:bg-gray-900 disabled:opacity-50"
                       >
                         {usingId === img.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
                         {usingId === img.id ? 'Adding…' : 'Use this photo'}
@@ -212,7 +212,7 @@ export default function FreeImagePicker({ projectId, slot, description, hasImage
                         rel="noreferrer"
                         title="Source page on Wikimedia Commons"
                         aria-label={`Source page for ${img.title}`}
-                        className="inline-flex items-center justify-center border border-[#e5e3df] px-2.5 py-1.5 text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
+                        className="inline-flex items-center justify-center border border-[#e5e3df] px-2.5 py-1.5 touch:py-2.5 text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
                       >
                         <ExternalLink size={13} />
                       </a>

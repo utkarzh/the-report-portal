@@ -66,13 +66,13 @@ export default function DepartmentFormModal({
         <Plus size={15} /> {label}
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">
           <div className="modal-backdrop-in absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <form onSubmit={submit} className="modal-panel-in relative w-full max-w-md overflow-hidden rounded-2xl bg-white text-left shadow-xl">
-            <button type="button" onClick={() => setOpen(false)} className="absolute right-4 top-4 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+          <form onSubmit={submit} className="modal-sheet modal-panel-in relative w-full max-w-md overflow-hidden rounded-2xl bg-white text-left shadow-xl">
+            <button type="button" onClick={() => setOpen(false)} className="absolute right-4 top-4 rounded-md p-1 touch:p-2.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
               <X size={16} />
             </button>
-            <div className="flex items-start gap-3 border-b border-[#eceae5] px-6 pb-4 pt-6 pr-12">
+            <div className="flex items-start gap-3 border-b border-[#eceae5] px-4 sm:px-6 pb-4 pt-6 pr-12">
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#fbf7ed] text-[#a07530]">
                 <FolderPlus size={17} />
               </span>
@@ -81,7 +81,7 @@ export default function DepartmentFormModal({
                 <p className="mt-0.5 text-xs leading-5 text-gray-500">A department holds the knowledge for one team. You’ll add its members on the next screen.</p>
               </div>
             </div>
-            <div className="flex flex-col gap-5 px-6 py-5">
+            <div className="flex flex-col gap-5 px-4 sm:px-6 py-5">
               <Input label="Name *" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Editorial, Business Development, Graphics" required autoFocus />
               <Textarea label="Short description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="What this department’s knowledge covers" />
               <div>
@@ -90,7 +90,7 @@ export default function DepartmentFormModal({
               </div>
               {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
             </div>
-            <div className="flex gap-3 border-t border-[#eceae5] bg-[#fcfbf9] px-6 py-4">
+            <div className="flex gap-3 border-t border-[#eceae5] bg-[#fcfbf9] px-4 sm:px-6 py-4">
               <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(false)} className="flex-1 justify-center">
                 Cancel
               </Button>

@@ -25,7 +25,7 @@ export default async function PlanteoLibraryVariantPage({ params }: Props) {
     .maybeSingle()
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-5xl mx-auto">
         <Breadcrumbs
           items={[

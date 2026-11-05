@@ -43,7 +43,7 @@ export default function FinanceAnalyticsPage() {
     fetch('/api/finance/projects').then(r => r.json()).then(d => setProjects(d.projects ?? []))
   }, [])
 
-  if (!data || !projects) return <div className="p-8 text-sm text-gray-400">Loading…</div>
+  if (!data || !projects) return <div className="p-4 sm:p-8 text-sm text-gray-400">Loading…</div>
 
   const currencies = Object.keys(data.byCurrency).sort()
 
@@ -62,7 +62,7 @@ export default function FinanceAnalyticsPage() {
   ).size
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Analytics</h1>
         <p className="text-sm text-gray-500 mt-1">Spend across projects.</p>

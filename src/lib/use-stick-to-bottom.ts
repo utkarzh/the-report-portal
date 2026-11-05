@@ -19,8 +19,16 @@ import { useCallback, useEffect, useRef } from 'react'
 //
 // Usage: spread the returned handlers onto the element that actually has
 // `overflow-y-auto` — the scroll container, not an inner wrapper.
-export function useStickToBottom<T extends HTMLElement = HTMLDivElement>(dep: unknown) {
+//
+// `startAtTopOnPhones`: for documents rather than chats. Below lg, opening a
+// finished document starts at its first line instead of its last; anything that
+// streams in afterwards still follows as usual.
+export function useStickToBottom<T extends HTMLElement = HTMLDivElement>(
+  dep: unknown,
+  { startAtTopOnPhones = false }: { startAtTopOnPhones?: boolean } = {},
+) {
   const ref = useRef<T | null>(null)
+  const mounted = useRef(false)
   const stick = useRef(true)
   // scrollTop as of our last programmatic pin, so onScroll can tell our own
   // scrolling apart from the user's.
@@ -39,9 +47,13 @@ export function useStickToBottom<T extends HTMLElement = HTMLDivElement>(dep: un
 
   useEffect(() => {
     const el = ref.current
+    const firstRun = !mounted.current
+    mounted.current = true
     if (!el || !stick.current) return
+    if (firstRun && startAtTopOnPhones && window.matchMedia('(max-width: 1023px)').matches) return
     el.scrollTop = el.scrollHeight
     pinnedAt.current = el.scrollTop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dep])
 
   return { ref, onScroll, onWheel }

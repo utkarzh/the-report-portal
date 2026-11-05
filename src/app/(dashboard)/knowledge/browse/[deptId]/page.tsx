@@ -62,13 +62,13 @@ export default async function KnowledgeDepartmentBrowsePage({ params, searchPara
   const basePath = `/knowledge/browse/${dept.id}`
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <KnowledgeHeader ctx={ctx} active="browse" adminBar={false} />
         <Breadcrumbs items={[{ label: 'Browse', href: '/knowledge/browse' }, { label: dept.name }]} />
 
         <div className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-          <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-4 p-4 sm:p-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-4">
               <DeptMonogram name={dept.name} size="lg" />
               <div className="min-w-0">
@@ -78,7 +78,7 @@ export default async function KnowledgeDepartmentBrowsePage({ params, searchPara
             </div>
             <SuggestButton target={{ mode: 'suggest-new', departmentId: dept.id }} departments={[{ id: dept.id, name: dept.name }]} />
           </div>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[#eceae5] px-6 py-3 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[#eceae5] px-4 sm:px-6 py-3 text-xs text-gray-500">
             <span className="inline-flex items-center gap-2">
               {guardianName ? <Avatar name={guardianName} size="xs" /> : null}
               Guardian <span className="font-medium text-gray-800">{guardianName ?? 'not assigned'}</span>
@@ -99,7 +99,7 @@ export default async function KnowledgeDepartmentBrowsePage({ params, searchPara
             When {guardianName ?? 'the Guardian'} publishes guides, documents or videos for {dept.name}, they’ll appear here. Missing something? Use “Suggest new knowledge”.
           </EmptyState>
         ) : (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
             <aside className="hidden lg:block">
               <div className="sticky top-6 rounded-2xl border border-[#e5e3df] bg-white p-3 shadow-sm">
                 <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Topics</p>
@@ -108,7 +108,7 @@ export default async function KnowledgeDepartmentBrowsePage({ params, searchPara
                     <li key={g.topic?.id ?? 'other'}>
                       <a
                         href={`#topic-${g.topic?.id ?? 'other'}`}
-                        className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-600 transition-colors hover:bg-[#faf9f7] hover:text-gray-900"
+                        className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 touch:py-2.5 text-[13px] text-gray-600 transition-colors hover:bg-[#faf9f7] hover:text-gray-900"
                       >
                         <span className="truncate">{g.topic?.name ?? 'Other'}</span>
                         <span className="text-[11px] tabular-nums text-gray-400">{g.items.length}</span>
@@ -178,21 +178,21 @@ export default async function KnowledgeDepartmentBrowsePage({ params, searchPara
                                     href={url!}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400"
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400"
                                   >
                                     <ExternalLink size={12} /> {i.type === 'video' ? 'Watch' : 'Open link'}
                                   </a>
                                 ) : i.type === 'document' ? (
                                   <a
                                     href={`/api/knowledge/items/${i.id}/download`}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400"
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400"
                                   >
                                     <Download size={12} /> Download
                                   </a>
                                 ) : null}
                                 <Link
                                   href={`/knowledge/items/${i.id}`}
-                                  className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
+                                  className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
                                 >
                                   {i.type === 'text' ? 'Read' : 'Details'} <ArrowRight size={12} />
                                 </Link>

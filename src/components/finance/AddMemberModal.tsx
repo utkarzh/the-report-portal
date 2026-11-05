@@ -60,17 +60,17 @@ export default function AddMemberModal({ open, onClose, onAdded, projectId, exis
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-sm shadow-2xl flex flex-col rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#e5e3df]">
+      <div className="modal-sheet relative bg-white w-full max-w-sm shadow-2xl flex flex-col rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-5 border-b border-[#e5e3df]">
           <h2 className="text-sm font-semibold text-gray-900">Add sales rep</h2>
-          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
+          <button onClick={onClose} className="p-1.5 touch:p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-6 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="px-4 sm:px-6 py-6 flex flex-col gap-4">
           {error && <div className="p-3 bg-red-50 border border-red-200 text-sm text-red-700 rounded">{error}</div>}
 
           <Select

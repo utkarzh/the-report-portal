@@ -212,7 +212,7 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
         ) : (
           <Input
             label="Token Limit *"
-            type="number"
+            type="number" inputMode="decimal"
             value={form.tokenLimit}
             onChange={(e) =>
               setForm((p) => ({ ...p, tokenLimit: e.target.value }))

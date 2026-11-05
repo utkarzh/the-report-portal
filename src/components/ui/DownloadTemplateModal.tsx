@@ -99,14 +99,14 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
           <div className="absolute inset-0 bg-black/40" onClick={onClose} />
           <motion.div
-            className="relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            className="modal-sheet relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
             initial={{ scale: 0.96, y: 8 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.96, y: 8 }}
@@ -118,7 +118,7 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
                 {step === 'format' && (
                   <button
                     onClick={() => setStep('template')}
-                    className="rounded-md p-1 text-gray-400 transition-colors hover:bg-[#f7f6f3] hover:text-gray-700"
+                    className="rounded-md p-1 touch:p-2.5 text-gray-400 transition-colors hover:bg-[#f7f6f3] hover:text-gray-700"
                     title="Back to templates"
                   >
                     <ArrowLeft size={16} />
@@ -152,7 +152,7 @@ export default function DownloadTemplateModal({ open, onClose, baseUrl, extraPar
               </div>
               <button
                 onClick={onClose}
-                className="rounded-md p-1 text-gray-400 transition-colors hover:bg-[#f7f6f3] hover:text-gray-700"
+                className="rounded-md p-1 touch:p-2.5 text-gray-400 transition-colors hover:bg-[#f7f6f3] hover:text-gray-700"
               >
                 <X size={17} />
               </button>

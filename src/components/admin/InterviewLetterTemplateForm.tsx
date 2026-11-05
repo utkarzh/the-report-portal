@@ -175,13 +175,13 @@ export default function InterviewLetterTemplateForm({ company, variant, label, i
                 Paragraph {i + 1}
               </span>
               <div className="flex items-center gap-1 flex-shrink-0">
-                <button type="button" onClick={() => moveSlot(i, -1)} disabled={i === 0} className="p-1.5 text-gray-400 hover:text-black disabled:opacity-30 disabled:hover:text-gray-400 transition-colors">
+                <button type="button" onClick={() => moveSlot(i, -1)} disabled={i === 0} className="p-1.5 touch:p-2.5 text-gray-400 hover:text-black disabled:opacity-30 disabled:hover:text-gray-400 transition-colors">
                   <ArrowUp size={14} />
                 </button>
-                <button type="button" onClick={() => moveSlot(i, 1)} disabled={i === structure.length - 1} className="p-1.5 text-gray-400 hover:text-black disabled:opacity-30 disabled:hover:text-gray-400 transition-colors">
+                <button type="button" onClick={() => moveSlot(i, 1)} disabled={i === structure.length - 1} className="p-1.5 touch:p-2.5 text-gray-400 hover:text-black disabled:opacity-30 disabled:hover:text-gray-400 transition-colors">
                   <ArrowDown size={14} />
                 </button>
-                <button type="button" onClick={() => removeSlot(i)} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors">
+                <button type="button" onClick={() => removeSlot(i)} className="p-1.5 touch:p-2.5 text-gray-400 hover:text-red-600 transition-colors">
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -229,7 +229,7 @@ export default function InterviewLetterTemplateForm({ company, variant, label, i
                 />
                 <Input
                   label="Word budget"
-                  type="number"
+                  type="number" inputMode="decimal"
                   value={String(slot.wordBudget || 60)}
                   onChange={(e) => updateSlot(i, { wordBudget: parseInt(e.target.value) || 0 })}
                   min="10"

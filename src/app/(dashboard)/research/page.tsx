@@ -25,7 +25,7 @@ export default async function ResearchPage() {
 
       {/* Form — full width on mobile, fixed left panel on desktop */}
       <div className="w-full lg:w-80 bg-white border-b lg:border-b-0 lg:border-r border-[#e5e3df] flex-shrink-0 overflow-y-auto order-1">
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-1">New Interview</h2>
           <p className="text-xs text-gray-500 mb-6">
             Fill in the details below. The AI will research the interviewee and generate interview questions.
@@ -50,7 +50,7 @@ export default async function ResearchPage() {
       </div>
 
       {/* Empty state — shows below form on mobile, fills right on desktop */}
-      <div className="flex-1 flex flex-col items-center justify-center overflow-hidden bg-[#f0efec] p-8 order-2 min-h-[320px]">
+      <div className="flex-1 flex flex-col items-center justify-center overflow-hidden bg-[#f0efec] p-4 sm:p-8 order-2 min-h-[320px]">
         <div className="w-full max-w-md text-center">
 
           {/* Gemini-style glowing emblem — a rotating monochrome aurora +

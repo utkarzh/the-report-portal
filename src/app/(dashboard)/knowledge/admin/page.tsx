@@ -57,7 +57,7 @@ export default async function KnowledgeAdminPage() {
     .filter((w) => w.warning)
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <Breadcrumbs items={[{ label: 'Knowledge Base', href: '/knowledge' }, { label: 'Admin' }]} />
 
@@ -114,8 +114,8 @@ export default async function KnowledgeAdminPage() {
               Start with the teams whose know-how people ask about most — e.g. Editorial, Business Development, Graphics — and assign each one its Guardian.
             </EmptyState>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-              <table className="w-full min-w-[820px] text-sm">
+            <div className="table-cards-wrap overflow-x-auto rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
+              <table className="table-cards w-full min-w-[820px] text-sm">
                 <thead>
                   <tr className="border-b border-[#e5e3df] bg-[#fcfbf9] text-left text-[10px] font-semibold uppercase tracking-widest text-gray-400">
                     <th className="px-5 py-3">Department</th>
@@ -136,7 +136,7 @@ export default async function KnowledgeAdminPage() {
                     const last = lastPublished(d.id)
                     return (
                       <tr key={d.id} className={`group transition-colors ${d.archived_at ? 'bg-[#fcfbf9] text-gray-400' : 'hover:bg-[#faf9f7]'}`}>
-                        <td className="px-5 py-3.5">
+                        <td data-cell="title" className="px-5 py-3.5">
                           <Link href={`/knowledge/admin/${d.id}`} className="flex items-center gap-3">
                             <DeptMonogram name={d.name} size="sm" muted={!!d.archived_at} />
                             <span className="min-w-0">
@@ -148,7 +148,7 @@ export default async function KnowledgeAdminPage() {
                             </span>
                           </Link>
                         </td>
-                        <td className="px-4 py-3.5">
+                        <td data-label="Guardian" className="px-4 py-3.5">
                           {g ? (
                             <span className="inline-flex items-center gap-2">
                               <Avatar name={displayName(g)} size="xs" />
@@ -163,14 +163,14 @@ export default async function KnowledgeAdminPage() {
                             </p>
                           )}
                         </td>
-                        <td className="px-4 py-3.5 text-right tabular-nums">{count(members, d.id)}</td>
-                        <td className="px-4 py-3.5 text-right tabular-nums">{count(items, d.id, (i) => i.status === 'published')}</td>
-                        <td className="px-4 py-3.5 text-right tabular-nums">{count(items, d.id, (i) => i.status !== 'archived' && !!i.draft_version_id)}</td>
-                        <td className="px-4 py-3.5 text-right tabular-nums">
+                        <td data-label="Members" className="px-4 py-3.5 text-right tabular-nums">{count(members, d.id)}</td>
+                        <td data-label="Published" className="px-4 py-3.5 text-right tabular-nums">{count(items, d.id, (i) => i.status === 'published')}</td>
+                        <td data-label="Drafts" className="px-4 py-3.5 text-right tabular-nums">{count(items, d.id, (i) => i.status !== 'archived' && !!i.draft_version_id)}</td>
+                        <td data-label="Feedback" className="px-4 py-3.5 text-right tabular-nums">
                           {open > 0 ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">{open}</span> : <span className="text-gray-300">0</span>}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3.5 text-gray-500">{last ? timeAgo(last) : <span className="text-gray-300">—</span>}</td>
-                        <td className="px-2 py-3.5">
+                        <td data-label="Last published" className="whitespace-nowrap px-4 py-3.5 text-gray-500">{last ? timeAgo(last) : <span className="text-gray-300">—</span>}</td>
+                        <td data-cell="actions" className="px-2 py-3.5">
                           <Link href={`/knowledge/admin/${d.id}`} className="text-gray-300 transition-colors group-hover:text-gray-600" aria-label={`Open ${d.name}`}>
                             <ChevronRight size={16} />
                           </Link>

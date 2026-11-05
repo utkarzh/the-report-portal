@@ -37,7 +37,7 @@ export default function FinanceAdminOverviewPage() {
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl">
       <div className="flex justify-between items-start flex-wrap gap-3 mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Overview</h1>
@@ -54,7 +54,7 @@ export default function FinanceAdminOverviewPage() {
       {loading ? (
         <div className="text-sm text-gray-400">Loading…</div>
       ) : projects.length === 0 ? (
-        <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-12 text-center">
+        <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-6 sm:p-12 text-center">
           <div className="mx-auto h-14 w-14 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mb-4">
             <FolderKanban size={24} />
           </div>
@@ -72,7 +72,7 @@ export default function FinanceAdminOverviewPage() {
             <div className="mt-8">
               <button
                 onClick={() => setShowClosed(v => !v)}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-900 transition-colors mb-3"
+                className="inline-flex touch:py-2.5 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-900 transition-colors mb-3"
               >
                 Closed projects · {projects.filter(p => p.status === 'closed').length}
                 {showClosed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
@@ -106,7 +106,7 @@ function ProjectCard({ p }: { p: ProjectRow }) {
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="text-2xl leading-none flex-shrink-0" aria-hidden="true">{countryFlag(p.country)}</span>
           <div className="min-w-0">
-            <div className="font-semibold text-[15px] text-gray-900 truncate">{p.name}</div>
+            <div className="font-semibold text-[15px] text-gray-900 line-clamp-2 sm:line-clamp-none sm:truncate">{p.name}</div>
             <div className="text-xs text-gray-500 mt-0.5 truncate">
               {p.country} · {director?.profiles?.full_name || director?.profiles?.email || 'No director'}
             </div>

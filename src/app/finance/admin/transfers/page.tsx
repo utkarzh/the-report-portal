@@ -80,7 +80,7 @@ export default function TransfersPage() {
   }
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Inter-project transfers</h1>
         <p className="text-sm text-gray-500 mt-1">Move funds between a Director&apos;s projects while keeping both ledgers fully independent.</p>
@@ -105,20 +105,20 @@ export default function TransfersPage() {
           />
           <Input
             label={`Amount${fromProject ? ` (${fromProject.settlement_currency})` : ''}`}
-            type="number"
+            type="number" inputMode="decimal"
             step="0.01"
             value={form.amount}
             onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
             required
           />
-          <Button type="submit" size="sm" loading={submitting}>Transfer</Button>
+          <Button type="submit" size="sm" loading={submitting} className="hidden sm:inline-flex">Transfer</Button>
         </div>
         {crossCurrency && (
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
             <div>
               <Input
                 label={`Exchange rate (${toProject!.settlement_currency} per 1 ${fromProject!.settlement_currency})`}
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.0001"
                 value={form.exchangeRate}
                 onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value }))}
@@ -146,16 +146,18 @@ export default function TransfersPage() {
             placeholder="e.g. India fund topping up Pakistan for an urgent expense"
           />
         </div>
+        {/* On phones the form reads top to bottom, so the button comes after Reason. */}
+        <Button type="submit" size="sm" loading={submitting} className="mt-4 w-full justify-center sm:hidden">Transfer</Button>
       </form>
 
       <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">History</div>
       {loading ? (
         <div className="text-sm text-gray-400">Loading…</div>
       ) : transfers.length === 0 ? (
-        <div className="border border-[#e5e3df] bg-white rounded-xl p-6 text-sm text-gray-500">No transfers yet.</div>
+        <div className="border border-[#e5e3df] bg-white rounded-xl p-4 sm:p-6 text-sm text-gray-500">No transfers yet.</div>
       ) : (
-        <div className="bg-white border border-[#e5e3df] rounded-xl overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="table-cards-wrap bg-white border border-[#e5e3df] rounded-xl overflow-hidden overflow-x-auto">
+          <table className="table-cards w-full text-sm">
             <thead>
               <tr className="text-left text-[10.5px] uppercase tracking-wide text-gray-400 border-b border-[#e5e3df]">
                 <th className="px-4 py-2.5">Date</th>
@@ -172,11 +174,11 @@ export default function TransfersPage() {
                 const toSymbol = t.to_project?.settlement_currency === 'USD' ? '$' : '€'
                 return (
                   <tr key={t.id} className="border-b border-[#e5e3df] last:border-0">
-                    <td className="px-4 py-3 tabular-nums whitespace-nowrap">{t.created_at.slice(0, 10)}</td>
-                    <td className="px-4 py-3">{t.from_project?.name}</td>
-                    <td className="px-4 py-3">{t.to_project?.name}</td>
-                    <td className="px-4 py-3 text-gray-500">{t.reason || '—'}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium whitespace-nowrap">
+                    <td data-label="Date" className="px-4 py-3 tabular-nums whitespace-nowrap">{t.created_at.slice(0, 10)}</td>
+                    <td data-label="From" className="px-4 py-3">{t.from_project?.name}</td>
+                    <td data-label="To" className="px-4 py-3">{t.to_project?.name}</td>
+                    <td data-label="Reason" className="px-4 py-3 text-gray-500">{t.reason || '—'}</td>
+                    <td data-label="Amount" className="px-4 py-3 text-right tabular-nums font-medium whitespace-nowrap">
                       {differs
                         ? `${fromSymbol}${Number(t.amount).toFixed(2)} → ${toSymbol}${Number(t.to_amount).toFixed(2)} · rate ${t.exchange_rate}`
                         : `${toSymbol}${Number(t.to_amount ?? t.amount).toFixed(2)}`}

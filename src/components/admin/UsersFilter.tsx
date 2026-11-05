@@ -86,16 +86,16 @@ export default function UsersFilter({ search, role, usage, access, nearCount }: 
   // Close the access dropdown on outside click or Escape.
   useEffect(() => {
     if (!accessOpen) return
-    function onPointerDown(e: MouseEvent) {
+    function onPointerDown(e: PointerEvent) {
       if (accessRef.current && !accessRef.current.contains(e.target as Node)) setAccessOpen(false)
     }
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') setAccessOpen(false)
     }
-    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
     return () => {
-      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [accessOpen])
@@ -176,7 +176,7 @@ export default function UsersFilter({ search, role, usage, access, nearCount }: 
       <button
         onClick={toggleNearLimit}
         title="Normal users at or near their monthly token limit"
-        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium border transition-colors ${
+        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 touch:py-2.5 text-xs font-medium border transition-colors ${
           usage === 'near'
             ? 'bg-amber-500 border-amber-500 text-white'
             : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
@@ -252,7 +252,7 @@ export default function UsersFilter({ search, role, usage, access, nearCount }: 
 
 function AccessOption({ checked, onToggle, children }: { checked: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
-    <label className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-[#f9f8f6] cursor-pointer transition-colors">
+    <label className="flex items-center gap-2 px-3 py-1.5 touch:py-2.5 text-xs text-gray-700 hover:bg-[#f9f8f6] cursor-pointer transition-colors">
       <input
         type="checkbox"
         checked={checked}

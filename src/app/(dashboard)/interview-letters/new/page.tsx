@@ -40,7 +40,7 @@ export default async function NewInterviewLetterPage() {
   return (
     <div className="flex flex-col lg:flex-row h-full min-h-0">
       <div className="w-full lg:w-96 bg-white border-b lg:border-b-0 lg:border-r border-[#e5e3df] flex-shrink-0 overflow-y-auto order-1">
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-1">New Interview Letter Project</h2>
           <p className="text-xs text-gray-500 mb-6">
             Enter the project details below. The research builds on the country&apos;s Editorial Brief and checks it
@@ -66,7 +66,7 @@ export default async function NewInterviewLetterPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center overflow-hidden bg-[#f0efec] p-8 order-2 min-h-[320px]">
+      <div className="flex-1 flex flex-col items-center justify-center overflow-hidden bg-[#f0efec] p-4 sm:p-8 order-2 min-h-[320px]">
         <div className="w-full max-w-md text-center">
           <div className="fade-up relative mx-auto mb-7 flex h-24 w-24 items-center justify-center">
             <div className="gemini-aurora absolute -inset-1 rounded-full opacity-70 blur-xl" />

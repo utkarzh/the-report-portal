@@ -18,7 +18,7 @@ export default async function CopywritingPromptEditPage({ params }: { params: { 
   const { data } = await supabase.from('copywriting_prompt').select('prompt_text, prompt_version').eq('prompt_key', params.key).maybeSingle()
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-4xl mx-auto">
         <Breadcrumbs
           items={[

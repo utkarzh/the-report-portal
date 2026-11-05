@@ -48,7 +48,7 @@ export default function CiPromptEditor() {
             {versions.map((v) => (
               <li key={v.id} className="flex items-center justify-between gap-3 py-2">
                 <span className="text-gray-600">{new Date(v.created_at).toLocaleString('en-GB')} · {v.prompt_text.split(/\s+/).length} words</span>
-                <button onClick={() => { setText(v.prompt_text); setMsg('Loaded an earlier version into the editor — save to restore it.') }} className="text-xs text-gray-600 underline hover:text-black">Load into editor</button>
+                <button onClick={() => { setText(v.prompt_text); setMsg('Loaded an earlier version into the editor — save to restore it.') }} className="touch:py-2.5 text-xs text-gray-600 underline hover:text-black">Load into editor</button>
               </li>
             ))}
           </ul>

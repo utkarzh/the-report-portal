@@ -182,7 +182,7 @@ export default function DocumentSamplesManager({ docType, label, userId, initial
                       type="button"
                       onClick={() => handleDelete(s.id)}
                       disabled={deletingId === s.id}
-                      className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider bg-red-600 text-white px-2 py-1 hover:bg-red-700 disabled:opacity-50 transition-colors"
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider bg-red-600 text-white px-2 py-1 touch:py-2 hover:bg-red-700 disabled:opacity-50 transition-colors"
                     >
                       {deletingId === s.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
                       Delete
@@ -190,7 +190,7 @@ export default function DocumentSamplesManager({ docType, label, userId, initial
                     <button
                       type="button"
                       onClick={() => setConfirmId(null)}
-                      className="text-[10px] font-semibold uppercase tracking-wider bg-gray-200 text-gray-600 px-2 py-1 hover:bg-gray-300 transition-colors"
+                      className="text-[10px] font-semibold uppercase tracking-wider bg-gray-200 text-gray-600 px-2 py-1 touch:py-2 hover:bg-gray-300 transition-colors"
                     >
                       No
                     </button>
@@ -199,7 +199,7 @@ export default function DocumentSamplesManager({ docType, label, userId, initial
                   <button
                     type="button"
                     onClick={() => setConfirmId(s.id)}
-                    className="p-1.5 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"
+                    className="p-1.5 touch:p-2.5 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"
                     title="Delete sample"
                   >
                     <Trash2 size={15} />

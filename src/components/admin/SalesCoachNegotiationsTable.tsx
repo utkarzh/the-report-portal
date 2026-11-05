@@ -64,7 +64,7 @@ export default function SalesCoachNegotiationsTable({ rows, flaggedOnly }: { row
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500">
+        <div className="rounded-xl border border-[#e5e3df] bg-white p-4 sm:p-8 text-sm text-gray-500">
           {query ? (
             <>
               No negotiations match &ldquo;<span className="font-medium text-gray-700">{query}</span>&rdquo;.{' '}
@@ -77,8 +77,8 @@ export default function SalesCoachNegotiationsTable({ rows, flaggedOnly }: { row
           )}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#e5e3df] bg-white">
-          <table className="w-full text-sm">
+        <div className="table-cards-wrap overflow-x-auto rounded-xl border border-[#e5e3df] bg-white">
+          <table className="table-cards w-full text-sm">
             <thead>
               <tr className="border-b border-[#e5e3df] bg-[#faf9f7] text-left text-[10px] font-semibold uppercase tracking-widest text-gray-400">
                 <th className="px-4 py-3">Company</th>
@@ -94,7 +94,7 @@ export default function SalesCoachNegotiationsTable({ rows, flaggedOnly }: { row
                 const uvCount = r.uv_criteria?.length || 0
                 return (
                   <tr key={r.id} className="border-b border-[#f0eee9] last:border-b-0 hover:bg-[#faf9f7]">
-                    <td className="px-4 py-3">
+                    <td data-cell="title" className="px-4 py-3">
                       <Link href={`/commercial/sales-coach/${r.id}`} className="font-medium text-gray-900 hover:underline">
                         {r.company || 'Untitled negotiation'}
                       </Link>
@@ -121,19 +121,19 @@ export default function SalesCoachNegotiationsTable({ rows, flaggedOnly }: { row
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{r.submitted_by_name || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{outcomeLabel(r.declared_outcome as never)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900">
+                    <td data-label="Submitted by" className="px-4 py-3 text-gray-700">{r.submitted_by_name || '—'}</td>
+                    <td data-label="Declared" className="px-4 py-3 text-gray-700">{outcomeLabel(r.declared_outcome as never)}</td>
+                    <td data-label="Score" className="px-4 py-3 text-right tabular-nums font-medium text-gray-900">
                       {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number'
                         ? <ScorePill pct={scorePercent(Number(r.execution_score), r.execution_denominator)} detail={scoreUvDetail(Number(r.execution_score), r.execution_denominator, uvCount)} withLabel />
                         : '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Stage" className="px-4 py-3">
                       <span className="rounded-full border border-[#e5e3df] bg-[#f7f6f3] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
                         {SALES_COACH_STAGE_LABELS[r.stage as SalesCoachStage] || r.stage}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                    <td data-label="Date" className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                       {new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </td>
                   </tr>

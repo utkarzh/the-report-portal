@@ -38,14 +38,14 @@ export default function FeedbackRowActions({ id, status }: { id: string; status:
       <button
         onClick={toggleStatus}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-md border border-[#e5e3df] px-2.5 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-md border border-[#e5e3df] px-2.5 py-1 touch:py-2 text-[11px] font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:opacity-50"
       >
         {busy ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
         {status === 'new' ? 'Mark reviewed' : 'Mark new'}
       </button>
       <button
         onClick={() => setConfirmOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-2.5 py-1 text-[11px] font-medium text-red-500 transition-colors hover:border-red-400 hover:text-red-700"
+        className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-2.5 py-1 touch:py-2 text-[11px] font-medium text-red-500 transition-colors hover:border-red-400 hover:text-red-700"
       >
         <Trash2 size={11} />
       </button>

@@ -77,7 +77,7 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
   const isAdmin = profile.role === 'admin'
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div className="flex items-start gap-3">
           <div className="rounded-xl border border-[#e5e3df] bg-[#f7f6f3] p-2.5 text-gray-700">
@@ -130,7 +130,7 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500 shadow-sm flex items-start gap-3">
+        <div className="rounded-xl border border-[#e5e3df] bg-white p-4 sm:p-8 text-sm text-gray-500 shadow-sm flex items-start gap-3">
           <div className="rounded-lg bg-[#f7f6f3] p-2 text-gray-600">
             <AudioLines size={16} />
           </div>
@@ -145,7 +145,7 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
         </div>
       ) : (
         <>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((t, i) => (
             <EntityCard
               key={t.id}

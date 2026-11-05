@@ -67,9 +67,9 @@ export default function CorrectionModal({ negotiationId, target, onClose, onSave
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/40" onClick={phase === 'saving' ? undefined : onClose} />
-      <div className="relative w-full max-w-md rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-xl">
+      <div className="modal-sheet relative w-full max-w-md rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6 shadow-xl">
         <button
           type="button"
           onClick={onClose}

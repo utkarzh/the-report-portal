@@ -84,7 +84,7 @@ export default function CajaDetailPage({ params }: { params: { cajaId: string } 
 
   return (
     <div className="p-4 sm:p-8 max-w-4xl mx-auto">
-      <Link href={isAdmin ? '/finance/admin' : '/finance'} className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 mb-3">
+      <Link href={isAdmin ? '/finance/admin' : '/finance'} className="inline-flex items-center gap-1.5 touch:py-2.5 text-xs text-gray-500 hover:text-gray-900 mb-3">
         <ArrowLeft size={13} /> Back
       </Link>
       <div className="flex justify-between items-start flex-wrap gap-3 mb-6">
@@ -124,7 +124,7 @@ export default function CajaDetailPage({ params }: { params: { cajaId: string } 
         <div className="bg-white border border-[#e5e3df] rounded-xl p-5 mb-6">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Cash on hand</div>
           <div className="flex gap-3 items-end flex-wrap">
-            <input type="number" step="0.01" className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums w-40" placeholder="Amount" value={cashAmount} onChange={e => setCashAmount(e.target.value)} />
+            <input type="number" inputMode="decimal" step="0.01" className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums w-40" placeholder="Amount" value={cashAmount} onChange={e => setCashAmount(e.target.value)} />
             <Button size="sm" loading={busy} onClick={() => runAction(`/api/finance/cajas/${cajaId}/cash-confirm`, { amount: parseFloat(cashAmount) })}>
               Confirm cash on hand
             </Button>
@@ -177,9 +177,9 @@ export default function CajaDetailPage({ params }: { params: { cajaId: string } 
       )}
 
       {incidentForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70" onClick={() => setIncidentForm(null)} />
-          <div className="relative bg-white w-full max-w-sm rounded-xl p-6">
+          <div className="modal-sheet relative bg-white w-full max-w-sm rounded-xl p-4 sm:p-6">
             <h3 className="text-sm font-semibold mb-4">Open incident</h3>
             <div className="flex flex-col gap-3">
               <textarea className="text-sm border border-[#e5e3df] rounded-lg px-3 py-2" placeholder="Description" value={incidentForm.description} onChange={e => setIncidentForm(f => f && { ...f, description: e.target.value })} />
@@ -252,10 +252,10 @@ export default function CajaDetailPage({ params }: { params: { cajaId: string } 
 
                   {canReview && e.status === 'pending' && (
                     <div className="flex gap-2 mt-3">
-                      <button onClick={() => handleVerify(e.id)} disabled={busy} className="text-xs font-medium bg-black text-white rounded-lg px-3 py-1.5 hover:opacity-85 disabled:opacity-50">
+                      <button onClick={() => handleVerify(e.id)} disabled={busy} className="text-xs font-medium bg-black text-white rounded-lg px-3 py-1.5 touch:py-2.5 hover:opacity-85 disabled:opacity-50">
                         <Check size={12} className="inline mr-1" /> Verify
                       </button>
-                      <button onClick={() => setRejectTarget(e)} disabled={busy} className="text-xs font-medium border border-red-300 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50">
+                      <button onClick={() => setRejectTarget(e)} disabled={busy} className="text-xs font-medium border border-red-300 text-red-600 rounded-lg px-3 py-1.5 touch:py-2.5 hover:bg-red-50 disabled:opacity-50">
                         <X size={12} className="inline mr-1" /> Reject
                       </button>
                     </div>
@@ -266,7 +266,7 @@ export default function CajaDetailPage({ params }: { params: { cajaId: string } 
           )
         })}
         {expenses.length === 0 && (
-          <div className="bg-white border border-[#e5e3df] rounded-xl p-6 text-sm text-gray-500">No expenses logged this week.</div>
+          <div className="bg-white border border-[#e5e3df] rounded-xl p-4 sm:p-6 text-sm text-gray-500">No expenses logged this week.</div>
         )}
       </div>
 
@@ -313,9 +313,9 @@ function RejectTicketModal({ expense, onClose, onRejected }: { expense: ExpenseR
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6">
+      <div className="modal-sheet relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-4 sm:p-6">
         <h3 className="text-sm font-semibold mb-1">Reject ticket</h3>
         <p className="text-xs text-gray-500 mb-4">{expense.concept}</p>
         {error && <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded">{error}</div>}
@@ -371,16 +371,16 @@ function IncidentThread({ incident, isAdmin, onChanged }: { incident: IncidentRo
       </div>
       <div className="flex flex-col gap-1.5 mt-3">
         {incident.finance_incident_messages.map(m => (
-          <div key={m.id} className="text-xs bg-gray-50 rounded px-2.5 py-1.5">
+          <div key={m.id} className="text-xs bg-gray-50 rounded px-2.5 py-1.5 touch:py-2.5">
             <b>{m.profiles?.full_name || m.profiles?.email || 'Someone'}:</b> {m.message}
           </div>
         ))}
       </div>
       <div className="flex gap-2 mt-3 flex-wrap">
-        <input className="flex-1 min-w-[140px] text-xs border border-[#e5e3df] rounded-lg px-2.5 py-1.5" placeholder="Reply…" value={reply} onChange={e => setReply(e.target.value)} />
-        <button onClick={sendReply} disabled={busy} className="text-xs font-medium border border-[#e5e3df] rounded-lg px-3 py-1.5 hover:bg-gray-50">Send</button>
+        <input className="flex-1 min-w-[140px] text-xs border border-[#e5e3df] rounded-lg px-2.5 py-1.5 touch:py-2.5" placeholder="Reply…" value={reply} onChange={e => setReply(e.target.value)} />
+        <button onClick={sendReply} disabled={busy} className="text-xs font-medium border border-[#e5e3df] rounded-lg px-3 py-1.5 touch:py-2.5 hover:bg-gray-50">Send</button>
         {isAdmin && incident.status === 'open' && (
-          <button onClick={resolve} disabled={busy} className="text-xs font-medium text-emerald-700 border border-emerald-200 rounded-lg px-3 py-1.5 hover:bg-emerald-50">Resolve</button>
+          <button onClick={resolve} disabled={busy} className="text-xs font-medium text-emerald-700 border border-emerald-200 rounded-lg px-3 py-1.5 touch:py-2.5 hover:bg-emerald-50">Resolve</button>
         )}
       </div>
     </div>

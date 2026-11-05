@@ -102,10 +102,10 @@ export default async function KnowledgeAdminChatsPage({
   if (to) qs.set('to', to)
   const pageHref = (p: number) => `/knowledge/admin/chats?${new URLSearchParams({ ...Object.fromEntries(qs), page: String(p) })}`
   const selectCls =
-    'min-w-[170px] rounded-lg border border-[#e5e3df] bg-white px-2.5 py-2 text-sm font-normal normal-case tracking-normal text-gray-900 focus:border-black focus:outline-none'
+    'w-full sm:w-auto min-w-[170px] rounded-lg border border-[#e5e3df] bg-white px-2.5 py-2 text-sm font-normal normal-case tracking-normal text-gray-900 focus:border-black focus:outline-none'
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <Breadcrumbs items={[{ label: 'Knowledge Base', href: '/knowledge' }, { label: 'Admin', href: '/knowledge/admin' }, { label: 'Chat log' }]} />
 
@@ -117,7 +117,7 @@ export default async function KnowledgeAdminChatsPage({
         <KnowledgeAdminNav active="chats" />
 
         <form method="get" className="flex flex-wrap items-end gap-3 rounded-2xl border border-[#e5e3df] bg-white p-4 shadow-sm">
-          <label className="flex flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+          <label className="flex w-full flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500 sm:w-auto">
             Person
             <select name="user" defaultValue={userFilter} className={selectCls}>
               <option value="">Everyone</option>
@@ -128,7 +128,7 @@ export default async function KnowledgeAdminChatsPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+          <label className="flex w-full flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500 sm:w-auto">
             Department
             <select name="department" defaultValue={deptFilter} className={selectCls}>
               <option value="">All departments</option>
@@ -139,7 +139,7 @@ export default async function KnowledgeAdminChatsPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+          <label className="flex w-full flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500 sm:w-auto">
             Outcome
             <select name="outcome" defaultValue={outcome} className={selectCls}>
               {OUTCOMES.map((o) => (
@@ -149,13 +149,13 @@ export default async function KnowledgeAdminChatsPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+          <label className="flex w-full flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500 sm:w-auto">
             From
-            <input type="date" name="from" defaultValue={from} className="rounded-lg border border-[#e5e3df] bg-white px-2.5 py-1.5 text-sm font-normal text-gray-900 focus:border-black focus:outline-none" />
+            <input type="date" name="from" defaultValue={from} className="w-full rounded-lg sm:w-auto border border-[#e5e3df] bg-white px-2.5 py-1.5 touch:py-2.5 text-sm font-normal text-gray-900 focus:border-black focus:outline-none" />
           </label>
-          <label className="flex flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+          <label className="flex w-full flex-col gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500 sm:w-auto">
             To
-            <input type="date" name="to" defaultValue={to} className="rounded-lg border border-[#e5e3df] bg-white px-2.5 py-1.5 text-sm font-normal text-gray-900 focus:border-black focus:outline-none" />
+            <input type="date" name="to" defaultValue={to} className="w-full rounded-lg sm:w-auto border border-[#e5e3df] bg-white px-2.5 py-1.5 touch:py-2.5 text-sm font-normal text-gray-900 focus:border-black focus:outline-none" />
           </label>
           <div className="flex items-center gap-3">
             <button type="submit" className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-900">
@@ -206,7 +206,7 @@ export default async function KnowledgeAdminChatsPage({
                     <span className="tabular-nums">{formatCost(Number(a.cost_usd || 0))}</span>
                   </div>
                 </div>
-                <div className="p-5">
+                <div className="p-4 sm:p-5">
                   <p className="flex items-start gap-2 text-sm font-medium leading-6 text-gray-900">
                     <span className="mt-1 inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded bg-black text-[9px] font-semibold text-white">Q</span>
                     {questionFor(a)}
@@ -231,8 +231,8 @@ export default async function KnowledgeAdminChatsPage({
                           }`}
                         >
                           <span className="font-semibold">{s.ref}</span>
-                          <span className="truncate">{s.title}</span>
-                          <span className="text-gray-400">· {s.department_name}</span>
+                          <span className="min-w-0 truncate">{s.title}</span>
+                          <span className="hidden flex-shrink-0 text-gray-400 sm:inline">· {s.department_name}</span>
                         </li>
                       ))}
                     </ul>
@@ -263,7 +263,7 @@ export default async function KnowledgeAdminChatsPage({
         {totalPages > 1 && (
           <div className="mt-6 flex items-center justify-between text-xs">
             {page > 1 ? (
-              <Link href={pageHref(page - 1)} className="rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 font-medium text-gray-700 hover:border-gray-400">
+              <Link href={pageHref(page - 1)} className="rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 font-medium text-gray-700 hover:border-gray-400">
                 ← Newer
               </Link>
             ) : (
@@ -273,7 +273,7 @@ export default async function KnowledgeAdminChatsPage({
               Page {page} of {totalPages}
             </span>
             {page < totalPages ? (
-              <Link href={pageHref(page + 1)} className="rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 font-medium text-gray-700 hover:border-gray-400">
+              <Link href={pageHref(page + 1)} className="rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 font-medium text-gray-700 hover:border-gray-400">
                 Older →
               </Link>
             ) : (

@@ -113,7 +113,7 @@ export default function ExpenseThread({ expenseId, status, comments, viewerSide,
       ) : !composerOpen ? (
         <button
           onClick={() => setComposerOpen(true)}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
+          className="inline-flex items-center gap-1.5 touch:py-2.5 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
         >
           <MessageSquare size={12} /> Add a comment
         </button>

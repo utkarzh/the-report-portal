@@ -36,7 +36,7 @@ export default function EditUserModal({ open, onClose, user, isSelf }: Props) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -46,7 +46,7 @@ export default function EditUserModal({ open, onClose, user, isSelf }: Props) {
 
       {/* Panel */}
       <div
-        className="relative bg-white w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+        className="modal-sheet relative bg-white w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-user-modal-title"
@@ -54,7 +54,7 @@ export default function EditUserModal({ open, onClose, user, isSelf }: Props) {
         <span className="absolute inset-x-0 top-0 h-0.5 bg-black" aria-hidden="true" />
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#e5e3df]">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-5 border-b border-[#e5e3df]">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-full bg-black flex items-center justify-center flex-shrink-0 text-white text-xs font-semibold tracking-wide">
               {initials(user.full_name, user.email)}
@@ -68,7 +68,7 @@ export default function EditUserModal({ open, onClose, user, isSelf }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
+            className="p-1.5 touch:p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
             aria-label="Close"
           >
             <X size={18} />
@@ -76,7 +76,7 @@ export default function EditUserModal({ open, onClose, user, isSelf }: Props) {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-6 overflow-y-auto">
+        <div className="px-4 sm:px-6 py-6 overflow-y-auto">
           <EditUserForm user={user} isSelf={isSelf} onSuccess={onClose} />
         </div>
       </div>

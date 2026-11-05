@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines } from 'lucide-react'
+import { isTouchDevice } from '@/lib/use-mobile'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { SALES_COACH_TRACKS } from '@/lib/sales-coach'
 import type { SalesCoachMessage, SalesCoachCoachingPrompt, SalesCoachTrack } from '@/types'
@@ -368,7 +369,7 @@ export default function CoachConversation({
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eceae5] px-5 py-3.5">
         <div className="flex items-center gap-2.5">
-          <div className="rounded-lg bg-black p-1.5 text-white"><Sparkles size={14} /></div>
+          <div className="rounded-lg bg-black p-1.5 touch:p-2.5 text-white"><Sparkles size={14} /></div>
           <div>
             <p className="text-sm font-semibold text-gray-900">Coaching conversation</p>
             <p className="text-[11px] text-gray-400">Every answer is grounded in the TRC knowledge documents, your Report Card and the transcript</p>
@@ -411,14 +412,14 @@ export default function CoachConversation({
         ref={scroll.ref}
         onScroll={scroll.onScroll}
         onWheel={scroll.onWheel}
-        className="min-h-[420px] max-h-[62vh] overflow-y-auto px-5 py-5"
+        className="min-h-[45dvh] max-h-[58dvh] overflow-y-auto overscroll-contain px-3 py-4 sm:min-h-[420px] sm:max-h-[62vh] sm:px-5 sm:py-5"
       >
         {messages.length === 0 && !streaming && (
           <div className="mx-auto max-w-xl py-6 text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f2f1ec] text-gray-500"><MessageSquare size={20} /></div>
             <p className="text-sm leading-6 text-gray-600">{greeting || FALLBACK_GREETING}</p>
             {starters && starters.some((s) => s.track) ? (
-              <div className="mt-5 grid gap-4 text-left sm:grid-cols-2">
+              <div className="mt-5 grid grid-cols-1 gap-4 text-left sm:grid-cols-2">
                 {(['execution', 'commercial'] as SalesCoachTrack[]).map((track) => (
                   <div key={track}>
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{SALES_COACH_TRACKS[track].label}</p>
@@ -431,7 +432,7 @@ export default function CoachConversation({
                 ))}
               </div>
             ) : (
-              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {(starters && starters.length > 0 ? starters : FALLBACK_STARTERS).map((s) => (
                   <StarterButton key={s.label} disabled={!canCoach || phase === 'thinking'} onClick={() => send(s.prompt)}>{s.label}</StarterButton>
                 ))}
@@ -462,7 +463,7 @@ export default function CoachConversation({
                 onClick={() => send(trackSwitches[track].prompt)}
                 disabled={!canCoach || phase === 'thinking'}
                 title={trackSwitches[track].prompt}
-                className="rounded-full border border-[#e5e3df] bg-white px-3 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:border-[#c8973f]/60 hover:text-gray-900 disabled:opacity-40"
+                className="rounded-full border border-[#e5e3df] bg-white px-3 py-1 touch:py-2 text-[11px] font-medium text-gray-600 transition-colors hover:border-[#c8973f]/60 hover:text-gray-900 disabled:opacity-40"
               >
                 {SALES_COACH_TRACKS[track].label}
               </button>
@@ -495,7 +496,7 @@ export default function CoachConversation({
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.trim()) send(input) } }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isTouchDevice()) { e.preventDefault(); if (input.trim()) send(input) } }}
               placeholder={canCoach ? 'Ask the coach anything about this negotiation… (Enter to send, Shift+Enter for a new line)' : 'Coaching opens once the Report Card exists.'}
               disabled={!canCoach || phase === 'thinking'}
               rows={2}
@@ -575,7 +576,7 @@ function ToggleChip({ active, onClick, title, disabled, children }: { active: bo
       onClick={onClick}
       title={title}
       disabled={disabled}
-      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-30 ${
+      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 touch:py-2.5 text-[11px] font-medium transition-colors disabled:opacity-30 ${
         active ? 'border-gray-800 bg-gray-900 text-white' : 'border-[#e5e3df] bg-white text-gray-500 hover:text-gray-800'
       }`}
     >

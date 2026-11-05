@@ -420,7 +420,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
     <div className="p-4 sm:p-8 max-w-6xl mx-auto">
       <Link
         href="/finance/admin"
-        className="group inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 mb-4 transition-colors"
+        className="group inline-flex touch:py-2.5 items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 mb-4 transition-colors"
       >
         <ArrowLeft size={13} className="transition-transform duration-200 group-hover:-translate-x-0.5" /> Overview
       </Link>
@@ -435,7 +435,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
             <button
               onClick={() => setRateModalOpen(true)}
               disabled={closed}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-white border border-[#e5e3df] rounded-full px-2.5 py-1 hover:border-gray-300 disabled:hover:border-[#e5e3df] transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-white border border-[#e5e3df] rounded-full px-2.5 py-1 touch:py-2 hover:border-gray-300 disabled:hover:border-[#e5e3df] transition-colors"
             >
               <Banknote size={12} className="text-gray-400" />
               {project.settlement_currency} · 1 {project.settlement_currency} = {project.exchange_rate} {project.local_currency || 'local'}
@@ -512,7 +512,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-        className="bg-white border border-[#e5e3df] rounded-2xl p-6 shadow-sm mb-10"
+        className="bg-white border border-[#e5e3df] rounded-2xl p-4 sm:p-6 shadow-sm mb-6 sm:mb-10"
       >
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -604,11 +604,11 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         />
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap mb-3">
+      <div className="ledger-filters flex items-center gap-2 flex-wrap mb-3">
         <select
           value={typeFilter}
           onChange={e => setTypeFilter(e.target.value as TypeFilter)}
-          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 hover:border-gray-300 transition-colors"
+          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 touch:py-2.5 hover:border-gray-300 transition-colors"
         >
           <option value="all">All types</option>
           <option value="expense">Expenses</option>
@@ -618,7 +618,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as StatusFilter)}
-          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 hover:border-gray-300 transition-colors"
+          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 touch:py-2.5 hover:border-gray-300 transition-colors"
         >
           <option value="all">All statuses</option>
           <option value="pending">Pending</option>
@@ -628,7 +628,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         <select
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value as FinanceExpenseCategory | 'all')}
-          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 hover:border-gray-300 transition-colors"
+          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 touch:py-2.5 hover:border-gray-300 transition-colors"
         >
           <option value="all">All categories</option>
           {Object.entries(FINANCE_EXPENSE_CATEGORY_LABELS).map(([key, label]) => (
@@ -640,7 +640,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
             value={uploaderFilter}
             onChange={e => setUploaderFilter(e.target.value)}
             aria-label="Filter by uploader"
-            className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 hover:border-gray-300 transition-colors"
+            className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 touch:py-2.5 hover:border-gray-300 transition-colors"
           >
             <option value="all">All uploaders</option>
             {uploaders.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
@@ -650,7 +650,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
           value={sort}
           onChange={e => setSort(e.target.value as LedgerSort)}
           aria-label="Sort transactions"
-          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 hover:border-gray-300 transition-colors"
+          className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg px-2.5 py-1.5 touch:py-2.5 hover:border-gray-300 transition-colors"
         >
           {LEDGER_SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -667,12 +667,12 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
       {uploaderSummary && <UploaderSummary summary={uploaderSummary} symbol={symbol} />}
 
       {weekLedger.length === 0 ? (
-        <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-8 text-sm text-gray-500 mb-10 text-center">
+        <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-4 sm:p-8 text-sm text-gray-500 mb-10 text-center">
           {ledgerRows.length === 0 ? 'No transactions yet.' : effectiveWeek !== ALL_WEEKS && (weekCounts[effectiveWeek] ?? 0) === 0 ? 'No transactions this week.' : 'No transactions match these filters.'}
         </div>
       ) : (
         <div className="bg-white border border-[#e5e3df] rounded-xl overflow-hidden overflow-x-auto shadow-sm mb-10">
-          <table className="w-full text-sm">
+          <table className="table-ledger w-full text-sm">
             <thead>
               <tr className="text-left text-[10.5px] uppercase tracking-wide text-gray-400 border-b border-[#e5e3df] bg-[#faf9f6]">
                 <th className="px-4 py-2.5 font-medium w-8">
@@ -699,7 +699,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                   onClick={row.kind === 'expense' ? () => setDetailExpense(row.expense) : undefined}
                   className={`align-top hover:bg-[#faf9f6] transition-colors duration-150 ${row.kind === 'expense' ? 'cursor-pointer' : ''}`}
                 >
-                  <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
+                  <td data-cell="select" className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
                     {row.kind === 'expense' && row.expense.status === 'pending' && !closed && (
                       <input
                         type="checkbox"
@@ -710,7 +710,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                       />
                     )}
                   </td>
-                  <td className="px-4 py-3.5 tabular-nums whitespace-nowrap text-gray-500">
+                  <td data-cell="date" className="px-4 py-3.5 tabular-nums whitespace-nowrap text-gray-500">
                     {row.date}
                     {row.uploadedAt.slice(0, 10) !== row.date && (
                       <div className="text-[10.5px] text-gray-400 mt-0.5">uploaded {formatDayMonth(row.uploadedAt)}</div>
@@ -718,7 +718,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                   </td>
                   {row.kind === 'expense' ? (
                     <>
-                      <td className="px-4 py-3.5">
+                      <td data-cell="entry" className="px-4 py-3.5">
                         <div className="flex items-start gap-2.5">
                           {row.expense.receiptUrl ? (
                             <button onClick={e => { e.stopPropagation(); openReceipt(row.expense.receiptUrl) }} className="block group flex-shrink-0">
@@ -747,7 +747,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap">
+                      <td data-cell="amount" className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap">
                         {row.expense.status === 'verified' ? (
                           <span className="text-gray-900 font-medium">−{symbol}{row.amountOut.toFixed(2)}</span>
                         ) : row.expense.status === 'rejected' ? (
@@ -756,17 +756,17 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                           <span className="text-amber-600" title="Not yet counted — awaiting verification">{symbol}{row.amountOut.toFixed(2)}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
-                        <div className="flex flex-col items-start gap-2">
+                      <td data-cell="status" className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
+                        <div className="flex flex-wrap items-center gap-2 md:flex-col md:flex-nowrap md:items-start">
                           <StatusBadge status={row.expense.status} />
                           {wasSentBack(row.expense.status, row.expense.comments) && <SentBackBadge />}
                           {row.expense.status === 'pending' && <WaitingBadge loggedAt={row.expense.created_at} />}
                           {row.expense.status === 'pending' && !closed && (
                             <div className="flex gap-2">
-                              <button onClick={() => handleVerify(row.expense.id)} disabled={busyId === row.expense.id} className="inline-flex items-center gap-1 text-[11px] font-medium bg-black text-white rounded-md px-2.5 py-1.5 hover:bg-gray-800 disabled:opacity-50 transition-colors">
+                              <button onClick={() => handleVerify(row.expense.id)} disabled={busyId === row.expense.id} className="inline-flex items-center gap-1 text-[11px] font-medium bg-black text-white rounded-md px-2.5 py-1.5 touch:px-4 touch:py-2.5 hover:bg-gray-800 disabled:opacity-50 transition-colors">
                                 <Check size={11} /> Verify
                               </button>
-                              <button onClick={() => setRejectTarget(row.expense)} disabled={busyId === row.expense.id} className="inline-flex items-center gap-1 text-[11px] font-medium border border-red-200 text-red-600 rounded-md px-2.5 py-1.5 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                              <button onClick={() => setRejectTarget(row.expense)} disabled={busyId === row.expense.id} className="inline-flex items-center gap-1 text-[11px] font-medium border border-red-200 text-red-600 rounded-md px-2.5 py-1.5 touch:px-4 touch:py-2.5 hover:bg-red-50 disabled:opacity-50 transition-colors">
                                 <X size={11} /> Reject
                               </button>
                             </div>
@@ -776,7 +776,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                     </>
                   ) : (
                     <>
-                      <td className="px-4 py-3.5">
+                      <td data-cell="entry" className="px-4 py-3.5">
                         <div className="flex items-center gap-2.5">
                           <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${row.kind === 'transfer_out' ? 'bg-gray-100 text-gray-500' : 'bg-emerald-50 text-emerald-600'}`}>
                             {row.kind === 'transfer_out' ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}
@@ -788,14 +788,14 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap font-medium">
+                      <td data-cell="amount" className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap font-medium">
                         {'amountIn' in row ? <span className="text-emerald-700">+{symbol}{row.amountIn.toFixed(2)}</span> : <span className="text-gray-900">−{symbol}{row.amountOut.toFixed(2)}</span>}
                       </td>
-                      <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
+                      <td data-cell="status" className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
                         {row.kind === 'funding' && !closed ? (
                           <button
                             onClick={() => setEditFunding(row.funding)}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-gray-900 transition-colors"
+                            className="inline-flex touch:py-2.5 items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-gray-900 transition-colors"
                           >
                             <Pencil size={11} /> Edit
                           </button>
@@ -895,13 +895,13 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         />
       )}
       {historyOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setHistoryOpen(false)} />
           <motion.div
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="relative bg-white w-full max-w-2xl shadow-2xl rounded-xl p-6 max-h-[85vh] overflow-y-auto"
+            className="modal-sheet relative bg-white w-full max-w-2xl shadow-2xl rounded-xl p-4 sm:p-6 max-h-[85vh] overflow-y-auto"
           >
             <div className="flex justify-between items-center mb-1">
               <h3 className="text-sm font-semibold text-gray-900">Project history</h3>
@@ -913,13 +913,13 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         </div>
       )}
       {statusConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setStatusConfirmOpen(false)} />
           <motion.div
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6"
+            className="modal-sheet relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-4 sm:p-6"
           >
             <h3 className="text-sm font-semibold mb-1">{closed ? 'Reopen this project?' : 'Close this project?'}</h3>
             <p className="text-xs text-gray-500 mb-4">
@@ -942,13 +942,13 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
         </div>
       )}
       {deleteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !deleteBusy && setDeleteOpen(false)} />
           <motion.div
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6"
+            className="modal-sheet relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-4 sm:p-6"
           >
             <h3 className="text-sm font-semibold mb-1">Delete this project permanently?</h3>
             <p className="text-xs text-gray-500 mb-3">
@@ -1054,13 +1054,13 @@ function EditRateModal({ currentRate, currency, localCurrency, country, pendingB
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6"
+        className="modal-sheet relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-4 sm:p-6"
       >
         <h3 className="text-sm font-semibold mb-1">Update exchange rate</h3>
         <p className="text-xs text-gray-500 mb-4">
@@ -1071,7 +1071,7 @@ function EditRateModal({ currentRate, currency, localCurrency, country, pendingB
           <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded-lg">{error || localError}</div>
         )}
         <input
-          type="number"
+          type="number" inputMode="decimal"
           step="0.01"
           min="0"
           value={value}
@@ -1114,13 +1114,13 @@ function EditAiRulesModal({ currentRules, busy, error, onClose, onSubmit }: {
   const [value, setValue] = useState(currentRules)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="relative bg-white w-full max-w-md shadow-2xl rounded-xl p-6"
+        className="modal-sheet relative bg-white w-full max-w-md shadow-2xl rounded-xl p-4 sm:p-6"
       >
         <h3 className="text-sm font-semibold mb-1">AI checking rules</h3>
         <p className="text-xs text-gray-500 mb-4">
@@ -1152,13 +1152,13 @@ function SpendByCategoryModal({ symbol, categorySpend, totalCategorySpend, onClo
   symbol: string; categorySpend: Record<string, number>; totalCategorySpend: number; onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="relative bg-white w-full max-w-2xl shadow-2xl rounded-xl p-6 max-h-[85vh] overflow-y-auto"
+        className="modal-sheet relative bg-white w-full max-w-2xl shadow-2xl rounded-xl p-4 sm:p-6 max-h-[85vh] overflow-y-auto"
       >
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-sm font-semibold text-gray-900">Spend by category</h3>
@@ -1205,13 +1205,13 @@ function TeamModal({ members, memberError, removingId, onAddMember, onChangeDire
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="relative bg-white w-full max-w-lg shadow-2xl rounded-xl p-6 max-h-[85vh] overflow-y-auto"
+        className="modal-sheet relative bg-white w-full max-w-lg shadow-2xl rounded-xl p-4 sm:p-6 max-h-[85vh] overflow-y-auto"
       >
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-sm font-semibold text-gray-900">Team</h3>
@@ -1282,13 +1282,13 @@ function BulkRejectModal({ count, busy, onClose, onSubmit }: { count: number; bu
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6"
+        className="modal-sheet relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-4 sm:p-6"
       >
         <h3 className="text-sm font-semibold mb-1">Reject {count} expense{count === 1 ? '' : 's'}</h3>
         <p className="text-xs text-gray-500 mb-4">This reason is emailed to each uploader right away.</p>
@@ -1331,13 +1331,13 @@ function RejectExpenseModal({ expense, onClose, onRejected }: { expense: Expense
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6"
+        className="modal-sheet relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-4 sm:p-6"
       >
         <h3 className="text-sm font-semibold mb-1">Reject expense</h3>
         <p className="text-xs text-gray-500 mb-4">{expense.concept}</p>

@@ -162,23 +162,23 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-md shadow-2xl flex flex-col rounded-xl overflow-hidden max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#e5e3df]">
+      <div className="modal-sheet relative bg-white w-full max-w-md shadow-2xl flex flex-col rounded-xl overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-5 border-b border-[#e5e3df]">
           <h2 className="text-sm font-semibold text-gray-900">{isEditing ? 'Edit funding' : 'Send funds to director'}</h2>
-          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
+          <button onClick={onClose} className="p-1.5 touch:p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-6 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="px-4 sm:px-6 py-6 flex flex-col gap-4">
           {error && <div className="p-3 bg-red-50 border border-red-200 text-sm text-red-700 rounded">{error}</div>}
 
           <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
             <Input
               label="Amount sent *"
-              type="number"
+              type="number" inputMode="decimal"
               step="0.01"
               min="0"
               value={amount}
@@ -201,7 +201,7 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
             <div>
               <Input
                 label={`Exchange rate (${settlementCurrency} per 1 ${currency}) *`}
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.000001"
                 min="0"
                 value={exchangeRate}
@@ -239,7 +239,7 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
                   key={s}
                   type="button"
                   onClick={() => setConcept(s)}
-                  className="text-[11px] text-gray-600 border border-[#e5e3df] rounded-full px-2.5 py-1 hover:border-gray-400 hover:text-gray-900 transition-colors"
+                  className="text-[11px] text-gray-600 border border-[#e5e3df] rounded-full px-2.5 py-1 touch:py-2 hover:border-gray-400 hover:text-gray-900 transition-colors"
                 >
                   {s}
                 </button>
@@ -256,7 +256,7 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
                 {keptFiles.map((f, i) => {
                   const url = recordedUrls.get(f.path)
                   return (
-                    <div key={`kept-${f.path}`} className="flex items-center gap-2 text-sm border border-[#e5e3df] rounded-lg px-3 py-1.5 bg-[#faf9f6]">
+                    <div key={`kept-${f.path}`} className="flex items-center gap-2 text-sm border border-[#e5e3df] rounded-lg px-3 py-1.5 touch:py-2.5 bg-[#faf9f6]">
                       <Paperclip size={13} className="text-gray-400 flex-shrink-0" />
                       {url
                         ? <a href={url} target="_blank" rel="noreferrer" className="truncate flex-1 text-gray-800 hover:underline">{f.name}</a>
@@ -269,7 +269,7 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
                   )
                 })}
                 {newFiles.map((f, i) => (
-                  <div key={`new-${f.name}-${i}`} className="flex items-center gap-2 text-sm border border-[#e5e3df] rounded-lg px-3 py-1.5">
+                  <div key={`new-${f.name}-${i}`} className="flex items-center gap-2 text-sm border border-[#e5e3df] rounded-lg px-3 py-1.5 touch:py-2.5">
                     <Paperclip size={13} className="text-gray-400 flex-shrink-0" />
                     <span className="truncate flex-1 text-gray-800">{f.name}</span>
                     <span className="text-[11px] text-gray-400 flex-shrink-0">{(f.size / 1024).toFixed(0)} KB</span>
@@ -302,7 +302,7 @@ export default function SendFundsModal({ open, onClose, onSent, projectId, settl
               <button
                 type="button"
                 onClick={() => setHistoryOpen(o => !o)}
-                className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500 hover:text-gray-900"
+                className="inline-flex touch:py-2.5 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500 hover:text-gray-900"
               >
                 <History size={11} /> History {historyOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
               </button>

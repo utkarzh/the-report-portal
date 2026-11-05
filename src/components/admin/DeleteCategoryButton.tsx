@@ -34,13 +34,13 @@ export default function DeleteCategoryButton({
     <>
       <button
         onClick={() => setOpen(true)}
-        className="text-xs text-red-500 hover:text-red-700 transition-colors px-3 py-1.5 border border-red-200 hover:border-red-400"
+        className="text-xs text-red-500 hover:text-red-700 transition-colors px-3 py-1.5 touch:py-2.5 border border-red-200 hover:border-red-400"
       >
         Delete
       </button>
 
       {error && (
-        <div className="fixed bottom-4 right-4 z-50 bg-red-50 border border-red-200 text-xs text-red-700 px-4 py-3 shadow-lg max-w-xs">
+        <div className="fixed bottom-4 left-4 right-4 z-50 sm:left-auto bg-red-50 border border-red-200 text-xs text-red-700 px-4 py-3 shadow-lg max-w-xs">
           {error}
           <button onClick={() => setError(null)} className="ml-3 text-red-400 hover:text-red-700">✕</button>
         </div>

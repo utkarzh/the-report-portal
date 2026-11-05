@@ -23,7 +23,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     }
 
     const sizes = {
-      sm: 'px-4 py-2 text-xs',
+      sm: 'px-4 py-2 text-xs touch:min-h-10',
       md: 'px-5 py-3 text-xs w-full',
     }
 
@@ -47,8 +47,10 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     if (!explainDisabled) return button
     return (
-      <span title={disabledReason} className={`inline-flex cursor-not-allowed ${size === 'md' ? 'w-full' : ''}`}>
+      <span title={disabledReason} className={`inline-flex cursor-not-allowed touch:flex-col touch:gap-1 ${size === 'md' ? 'w-full' : ''}`}>
         {button}
+        {/* A tooltip can't appear without hover, so touch devices print the reason. */}
+        <span className="hidden text-[11px] leading-snug text-gray-500 touch:block">{disabledReason}</span>
       </span>
     )
   }

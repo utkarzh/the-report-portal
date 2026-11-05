@@ -76,17 +76,17 @@ export default function NewProjectModal({ open, onClose, onCreated }: Props) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl flex flex-col rounded-xl">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#e5e3df] sticky top-0 bg-white">
+      <div className="modal-sheet relative bg-white w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl flex flex-col rounded-xl">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-5 border-b border-[#e5e3df] sticky top-0 bg-white">
           <h2 className="text-sm font-semibold text-gray-900">New project</h2>
-          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
+          <button onClick={onClose} className="p-1.5 touch:p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-6 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="px-4 sm:px-6 py-6 flex flex-col gap-4">
           {error && <div className="p-3 bg-red-50 border border-red-200 text-sm text-red-700 rounded">{error}</div>}
 
           <Input
@@ -123,7 +123,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: Props) {
             />
             <Input
               label={`Exchange rate * (${form.localCurrency || 'local'} per 1 ${form.settlementCurrency})`}
-              type="number"
+              type="number" inputMode="decimal"
               step="0.0001"
               placeholder="83.20"
               value={form.exchangeRate}

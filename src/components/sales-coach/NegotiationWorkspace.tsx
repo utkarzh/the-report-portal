@@ -19,8 +19,12 @@ import { formatCost, formatTokens } from '@/lib/claude/tokens'
 import { coachGreeting, coachingTrackSwitches, formatOutcomeDetails, outcomeLabel, pickTranscript, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
 import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection } from '@/types'
+import { useKeepScreenOn } from '@/lib/use-mobile'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// The header card's look, applied to each of its pieces below lg (see `contents`).
+const PHONE_CARD = 'max-lg:rounded-2xl max-lg:border max-lg:border-[#e5e3df] max-lg:bg-white max-lg:shadow-sm'
 
 type Busy = null | 'transcribing' | 'analyzing'
 type Tab = 'card' | 'transcript' | 'coach' | 'submission'
@@ -70,6 +74,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   const [busy, setBusy] = useState<Busy>(() =>
     initial.stage === 'transcribing' ? 'transcribing' : initial.stage === 'analyzing' ? 'analyzing' : null,
   )
+  useKeepScreenOn(busy !== null)
   const [subStatus, setSubStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(
     initial.stage === 'failed' ? initial.error || 'The last step didn’t complete. You can run it again.' : null,
@@ -90,6 +95,13 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
     setTab('transcript')
     seekAndPlay(ms)
   }, [seekAndPlay])
+  // Below lg the page itself scrolls, so a new tab would otherwise open at
+  // whatever depth the last one was read to.
+  const tabsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const top = tabsRef.current?.getBoundingClientRect().top
+    if (top !== undefined && top < 64 && window.matchMedia('(max-width: 1023px)').matches) window.scrollBy({ top: top - 72 })
+  }, [tab])
   const startedRef = useRef(false)
   const autoStartRef = useRef(autoStart)
 
@@ -297,8 +309,12 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   return (
     <div className="flex flex-col gap-5">
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-        <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start sm:justify-between">
+      {/* Below lg the card dissolves (`contents`) so the audio player can pin to
+          the top of the screen while the transcript is read. It stays one
+          element either way, so playback never restarts. */}
+      <div className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm max-lg:contents">
+        <div className={PHONE_CARD}>
+        <div className="flex flex-col gap-4 p-4 sm:p-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-semibold tracking-tight text-gray-900">{n.company || 'Untitled negotiation'}</h1>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
@@ -317,14 +333,15 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
           </div>
         </div>
         <Stepper steps={steps} />
+        </div>
         {audioUrl && (
-          <div className="border-t border-[#eceae5] px-6 py-4">
-            <AudioPlayer ref={audioRef} src={audioUrl} onTimeUpdate={(secs) => setActiveMs(secs * 1000)} />
+          <div className={`border-t border-[#eceae5] px-4 sm:px-6 py-4 max-lg:p-2 max-lg:border-t-0 ${PHONE_CARD} ${tab === 'transcript' ? 'max-lg:sticky max-lg:top-[3.75rem] max-lg:z-20' : ''}`}>
+            <AudioPlayer ref={audioRef} src={audioUrl} className="mt-5 max-lg:mt-0" onTimeUpdate={(secs) => setActiveMs(secs * 1000)} />
             {canDownloadAudio && (
-            <div className="mt-2 flex justify-end">
+            <div className={`mt-2 flex justify-end ${tab === 'transcript' ? 'max-lg:hidden' : ''}`}>
               <a
                 href={`/api/sales-coach/${n.id}/audio`}
-                className="inline-flex items-center gap-1.5 text-xs text-gray-500 transition hover:text-gray-900"
+                className="inline-flex items-center gap-1.5 touch:py-2.5 text-xs text-gray-500 transition hover:text-gray-900"
               >
                 <Download size={12} /> Download recording
               </a>
@@ -333,7 +350,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
           </div>
         )}
         {isAdmin && (n.tokens_total > 0 || Number(n.cost_usd) > 0) && (
-          <div className="flex items-center gap-4 border-t border-[#eceae5] px-6 py-2.5 text-[11px] text-gray-400">
+          <div className={`flex items-center gap-4 border-t border-[#eceae5] px-4 sm:px-6 py-2.5 text-[11px] text-gray-400 max-lg:border-t-0 ${PHONE_CARD}`}>
             <span>AI cost <span className="font-medium text-gray-700">{formatCost(Number(n.cost_usd))}</span></span>
             <span>Tokens <span className="font-medium text-gray-700">{formatTokens(n.tokens_total)}</span></span>
           </div>
@@ -376,7 +393,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
           hints={ANALYSIS_HINTS}
         />
       ) : error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 sm:p-6">
           <div className="flex items-start gap-3">
             <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-red-600" />
             <div className="flex-1">
@@ -388,7 +405,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
           </div>
         </div>
       ) : !transcript ? (
-        <div className="rounded-2xl border border-dashed border-[#d4d0c8] bg-[#faf9f7] px-6 py-10 text-center">
+        <div className="rounded-2xl border border-dashed border-[#d4d0c8] bg-[#faf9f7] px-4 sm:px-6 py-10 text-center">
           <p className="text-sm font-medium text-gray-900">No transcript yet</p>
           <p className="mt-1 text-xs text-gray-500">The Report Card is produced once the recording has been transcribed.</p>
           {n.audio_path && (
@@ -399,7 +416,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
         </div>
       ) : !hasCard ? (
         <>
-          <div className="flex flex-col items-center gap-4 rounded-2xl border border-[#e5e3df] bg-white px-6 py-12 text-center shadow-sm">
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-[#e5e3df] bg-white px-4 sm:px-6 py-12 text-center shadow-sm">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fbf7ed] text-[#a07530]"><Sparkles size={22} /></div>
             <div>
               <p className="text-sm font-semibold text-gray-900">Ready to generate the Report Card</p>
@@ -409,7 +426,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               <Sparkles size={15} /> Generate Report Card
             </button>
           </div>
-          <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6 shadow-sm">
             <TranscriptPlayer
               segments={n.system_transcript_segments}
               fallbackText={transcript.text}
@@ -422,8 +439,8 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
         </>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-1 rounded-xl border border-[#e5e3df] bg-white p-1 text-xs font-medium shadow-sm">
+          <div ref={tabsRef} className="flex flex-wrap items-center justify-between gap-3">
+            <div className="grid w-full grid-cols-4 gap-1 rounded-xl border border-[#e5e3df] bg-white p-1 text-[11px] font-medium shadow-sm sm:flex sm:w-auto sm:items-center sm:text-xs">
               <TabButton active={tab === 'card'} onClick={() => setTab('card')} icon={<Sparkles size={13} />} label="Report Card" />
               <TabButton active={tab === 'transcript'} onClick={() => setTab('transcript')} icon={<FileText size={13} />} label="Transcript" />
               <TabButton active={tab === 'coach'} onClick={() => setTab('coach')} icon={<MessageSquare size={13} />} label="Coaching" badge={!hasCoachingHistory} />
@@ -468,7 +485,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
             />
           )}
           {tab === 'transcript' && (
-            <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6 shadow-sm">
               <TranscriptPlayer
                 segments={n.system_transcript_segments}
                 fallbackText={transcript.text}
@@ -510,9 +527,9 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
 
 function Stepper({ steps }: { steps: { label: string; sub: string; state: StepState }[] }) {
   return (
-    <ol className="grid grid-cols-4 gap-2 border-t border-[#eceae5] px-6 py-4">
+    <ol className="grid grid-cols-4 gap-1 border-t border-[#eceae5] px-2 py-3 sm:gap-2 sm:px-6 sm:py-4">
       {steps.map((s, i) => (
-        <li key={s.label} className="flex min-w-0 items-center gap-2.5">
+        <li key={s.label} className="flex min-w-0 flex-col items-center gap-1 text-center sm:flex-row sm:gap-2.5 sm:text-left">
           <span
             className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
               s.state === 'done' ? 'bg-black text-white'
@@ -523,9 +540,9 @@ function Stepper({ steps }: { steps: { label: string; sub: string; state: StepSt
           >
             {s.state === 'done' ? <Check size={13} /> : s.state === 'active' ? <Loader2 size={13} className="animate-spin" /> : s.state === 'error' ? <AlertCircle size={13} /> : i + 1}
           </span>
-          <span className="min-w-0">
-            <span className={`block truncate text-xs font-semibold ${s.state === 'upcoming' ? 'text-gray-400' : 'text-gray-900'}`}>{s.label}</span>
-            <span className={`block truncate text-[11px] ${s.state === 'active' ? 'text-[#a07530]' : 'text-gray-400'}`}>{s.sub}</span>
+          <span className="w-full min-w-0">
+            <span className={`block truncate text-[11px] font-semibold sm:text-xs ${s.state === 'upcoming' ? 'text-gray-400' : 'text-gray-900'}`}>{s.label}</span>
+            <span className={`hidden truncate text-[11px] sm:block ${s.state === 'active' ? 'text-[#a07530]' : 'text-gray-400'}`}>{s.sub}</span>
           </span>
         </li>
       ))}
@@ -544,7 +561,7 @@ function ProcessingPanel({ label, estimate, elapsedSecs, hints }: { label: strin
 
 function TabButton({ active, onClick, icon, label, badge }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string; badge?: boolean }) {
   return (
-    <button type="button" onClick={onClick} className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors ${active ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}>
+    <button type="button" onClick={onClick} className={`relative inline-flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1.5 touch:py-2.5 transition-colors sm:flex-row sm:gap-1.5 sm:px-3 ${active ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}>
       {icon}{label}
       {badge && !active && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#c8973f]" />}
     </button>
@@ -572,7 +589,7 @@ function SubmissionPanel({ n, open = false }: { n: SalesCoachNegotiation; open?:
   const trc = (n.trc_members || []).filter((p) => p.name || p.role)
 
   return (
-    <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6 shadow-sm">
       {!open && (
         <button type="button" onClick={() => setExpanded((v) => !v)} className="flex w-full items-center justify-between text-left">
           <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500"><ClipboardList size={13} /> Submission & transcript</span>
@@ -581,7 +598,7 @@ function SubmissionPanel({ n, open = false }: { n: SalesCoachNegotiation; open?:
       )}
       {expanded && (
         <div className={open ? '' : 'mt-5'}>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Field icon={<Building2 size={12} />} label="Company" value={n.company} />
             <Field icon={<Globe2 size={12} />} label="Country" value={n.country} />
             <Field icon={<Newspaper size={12} />} label="Media / publication" value={n.media_publication} />
@@ -589,7 +606,7 @@ function SubmissionPanel({ n, open = false }: { n: SalesCoachNegotiation; open?:
             <Field icon={<UserRound size={12} />} label="Submitted by" value={n.submitted_by_name} />
             <Field icon={<Mic size={12} />} label="Recording" value={n.original_filename || (n.audio_path ? 'Audio uploaded' : n.uploaded_transcript ? 'Transcript pasted' : '—')} />
           </div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <ParticipantChips label="Company representatives present" people={reps} />
             <ParticipantChips label="TRC team members present" people={trc} />
           </div>
@@ -599,7 +616,7 @@ function SubmissionPanel({ n, open = false }: { n: SalesCoachNegotiation; open?:
               <span className="rounded-full bg-black px-2.5 py-0.5 text-[11px] font-semibold text-white">{outcomeLabel(n.declared_outcome)}</span>
             </div>
             {details.length > 0 && (
-              <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+              <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
                 {details.map((d) => (
                   <div key={d.label}>
                     <dt className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{d.label}</dt>
@@ -626,7 +643,7 @@ function Field({ icon, label, value }: { icon: React.ReactNode; label: string; v
   return (
     <div className="rounded-xl border border-[#eceae5] bg-[#fcfbf8] px-4 py-3">
       <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">{icon}{label}</p>
-      <p className="mt-1 truncate text-sm text-gray-800" title={value || undefined}>{value || '—'}</p>
+      <p className="mt-1 text-sm text-gray-800 sm:truncate" title={value || undefined}>{value || '—'}</p>
     </div>
   )
 }

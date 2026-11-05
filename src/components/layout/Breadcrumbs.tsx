@@ -19,11 +19,11 @@ export default function Breadcrumbs({ items }: { items: Crumb[] }) {
   const parentHref = [...items.slice(0, -1)].reverse().find((c) => c.href)?.href
 
   return (
-    <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-3">
+    <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1 sm:mb-6 sm:gap-3">
       {parentHref && (
         <Link
           href={parentHref}
-          className="flex items-center justify-center w-6 h-6 rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors flex-shrink-0"
+          className="flex items-center justify-center w-6 h-6 touch:w-10 touch:h-10 touch:-ml-2 rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors flex-shrink-0"
           aria-label="Back"
         >
           <ArrowLeft size={15} />
@@ -35,7 +35,7 @@ export default function Breadcrumbs({ items }: { items: Crumb[] }) {
           return (
             <li key={i} className="flex items-center gap-1.5">
               {item.href && !isLast ? (
-                <Link href={item.href} className="text-gray-400 hover:text-gray-700 transition-colors">
+                <Link href={item.href} className="touch:py-2 text-gray-400 hover:text-gray-700 transition-colors">
                   {item.label}
                 </Link>
               ) : (

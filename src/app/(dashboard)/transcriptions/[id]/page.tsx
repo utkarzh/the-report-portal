@@ -38,7 +38,7 @@ export default async function TranscriptionDetailPage({ params }: { params: { id
     .createSignedUrl(transcription.audio_path, 60 * 60)
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="mx-auto max-w-4xl">
         <div className="flex items-center justify-between gap-3">
           <Breadcrumbs

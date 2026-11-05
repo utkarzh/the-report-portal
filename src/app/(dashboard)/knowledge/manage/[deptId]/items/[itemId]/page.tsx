@@ -51,7 +51,7 @@ export default async function KnowledgeItemEditorPage({ params }: { params: { de
   const basePath = `/knowledge/manage/${department.id}`
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <KnowledgeHeader ctx={ctx} active="manage" adminBar={false} subtitle="Write, publish and keep your department’s knowledge up to date, and act on what colleagues send you." />
         <Breadcrumbs

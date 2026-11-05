@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { isTouchDevice } from '@/lib/use-mobile'
 
 interface SearchableSelectOption {
   value: string
@@ -45,7 +46,7 @@ export default function SearchableSelect({
 
   useEffect(() => {
     if (!open) return
-    function onPointerDown(e: MouseEvent) {
+    function onPointerDown(e: PointerEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
         setQuery('')
@@ -57,16 +58,18 @@ export default function SearchableSelect({
         setQuery('')
       }
     }
-    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
     return () => {
-      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [open])
 
   useEffect(() => {
-    if (open) searchRef.current?.focus()
+    // On touch devices focus would pop the keyboard up over the list, which is
+    // often short enough to tap straight away.
+    if (open && !isTouchDevice()) searchRef.current?.focus()
   }, [open])
 
   function select(v: string) {
@@ -113,10 +116,10 @@ export default function SearchableSelect({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="w-full text-sm bg-gray-50 rounded-md px-3 py-1.5 focus:outline-none"
+                className="w-full text-sm bg-gray-50 rounded-md px-3 py-1.5 touch:py-2.5 focus:outline-none"
               />
             </div>
-            <div className="max-h-56 overflow-y-auto py-1">
+            <div className="max-h-56 overflow-y-auto overscroll-contain py-1">
               {filtered.length === 0 ? (
                 <p className="px-3 py-2 text-sm text-gray-400">No matches</p>
               ) : (
@@ -125,7 +128,7 @@ export default function SearchableSelect({
                     key={o.value}
                     type="button"
                     onClick={() => select(o.value)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50 transition-colors ${
+                    className={`w-full flex items-center gap-2 px-3 py-2 touch:py-3 text-sm text-left hover:bg-gray-50 transition-colors ${
                       o.value === value ? 'bg-gray-50 font-medium text-gray-900' : 'text-gray-700'
                     }`}
                   >

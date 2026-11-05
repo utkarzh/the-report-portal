@@ -11,7 +11,7 @@ export default async function CountryIntelProjectPage({ params, searchParams }: 
   if (!data) notFound()
   const summary = await summarize(params.id)
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <ResearchWorkspace initialProject={data as CiProject} initialSummary={summary} autoRun={searchParams.run === '1'} />
     </div>
   )

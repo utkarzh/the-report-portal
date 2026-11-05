@@ -126,15 +126,15 @@ export default function FeedbackModal({ target, departments, onClose, onSubmitte
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="modal-backdrop-in absolute inset-0 bg-black/40" onClick={busy ? undefined : onClose} />
-      <div className="modal-panel-in relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl">
-        <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+      <div className="modal-sheet modal-panel-in relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl">
+        <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 touch:p-2.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
           <X size={16} />
         </button>
 
         {done ? (
-          <div className="px-6 pb-6 pt-8 text-center">
+          <div className="px-4 sm:px-6 pb-6 pt-8 text-center">
             <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
               <CheckCircle2 size={22} />
             </span>
@@ -154,7 +154,7 @@ export default function FeedbackModal({ target, departments, onClose, onSubmitte
           </div>
         ) : (
           <>
-            <div className="flex items-start gap-3 border-b border-[#eceae5] px-6 pb-4 pt-6 pr-12">
+            <div className="flex items-start gap-3 border-b border-[#eceae5] px-4 sm:px-6 pb-4 pt-6 pr-12">
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#fbf7ed] text-[#a07530]">
                 <Icon size={17} />
               </span>
@@ -175,7 +175,7 @@ export default function FeedbackModal({ target, departments, onClose, onSubmitte
               </div>
             </div>
 
-            <div className="px-6 py-5">
+            <div className="px-4 sm:px-6 py-5">
               {needsDepartment && (
                 <label className="mb-4 block">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Department</span>
@@ -239,7 +239,7 @@ export default function FeedbackModal({ target, departments, onClose, onSubmitte
               {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
             </div>
 
-            <div className="flex gap-3 border-t border-[#eceae5] bg-[#fcfbf9] px-6 py-4">
+            <div className="flex gap-3 border-t border-[#eceae5] bg-[#fcfbf9] px-4 sm:px-6 py-4">
               <Button variant="secondary" size="sm" onClick={onClose} disabled={busy} className="flex-1 justify-center">
                 Cancel
               </Button>

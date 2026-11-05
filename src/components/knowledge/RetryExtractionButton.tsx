@@ -20,7 +20,7 @@ export default function RetryExtractionButton({ versionId, label = 'Retry' }: { 
         router.refresh()
       }}
       disabled={busy}
-      className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 hover:text-black disabled:opacity-50"
+      className="inline-flex touch:py-2.5 items-center gap-1 text-[11px] font-medium text-gray-600 hover:text-black disabled:opacity-50"
     >
       {busy ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />} {busy ? 'Processing…' : label}
     </button>

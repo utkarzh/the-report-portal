@@ -45,14 +45,14 @@ export default async function MyProjectsPage() {
     : { data: [] as FinanceTransfer[] }
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">My Projects</h1>
         <p className="text-sm text-gray-500 mt-1">This function helps organise and manage financial information, supporting the review and tracking of project-related expenses and payments.</p>
       </div>
 
       {list.length === 0 ? (
-        <div className="border border-[#e5e3df] bg-white rounded-xl p-8 text-center text-sm text-gray-500">
+        <div className="border border-[#e5e3df] bg-white rounded-xl p-4 sm:p-8 text-center text-sm text-gray-500">
           You haven&apos;t been added to a project yet. Ask Finance to add you.
         </div>
       ) : (

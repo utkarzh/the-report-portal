@@ -87,7 +87,7 @@ export default function NewResearchForm() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <Link href="/commercial/country-intelligence" className="mb-4 inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-black"><ArrowLeft size={14} /> Country Intelligence</Link>
+      <Link href="/commercial/country-intelligence" className="mb-4 inline-flex touch:py-2 items-center gap-1.5 text-sm text-gray-500 hover:text-black"><ArrowLeft size={14} /> Country Intelligence</Link>
       <div className="mb-6 flex items-start gap-3">
         <div className="rounded-xl border border-[#e5e3df] bg-[#f7f6f3] p-2.5 text-gray-700"><Radar size={18} /></div>
         <div>
@@ -96,10 +96,10 @@ export default function NewResearchForm() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
         <div className="space-y-6">
           <section className="rounded-xl border border-[#e5e3df] bg-white p-5 shadow-sm space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="space-y-1.5"><span className={lbl}>Title</span><input className={field} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Poland — security report for MSC 2027" /></label>
               <label className="space-y-1.5"><span className={lbl}>Country</span><input className={field} value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Poland" /></label>
             </div>
@@ -112,19 +112,19 @@ export default function NewResearchForm() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <span className={lbl}>Sectors ({sectors.length})</span>
               <div className="flex flex-wrap gap-2">
-                {Object.entries(PRESETS).map(([k, p]) => <button key={k} type="button" onClick={() => setSectors(p.sectors)} className="rounded-lg border border-[#e5e3df] px-2.5 py-1 text-xs text-gray-600 hover:border-gray-900 hover:text-black">{p.label}</button>)}
-                <button type="button" onClick={() => setSectors([{ name: '', scope: '' }])} className="rounded-lg border border-[#e5e3df] px-2.5 py-1 text-xs text-gray-600 hover:border-gray-900">Clear</button>
+                {Object.entries(PRESETS).map(([k, p]) => <button key={k} type="button" onClick={() => setSectors(p.sectors)} className="rounded-lg border border-[#e5e3df] px-2.5 py-1 touch:py-2 text-xs text-gray-600 hover:border-gray-900 hover:text-black">{p.label}</button>)}
+                <button type="button" onClick={() => setSectors([{ name: '', scope: '' }])} className="rounded-lg border border-[#e5e3df] px-2.5 py-1 touch:py-2 text-xs text-gray-600 hover:border-gray-900">Clear</button>
               </div>
             </div>
             <div className="space-y-2">
               {sectors.map((s, i) => (
-                <div key={i} className="grid gap-2 sm:grid-cols-[220px_1fr_32px]">
+                <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[220px_1fr_32px]">
                   <input className={field} value={s.name} onChange={(e) => setSector(i, { name: e.target.value })} placeholder="Sector name" />
                   <input className={field} value={s.scope} onChange={(e) => setSector(i, { scope: e.target.value })} placeholder="What it covers (helps the search find the right companies)" />
-                  <button type="button" onClick={() => setSectors((ss) => ss.filter((_, k) => k !== i))} className="flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-50 hover:text-red-600" aria-label="Remove sector"><Trash2 size={15} /></button>
+                  <button type="button" onClick={() => setSectors((ss) => ss.filter((_, k) => k !== i))} className="flex items-center justify-center touch:py-2.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-red-600" aria-label="Remove sector"><Trash2 size={15} /></button>
                 </div>
               ))}
-              <button type="button" onClick={() => setSectors((ss) => [...ss, { name: '', scope: '' }])} className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-black"><Plus size={14} /> Add sector</button>
+              <button type="button" onClick={() => setSectors((ss) => [...ss, { name: '', scope: '' }])} className="inline-flex touch:py-2 items-center gap-1.5 text-sm text-gray-600 hover:text-black"><Plus size={14} /> Add sector</button>
             </div>
           </section>
 
@@ -142,7 +142,7 @@ export default function NewResearchForm() {
             </div>
             <div>
               <span className={lbl}>Research depth</span>
-              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {(Object.keys(DEPTHS) as CiDepth[]).map((k) => (
                   <button key={k} type="button" onClick={() => setDepth(k)} className={`rounded-xl border p-3 text-left transition-colors ${depth === k ? 'border-gray-900 bg-[#f7f6f3]' : 'border-[#e5e3df] hover:border-gray-400'}`}>
                     <div className="flex items-center justify-between"><span className="text-sm font-semibold">{DEPTHS[k].label}</span><span className="text-xs text-gray-500">~${(DEPTHS[k].costPerProfile * DEPTHS[k].overgenerate + DEPTHS[k].costPerContacts).toFixed(3)}/co.</span></div>
@@ -151,8 +151,8 @@ export default function NewResearchForm() {
                 ))}
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-1.5"><span className={lbl}>Minimum annual revenue (USD million)</span><input type="number" min={0} className={field} value={minRevenueM} onChange={(e) => setMinRevenueM(Math.max(0, Number(e.target.value)))} /></label>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="space-y-1.5"><span className={lbl}>Minimum annual revenue (USD million)</span><input type="number" inputMode="decimal" min={0} className={field} value={minRevenueM} onChange={(e) => setMinRevenueM(Math.max(0, Number(e.target.value)))} /></label>
               <div className="space-y-2 pt-5 text-sm text-gray-700">
                 <label className="flex items-center gap-2"><input type="checkbox" checked={localHqOnly} onChange={(e) => setLocalHqOnly(e.target.checked)} /> Only companies headquartered and owned in the country</label>
                 <label className={`flex items-center gap-2 ${contactsAvailable ? '' : 'text-gray-400'}`}><input type="checkbox" disabled={!contactsAvailable} checked={includeContacts && contactsAvailable} onChange={(e) => setIncludeContacts(e.target.checked)} /> Dedicated contact search (who to approach){!contactsAvailable && ' — Standard or Deep'}</label>
@@ -162,7 +162,7 @@ export default function NewResearchForm() {
           </section>
         </div>
 
-        <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+        <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
           <div className="rounded-xl border border-[#e5e3df] bg-white p-5 shadow-sm">
             <p className={lbl}>Estimate</p>
             <p className="mt-2 text-3xl font-semibold text-gray-900">${est.expectedUsd.toFixed(2)}</p>

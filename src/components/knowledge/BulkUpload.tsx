@@ -125,9 +125,9 @@ export default function BulkUpload({ departmentId, topics, defaultTopicId }: { d
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="modal-backdrop-in absolute inset-0 bg-black/40" onClick={close} />
-      <div className="modal-panel-in relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+      <div className="modal-sheet modal-panel-in relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b border-[#eceae5] p-5">
           <div className="flex items-start gap-3">
             <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#fbf7ed] text-[#a07530]">
@@ -139,7 +139,7 @@ export default function BulkUpload({ departmentId, topics, defaultTopicId }: { d
             </div>
           </div>
           {!running && (
-            <button onClick={close} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+            <button onClick={close} className="rounded-md p-1 touch:p-2.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
               <X size={16} />
             </button>
           )}
@@ -178,7 +178,7 @@ export default function BulkUpload({ departmentId, topics, defaultTopicId }: { d
             } ${running ? 'pointer-events-none opacity-60' : ''}`}
           >
             <Upload size={20} className={dragging ? 'text-[#a07530]' : 'text-gray-400'} />
-            <span className="text-sm font-medium text-gray-800">Drop files here or click to choose</span>
+            <span className="text-sm font-medium text-gray-800"><span className="touch:hidden">Drop files here or click to choose</span><span className="hidden touch:inline">Tap to choose files</span></span>
             <span className="text-[11px] text-gray-400">Several at once is fine · up to 100 MB each</span>
             <input
               type="file"

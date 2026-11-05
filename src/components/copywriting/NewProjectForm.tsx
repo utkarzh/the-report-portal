@@ -108,7 +108,7 @@ export default function NewProjectForm({ publications, articleTypes, sectionLibr
           <div>
             <Input
               label="Direct quotes"
-              type="number"
+              type="number" inputMode="decimal"
               min={0}
               max={MAX_QUOTES}
               step={1}
@@ -123,7 +123,7 @@ export default function NewProjectForm({ publications, articleTypes, sectionLibr
           <div>
             <Input
               label="Pull quotes"
-              type="number"
+              type="number" inputMode="decimal"
               min={0}
               max={MAX_QUOTES}
               step={1}
@@ -141,7 +141,7 @@ export default function NewProjectForm({ publications, articleTypes, sectionLibr
             <Input
               label="Number of images"
               hint="optional"
-              type="number"
+              type="number" inputMode="decimal"
               min={0}
               max={MAX_IMAGE_COUNT}
               step={1}

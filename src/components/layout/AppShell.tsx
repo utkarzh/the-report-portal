@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect } from 'react'
-import { usePathname } from 'next/navigation'
-import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
+import MobileTopBar from './MobileTopBar'
 import FeedbackWidget from '@/components/feedback/FeedbackWidget'
 import { FEEDBACK_WIDGET_ENABLED } from '@/lib/feedback'
+import { useMobileDrawer } from '@/lib/use-mobile'
 import type { UserRole } from '@/types'
 
 interface Props {
@@ -45,30 +44,20 @@ export default function AppShell({
   canAccessFinance,
   financeHref,
 }: Props) {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const pathname = usePathname();
+  const drawer = useMobileDrawer();
 
-  // Close drawer whenever the user navigates
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
+  // Below lg the document itself scrolls (so the browser's toolbars can collapse
+  // and pull-to-refresh works) under a sticky top bar. From lg up it's the fixed
+  // sidebar + independently scrolling main.
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Mobile menu button — replaces the old top bar's hamburger */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        aria-label="Open menu"
-        className="lg:hidden fixed top-3 left-3 z-30 p-2 rounded bg-black text-gray-300 hover:text-white shadow-lg"
-      >
-        <Menu size={20} />
-      </button>
+    <div className="flex min-h-dvh flex-col lg:h-screen lg:min-h-0 lg:flex-row lg:overflow-hidden">
+      <MobileTopBar onOpenMenu={drawer.openDrawer} menuOpen={drawer.open} />
 
       {/* Backdrop — mobile only */}
-      {mobileOpen && (
+      {drawer.open && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-          onClick={() => setMobileOpen(false)}
+          className="modal-backdrop-in fixed inset-0 z-40 bg-black/60 lg:hidden"
+          onClick={drawer.close}
         />
       )}
 
@@ -88,11 +77,11 @@ export default function AppShell({
         canAccessKnowledgeBase={canAccessKnowledgeBase}
         canAccessFinance={canAccessFinance}
         financeHref={financeHref}
-        mobileOpen={mobileOpen}
-        onMobileClose={() => setMobileOpen(false)}
+        mobileOpen={drawer.open}
+        onMobileClose={drawer.close}
       />
 
-      <main className="flex-1 overflow-y-auto bg-[#f0efec]">
+      <main className="min-w-0 flex-1 overflow-x-clip bg-[#f0efec] lg:overflow-x-auto lg:overflow-y-auto">
         {children}
       </main>
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { marked } from 'marked'
+import { isTouchDevice } from '@/lib/use-mobile'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import {
   Upload as UploadIcon,
@@ -456,7 +457,7 @@ export default function ProjectWorkspace({ projectId, initial, isAdmin }: Props)
       {aiStage && <CopywritingLoader variant={aiStage} />}
 
       {stalled && (
-        <div className="mt-8 flex flex-col items-center gap-4 border border-amber-200 bg-amber-50 px-6 py-10 text-center">
+        <div className="mt-8 flex flex-col items-center gap-4 border border-amber-200 bg-amber-50 px-4 sm:px-6 py-10 text-center">
           <AlertTriangle size={20} className="text-amber-600" />
           <div>
             <p className="text-sm font-medium text-gray-900">This step stopped before it finished</p>
@@ -621,7 +622,7 @@ function StepNav({
                 onClick={() => enabled && onView(st.key)}
                 disabled={!enabled}
                 title={!enabled ? (i > currentIdx ? 'Not reached yet' : 'Nothing saved for this step') : isCurrent ? 'Current step' : `View the ${st.label} step (read-only)`}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 touch:py-2.5 text-xs font-medium transition-colors ${
                   isViewed
                     ? 'border-black bg-black text-white'
                     : isDone && enabled
@@ -741,7 +742,7 @@ function PastSourcesView({ project, documents }: { project: CopywritingProject; 
               <FileText size={14} className="flex-shrink-0 text-gray-400" />
               <span className="truncate">{d.filename}</span>
               {d.truncated && <span className="flex-shrink-0 text-[10px] text-amber-600">(truncated)</span>}
-              <button onClick={() => setViewing(d.id)} className="ml-auto inline-flex flex-shrink-0 items-center gap-1 text-xs text-gray-500 hover:text-black">
+              <button onClick={() => setViewing(d.id)} className="ml-auto inline-flex touch:py-2.5 flex-shrink-0 items-center gap-1 text-xs text-gray-500 hover:text-black">
                 <Eye size={14} /> View
               </button>
             </div>
@@ -768,7 +769,7 @@ function PastStepBody({
         {analysisSectionList(analysis).map((section) => {
           const key = section.key
           return (
-            <div key={key} className="bg-white border border-[#e5e3df] p-6">
+            <div key={key} className="bg-white border border-[#e5e3df] p-4 sm:p-6">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-gray-900">{section.label}</h3>
                 {isGatedAnalysisSection(key) && (section.approved ? <StatusPill label="Approved" tone="emerald" /> : <StatusPill label="Pending" tone="amber" />)}
@@ -883,7 +884,7 @@ function UploadStage({
 
       <label className="mt-6 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-[#e5e3df] rounded-lg py-10 cursor-pointer hover:border-gray-400 transition-colors">
         <UploadIcon size={20} className="text-gray-400" />
-        <span className="text-sm text-gray-600">Click to choose files, or drag them here</span>
+        <span className="text-sm text-gray-600"><span className="touch:hidden">Click to choose files, or drag them here</span><span className="hidden touch:inline">Tap to choose files</span></span>
         <span className="text-[10px] text-gray-400">.docx, .pdf, .xlsx, .txt, .md</span>
         <input
           type="file"
@@ -899,7 +900,7 @@ function UploadStage({
           {pendingFiles.map((f, i) => (
             <div key={i} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded">
               <span className="truncate">{f.name}</span>
-              <button onClick={() => setPendingFiles((p) => p.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-500">
+              <button onClick={() => setPendingFiles((p) => p.filter((_, idx) => idx !== i))} className="touch:p-2.5 text-gray-400 hover:text-red-500">
                 <Trash2 size={13} />
               </button>
             </div>
@@ -920,10 +921,10 @@ function UploadStage({
                 {d.truncated && <span className="flex-shrink-0 text-[10px] text-amber-600">(truncated)</span>}
               </span>
               <span className="flex flex-shrink-0 items-center gap-3">
-                <button onClick={() => setViewing(d.id)} className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-black">
+                <button onClick={() => setViewing(d.id)} className="inline-flex touch:py-2.5 items-center gap-1 text-xs text-gray-500 hover:text-black">
                   <Eye size={14} /> View
                 </button>
-                <button onClick={() => removeDoc(d.id)} className="text-gray-400 hover:text-red-500" aria-label="Remove">
+                <button onClick={() => removeDoc(d.id)} className="touch:p-2.5 text-gray-400 hover:text-red-500" aria-label="Remove">
                   <Trash2 size={14} />
                 </button>
               </span>
@@ -1009,7 +1010,7 @@ function AnalysisStage({
         const isGaps = isGapsAnalysisSection(key)
 
         return (
-          <div key={key} className="bg-white border border-[#e5e3df] p-6">
+          <div key={key} className="bg-white border border-[#e5e3df] p-4 sm:p-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-gray-900">{label}</h3>
@@ -1022,7 +1023,7 @@ function AnalysisStage({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setFeedbackOpen(feedbackOpen === key ? null : key)}
-                  className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-black transition-colors"
+                  className="inline-flex touch:py-2.5 items-center gap-1.5 text-xs text-gray-500 hover:text-black transition-colors"
                 >
                   <RefreshCw size={13} />
                   Regenerate
@@ -1396,7 +1397,7 @@ function DraftStage({
           />
         </div>
 
-        <div className="bg-white border border-[#e5e3df] p-6">
+        <div className="bg-white border border-[#e5e3df] p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Automated checks</h3>
             <Button size="sm" variant="secondary" onClick={onRunCheck} loading={busy === 'check'}>
@@ -1480,7 +1481,7 @@ function DraftStage({
         </div>
       </div>
 
-      <div className="lg:col-span-2 flex flex-col bg-white border border-[#e5e3df] h-[38rem]">
+      <div className="lg:col-span-2 flex flex-col bg-white border border-[#e5e3df] h-[38rem] max-lg:h-[calc(100dvh-5rem)]">
         <div className="px-5 py-4 border-b border-[#e5e3df]">
           <p className="text-sm font-semibold text-gray-900">Refine with Claude</p>
           <p className="text-xs text-gray-400 mt-0.5">Ask for cuts, restructuring, a tone change, or a fact re-check.</p>
@@ -1519,7 +1520,7 @@ function DraftStage({
           <input
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isTouchDevice()) { e.preventDefault(); send() } }}
             disabled={sending}
             placeholder="e.g. Tighten the second paragraph"
             className="flex-1 border border-[#e5e3df] rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-black"
@@ -1571,7 +1572,7 @@ function CompletedView({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <StatusPill label="Complete" tone="emerald" />
         <div className="flex items-center gap-2">
-          <button onClick={onOpenLedger} className="inline-flex items-center gap-1.5 text-xs font-medium tracking-wider uppercase text-gray-500 hover:text-black transition-colors">
+          <button onClick={onOpenLedger} className="inline-flex touch:py-2.5 items-center gap-1.5 text-xs font-medium tracking-wider uppercase text-gray-500 hover:text-black transition-colors">
             <BookOpen size={14} />
             Research Ledger
           </button>

@@ -86,7 +86,7 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="mx-auto max-w-5xl">
         <div className="flex items-center justify-between gap-3">
           <Breadcrumbs items={[{ label: 'Sales Coach', href: '/commercial/sales-coach' }, { label: n.company || 'Negotiation' }]} />

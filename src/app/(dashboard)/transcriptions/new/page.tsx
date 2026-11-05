@@ -10,7 +10,7 @@ export default async function NewTranscriptionPage() {
   const media = await listMediaOptions()
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="mx-auto max-w-3xl">
         <Breadcrumbs
           items={[

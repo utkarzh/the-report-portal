@@ -81,10 +81,10 @@ export default function TopicsManager({
                   onChange={(e) => setEditName(e.target.value)}
                   className="min-w-0 flex-1 bg-transparent px-1 py-0.5 text-[13px] focus:outline-none"
                 />
-                <button type="submit" disabled={busy} className="rounded p-1 text-gray-500 hover:bg-white hover:text-black" title="Save">
+                <button type="submit" disabled={busy} className="rounded p-1 touch:p-2.5 text-gray-500 hover:bg-white hover:text-black" title="Save">
                   <Check size={13} />
                 </button>
-                <button type="button" onClick={() => setEditing(null)} className="rounded p-1 text-gray-400 hover:bg-white hover:text-black" title="Cancel">
+                <button type="button" onClick={() => setEditing(null)} className="rounded p-1 touch:p-2.5 text-gray-400 hover:bg-white hover:text-black" title="Cancel">
                   <X size={13} />
                 </button>
               </form>
@@ -99,15 +99,15 @@ export default function TopicsManager({
                   <span className={`text-[11px] tabular-nums text-gray-400 ${canEdit ? 'group-hover:hidden' : ''}`}>{counts[t.id] ?? 0}</span>
                 </Link>
                 {canEdit && (
-                  <div className="hidden flex-shrink-0 items-center group-hover:flex">
-                    <button title="Move up" disabled={busy || i === 0} onClick={() => call(`/api/knowledge/topics/${t.id}`, 'PATCH', { move: 'up' })} className="rounded p-0.5 text-gray-400 hover:text-black disabled:opacity-30">
+                  <div className="hidden flex-shrink-0 items-center group-hover:flex touch:flex">
+                    <button title="Move up" disabled={busy || i === 0} onClick={() => call(`/api/knowledge/topics/${t.id}`, 'PATCH', { move: 'up' })} className="rounded p-0.5 touch:p-2 text-gray-400 hover:text-black disabled:opacity-30">
                       <ChevronUp size={13} />
                     </button>
                     <button
                       title="Move down"
                       disabled={busy || i === topics.length - 1}
                       onClick={() => call(`/api/knowledge/topics/${t.id}`, 'PATCH', { move: 'down' })}
-                      className="rounded p-0.5 text-gray-400 hover:text-black disabled:opacity-30"
+                      className="rounded p-0.5 touch:p-2 text-gray-400 hover:text-black disabled:opacity-30"
                     >
                       <ChevronDown size={13} />
                     </button>
@@ -161,12 +161,12 @@ export default function TopicsManager({
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Add a topic…"
-            className="min-w-0 flex-1 rounded-lg border border-transparent bg-[#faf9f7] px-2.5 py-1.5 text-[13px] placeholder:text-gray-400 focus:border-[#e5e3df] focus:bg-white focus:outline-none"
+            className="min-w-0 flex-1 rounded-lg border border-transparent bg-[#faf9f7] px-2.5 py-1.5 touch:py-2.5 text-[13px] placeholder:text-gray-400 focus:border-[#e5e3df] focus:bg-white focus:outline-none"
           />
           <button
             type="submit"
             disabled={busy || !newName.trim()}
-            className="rounded-lg bg-black p-1.5 text-white transition-colors hover:bg-gray-900 disabled:bg-gray-200 disabled:text-gray-400"
+            className="rounded-lg bg-black p-1.5 touch:p-2.5 text-white transition-colors hover:bg-gray-900 disabled:bg-gray-200 disabled:text-gray-400"
             title="Add topic"
           >
             <Plus size={14} />

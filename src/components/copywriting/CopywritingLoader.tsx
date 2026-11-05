@@ -123,7 +123,7 @@ export default function CopywritingLoader({ variant, compact = false }: { varian
   }
 
   return (
-    <div className="mt-8 flex flex-col items-center justify-center gap-6 border border-[#e5e3df] bg-white px-6 py-14 text-center">
+    <div className="mt-8 flex flex-col items-center justify-center gap-6 border border-[#e5e3df] bg-white px-4 sm:px-6 py-14 text-center">
       <div className="relative flex h-20 w-20 items-center justify-center">
         <div className="gemini-aurora absolute -inset-1 rounded-full opacity-70 blur-xl" />
         <div className="gemini-bloom absolute inset-1 rounded-full blur-2xl" />

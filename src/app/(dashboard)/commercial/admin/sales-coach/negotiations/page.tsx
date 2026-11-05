@@ -61,7 +61,7 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
     : withFlags
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <Breadcrumbs
           items={[
@@ -82,13 +82,13 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
           <div className="flex items-center gap-1 rounded-lg border border-[#e5e3df] bg-white p-1 text-xs font-medium">
             <Link
               href="/commercial/admin/sales-coach/negotiations"
-              className={`rounded-md px-3 py-1.5 transition-colors ${!flaggedOnly ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}
+              className={`rounded-md px-3 py-1.5 touch:py-2.5 transition-colors ${!flaggedOnly ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}
             >
               All
             </Link>
             <Link
               href="/commercial/admin/sales-coach/negotiations?flagged=1"
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors ${flaggedOnly ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 touch:py-2.5 transition-colors ${flaggedOnly ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}
             >
               <Flag size={12} /> Flagged
             </Link>
@@ -96,7 +96,7 @@ export default async function SalesCoachNegotiationsAdminPage({ searchParams }: 
         </div>
 
         {(!rows || rows.length === 0) ? (
-          <div className="rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500">
+          <div className="rounded-xl border border-[#e5e3df] bg-white p-4 sm:p-8 text-sm text-gray-500">
             No negotiations have been submitted yet.
           </div>
         ) : (

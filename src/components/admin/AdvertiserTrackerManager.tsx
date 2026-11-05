@@ -118,7 +118,7 @@ export default function AdvertiserTrackerManager({ initial }: { initial: Tracker
       {/* List */}
       <div className="bg-white border border-[#e5e3df]">
         {initial.length === 0 ? (
-          <p className="p-6 text-sm text-gray-400">No trackers yet. Upload one above.</p>
+          <p className="p-4 sm:p-6 text-sm text-gray-400">No trackers yet. Upload one above.</p>
         ) : (
           <ul className="divide-y divide-[#e5e3df]">
             {initial.map((t) => (
@@ -132,7 +132,7 @@ export default function AdvertiserTrackerManager({ initial }: { initial: Tracker
                 <button
                   onClick={() => remove(t.country)}
                   disabled={deleting === t.country}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
                 >
                   {deleting === t.country ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                   <span>Remove</span>

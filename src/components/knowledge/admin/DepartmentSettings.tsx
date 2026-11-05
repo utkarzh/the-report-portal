@@ -115,7 +115,7 @@ export default function DepartmentSettings({
             <button
               type="button"
               onClick={() => (archived ? call('archive', `/api/knowledge/departments/${department.id}`, 'PATCH', { archived: false }) : setConfirmArchive(true))}
-              className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-black"
+              className="ml-auto inline-flex touch:py-2.5 items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-black"
             >
               {archived ? (
                 <>
@@ -188,7 +188,7 @@ export default function DepartmentSettings({
                     type="button"
                     onClick={() => call(`rm-${m.id}`, `/api/knowledge/departments/${department.id}/members?userId=${m.id}`, 'DELETE')}
                     disabled={busy === `rm-${m.id}`}
-                    className="rounded-md p-1.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-600 group-hover:text-gray-400"
+                    className="rounded-md p-1.5 touch:p-2.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-600 group-hover:text-gray-400"
                     title="Remove from department"
                   >
                     <UserMinus size={14} />

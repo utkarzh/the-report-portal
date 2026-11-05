@@ -45,7 +45,7 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
 
   if (rows.length === 0) {
     return (
-      <div className="flex flex-col items-center rounded-2xl border border-dashed border-[#d9d5cc] bg-white/60 px-6 py-14 text-center">
+      <div className="flex flex-col items-center rounded-2xl border border-dashed border-[#d9d5cc] bg-white/60 px-4 sm:px-6 py-14 text-center">
         <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#eceae5] bg-white text-gray-500 shadow-sm">
           <FolderOpen size={19} strokeWidth={1.75} />
         </span>
@@ -70,7 +70,7 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
                 key={f.key}
                 type="button"
                 onClick={() => setFilter(f.key)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 touch:py-2.5 text-xs font-medium transition-colors ${
                   on
                     ? f.key === 'attention'
                       ? 'bg-red-600 text-white'
@@ -96,8 +96,8 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-        <table className="w-full min-w-[760px] text-sm">
+      <div className="table-cards-wrap overflow-x-auto rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
+        <table className="table-cards w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-[#e5e3df] bg-[#fcfbf9] text-left text-[10px] font-semibold uppercase tracking-widest text-gray-400">
               <th className="w-[44%] px-4 py-3">Item</th>
@@ -126,7 +126,7 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
                   onClick={() => router.push(href)}
                   className={`group cursor-pointer transition-colors ${attention ? 'bg-red-50/50 hover:bg-red-50' : 'hover:bg-[#faf9f7]'}`}
                 >
-                  <td className="px-4 py-3">
+                  <td data-cell="title" className="px-4 py-3">
                     <div className="flex items-start gap-3">
                       <TypeTile type={r.item.type} size="sm" example={r.item.is_example} />
                       <div className="min-w-0">
@@ -150,12 +150,12 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{r.topicName ?? <span className="italic text-gray-400">Unsorted</span>}</td>
-                  <td className="px-4 py-3">
+                  <td data-label="Topic" className="px-4 py-3 text-gray-600">{r.topicName ?? <span className="italic text-gray-400">Unsorted</span>}</td>
+                  <td data-label="Status" className="px-4 py-3">
                     <StatusPill label={meta.label} tone={meta.tone} pulse={r.state === 'processing' && !r.stalled} />
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-gray-600">{r.item.last_published_at ? formatDayMonthYear(r.item.last_published_at) : <span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td data-label="Published" className="whitespace-nowrap px-4 py-3 text-gray-600">{r.item.last_published_at ? formatDayMonthYear(r.item.last_published_at) : <span className="text-gray-300">—</span>}</td>
+                  <td data-label="Feedback" className="px-4 py-3 text-right">
                     {r.openFeedback > 0 ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
                         <MessageSquareWarning size={11} /> {r.openFeedback}
@@ -164,7 +164,7 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
                       <span className="text-gray-300">—</span>
                     )}
                   </td>
-                  <td className="px-2 py-3">
+                  <td data-cell="actions" className="px-2 py-3">
                     <ChevronRight size={15} className="text-gray-300 transition-colors group-hover:text-gray-500" />
                   </td>
                 </tr>

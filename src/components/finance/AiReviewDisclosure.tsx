@@ -25,7 +25,7 @@ export default function AiReviewDisclosure({ aiNote, flags }: Props) {
     <div className="mt-1.5" onClick={e => e.stopPropagation()}>
       <button
         onClick={() => setOpen(o => !o)}
-        className={`inline-flex items-center gap-1 text-[10.5px] font-medium rounded-full px-2 py-0.5 border transition-colors ${
+        className={`inline-flex items-center gap-1 text-[10.5px] font-medium rounded-full px-2 py-0.5 touch:py-1.5 border transition-colors ${
           hasCrit
             ? 'text-red-700 bg-red-50 border-red-100 hover:bg-red-100'
             : 'text-blue-700 bg-blue-50 border-blue-100 hover:bg-blue-100'
@@ -37,11 +37,11 @@ export default function AiReviewDisclosure({ aiNote, flags }: Props) {
       </button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-1.5 max-w-md">
-          {aiNote && <div className="text-xs text-blue-700 italic bg-blue-50/70 rounded-lg px-2.5 py-1.5">{aiNote}</div>}
+          {aiNote && <div className="text-xs text-blue-700 italic bg-blue-50/70 rounded-lg px-2.5 py-1.5 touch:py-2.5">{aiNote}</div>}
           {flags.map(f => (
             <div
               key={f.id}
-              className={`text-xs px-2.5 py-1.5 rounded-lg ${
+              className={`text-xs px-2.5 py-1.5 touch:py-2.5 rounded-lg ${
                 f.severity === 'crit' ? 'bg-red-50 text-red-700' : f.severity === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
               }`}
             >

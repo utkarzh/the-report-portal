@@ -20,6 +20,7 @@ import {
   ChevronRight,
   LogOut,
   Wallet,
+  X,
   CalendarClock,
   Handshake,
   Radar,
@@ -75,7 +76,7 @@ function NavLink({
     <Link
       href={item.href}
       title={collapsed ? label : undefined}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded text-sm mb-0.5 transition-colors ${
+      className={`flex items-center gap-3 px-3 py-3 lg:py-2.5 rounded text-sm mb-0.5 transition-colors ${
         collapsed ? "lg:justify-center" : ""
       } ${
         isActive
@@ -115,6 +116,7 @@ export default function Sidebar({
   canAccessFinance = false,
   financeHref = "/finance",
   mobileOpen = false,
+  onMobileClose,
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -195,41 +197,54 @@ export default function Sidebar({
     <aside
       className={[
         // Always
-        "bg-black border-r border-gray-800 flex flex-col flex-shrink-0 h-full",
-        "transition-transform duration-300 ease-in-out",
-        // Mobile: fixed full-height drawer, slides in/out
-        "fixed inset-y-0 left-0 z-50 w-64",
-        mobileOpen ? "translate-x-0" : "-translate-x-full",
+        "bg-black border-r border-gray-800 flex flex-col flex-shrink-0 lg:h-full",
+        "transition-[transform,visibility] duration-300 ease-in-out",
+        // Mobile: fixed full-height drawer, slides in/out. Invisible when
+        // closed, so its links can't be reached by keyboard or screen reader.
+        "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw]",
+        mobileOpen ? "translate-x-0" : "-translate-x-full max-lg:invisible",
         // Desktop: back in normal flow, width driven by collapsed state
-        "lg:relative lg:translate-x-0 lg:z-auto",
+        "lg:visible lg:relative lg:max-w-none lg:translate-x-0 lg:z-auto",
         collapsed ? "lg:w-16" : "lg:w-64",
       ].join(" ")}
     >
       {/* Logo + collapse toggle */}
       <div
-        className={`flex items-center h-16 border-b border-gray-800 ${collapsed ? "lg:justify-center lg:px-2" : "justify-between pl-4 pr-2"}`}
+        className={`flex items-center h-14 lg:h-16 border-b border-gray-800 justify-between pl-4 pr-1.5 lg:pr-2 ${collapsed ? "lg:justify-center lg:px-2" : ""}`}
       >
-        {!collapsed && (
-          <Image
-            src="/logo.png"
-            alt="The Report Company"
-            height={44}
-            width={222}
-            priority
-            unoptimized
-            className="h-auto w-44 flex-shrink-0"
-          />
-        )}
+        <Image
+          src="/logo.png"
+          alt="The Report Company"
+          height={44}
+          width={222}
+          priority
+          unoptimized
+          className={`h-auto w-40 lg:w-44 flex-shrink-0 ${collapsed ? "lg:hidden" : ""}`}
+        />
+        <button
+          onClick={onMobileClose}
+          aria-label="Close menu"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded text-gray-400 hover:text-white lg:hidden"
+        >
+          <X size={20} />
+        </button>
         <button
           onClick={toggleCollapsed}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="hidden lg:block p-1.5 rounded text-gray-600 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+          className="hidden lg:block p-1.5 touch:p-2.5 rounded text-gray-600 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
 
-      <nav className="flex-1 px-3 overflow-y-auto">
+      {/* Tapping the page you're already on changes no route, so the drawer
+          wouldn't close by itself. */}
+      <nav
+        className="flex-1 px-3 pt-3 lg:pt-0 overflow-y-auto overscroll-contain"
+        onClick={(e) => {
+          if ((e.target as Element).closest("a")) onMobileClose?.();
+        }}
+      >
         {toolNavItems.length > 0 && (
           <>
             <p
@@ -373,7 +388,8 @@ export default function Sidebar({
             <button
               onClick={handleSignOut}
               title="Sign out"
-              className="text-gray-500 hover:text-white transition-colors"
+              aria-label="Sign out"
+              className="touch:p-2.5 text-gray-500 hover:text-white transition-colors"
             >
               <LogOut size={15} />
             </button>
@@ -394,7 +410,8 @@ export default function Sidebar({
             <button
               onClick={handleSignOut}
               title="Sign out"
-              className="text-gray-500 hover:text-white transition-colors ml-3 flex-shrink-0"
+              aria-label="Sign out"
+              className="ml-3 flex-shrink-0 -mr-2.5 p-2.5 lg:can-hover:mr-0 lg:can-hover:p-0 text-gray-500 hover:text-white transition-colors"
             >
               <LogOut size={15} />
             </button>

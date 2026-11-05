@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import JSZip from 'jszip'
-import { X, Upload, AlertTriangle, FileText, FileArchive, Trash2, ImageUp } from 'lucide-react'
+import { X, Upload, AlertTriangle, FileText, FileArchive, Trash2, ImageUp, Camera } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
@@ -488,17 +488,17 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
   const totalEntryCount = groups.reduce((sum, g) => sum + g.entries.length, 0)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleClose} />
-      <div className="relative bg-white w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl flex flex-col rounded-xl">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#e5e3df] sticky top-0 bg-white z-10">
+      <div className="modal-sheet relative bg-white w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl flex flex-col rounded-xl">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-5 border-b border-[#e5e3df] sticky top-0 bg-white z-10">
           <h2 className="text-sm font-semibold text-gray-900">Log an expense</h2>
-          <button onClick={handleClose} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
+          <button onClick={handleClose} className="p-1.5 touch:p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
             <X size={18} />
           </button>
         </div>
 
-        <div className="px-6 py-6">
+        <div className="px-4 sm:px-6 py-6">
           {globalError && <div className="p-3 mb-4 bg-red-50 border border-red-200 text-sm text-red-700 rounded">{globalError}</div>}
 
           {step === 'select' && (
@@ -507,7 +507,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                 onDragOver={e => { e.preventDefault(); setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                className={`group relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-10 text-center cursor-pointer transition-colors duration-200 ${
+                className={`group relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 sm:px-6 py-10 text-center cursor-pointer transition-colors duration-200 ${
                   dragOver
                     ? 'border-[#c8973f] bg-[#fbf7ed]'
                     : 'border-[#d8d5cf] bg-[#faf9f6] hover:border-[#c8973f]/50 hover:bg-[#fbf7ed]/40'
@@ -517,7 +517,6 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                   type="file"
                   multiple
                   accept="image/*,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.zip,application/zip"
-                  capture="environment"
                   onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = '' }}
                   className="sr-only"
                 />
@@ -525,12 +524,26 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                   <Upload size={22} />
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-gray-700">Take a photo or drop receipts</div>
-                  <div className="text-xs text-gray-400 mt-1">JPG, PNG, PDF, Word doc, or a ZIP of receipts · select or drop several at once</div>
+                  <div className="text-sm font-medium text-gray-700"><span className="touch:hidden">Take a photo or drop receipts</span><span className="hidden touch:inline">Upload receipts</span></div>
+                  <div className="text-xs text-gray-400 mt-1">JPG, PNG, PDF, Word doc, or a ZIP of receipts <span className="touch:hidden"> · select or drop several at once</span><span className="hidden touch:inline"> · choose several at once</span></div>
                 </div>
-                <span className="mt-1 text-xs font-medium text-[#a07530] bg-[#fbf7ed] border border-[#c8973f]/30 rounded-full px-3.5 py-1.5">
+                <span className="mt-1 text-xs font-medium text-[#a07530] bg-[#fbf7ed] border border-[#c8973f]/30 rounded-full px-3.5 py-1.5 touch:py-2.5">
                   Choose file(s)
                 </span>
+              </label>
+
+              {/* `capture` forces the camera on a phone, so it can't sit on the
+                  main picker: that would block choosing an existing photo, a PDF
+                  or a ZIP. On touch devices it gets its own one-tap button. */}
+              <label className="mt-3 hidden w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-black px-4 py-3.5 text-sm font-medium text-white touch:flex">
+                <Camera size={16} /> Take a photo of a receipt
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = '' }}
+                  className="sr-only"
+                />
               </label>
 
               {expandingZip && <div className="mt-3 text-xs text-gray-500">Unzipping…</div>}
@@ -551,7 +564,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                         <div className="text-sm text-gray-900 truncate">{f.name}</div>
                         <div className="text-xs text-gray-400">{(f.size / 1024).toFixed(0)} KB</div>
                       </div>
-                      <button onClick={() => removeFile(i)} className="p-1 text-gray-400 hover:text-red-600 flex-shrink-0">
+                      <button onClick={() => removeFile(i)} className="p-1 touch:p-2.5 text-gray-400 hover:text-red-600 flex-shrink-0">
                         <X size={15} />
                       </button>
                     </div>
@@ -591,7 +604,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
 
                   <div className="p-4 flex flex-col gap-4">
                     {group.submitError && (
-                      <div className="flex items-center gap-1.5 text-xs rounded px-2.5 py-1.5 text-red-700 bg-red-50 border border-red-200">
+                      <div className="flex items-center gap-1.5 text-xs rounded px-2.5 py-1.5 touch:py-2.5 text-red-700 bg-red-50 border border-red-200">
                         <AlertTriangle size={13} className="flex-shrink-0" /> {group.submitError}
                       </div>
                     )}
@@ -616,7 +629,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                             {group.entries.length > 1 ? `Entry ${i + 1} of ${group.entries.length}` : 'Entry'}
                           </div>
                           <div className="flex items-center gap-3">
-                            <label className={`inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 cursor-pointer ${replacingKey ? 'pointer-events-none opacity-50' : ''}`}>
+                            <label className={`inline-flex touch:py-2.5 items-center gap-1 text-xs text-gray-500 hover:text-gray-900 cursor-pointer ${replacingKey ? 'pointer-events-none opacity-50' : ''}`}>
                               <ImageUp size={12} />
                               {replacingKey === `${group.key}#${i}` ? 'Reading…' : 'Replace photo'}
                               <input
@@ -634,19 +647,19 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                             <button
                               onClick={() => removeEntry(group.key, i)}
                               disabled={!!replacingKey}
-                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-red-600 disabled:opacity-50"
+                              className="inline-flex touch:py-2.5 items-center gap-1 text-xs text-gray-500 hover:text-red-600 disabled:opacity-50"
                             >
                               <Trash2 size={12} /> Remove
                             </button>
                           </div>
                         </div>
                         {entry.aiComment && (
-                          <div className={`flex items-center gap-1.5 text-xs rounded px-2.5 py-1.5 mb-3 ${entry.suspiciousPersonal ? 'text-amber-700 bg-amber-50 border border-amber-200' : 'text-blue-700 bg-blue-50 border border-blue-200'}`}>
+                          <div className={`flex items-center gap-1.5 text-xs rounded px-2.5 py-1.5 touch:py-2.5 mb-3 ${entry.suspiciousPersonal ? 'text-amber-700 bg-amber-50 border border-amber-200' : 'text-blue-700 bg-blue-50 border border-blue-200'}`}>
                             {entry.suspiciousPersonal && <AlertTriangle size={13} className="flex-shrink-0" />} {entry.aiComment}
                           </div>
                         )}
                         {entry.ruleViolation && (
-                          <div className="flex items-center gap-1.5 text-xs rounded px-2.5 py-1.5 mb-3 text-red-700 bg-red-50 border border-red-200">
+                          <div className="flex items-center gap-1.5 text-xs rounded px-2.5 py-1.5 touch:py-2.5 mb-3 text-red-700 bg-red-50 border border-red-200">
                             <AlertTriangle size={13} className="flex-shrink-0" /> This project's rules flag this: {entry.ruleViolation}
                           </div>
                         )}
@@ -684,12 +697,12 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                           {entry.category === 'accommodation' && (
                             <div>
                               <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Nights</label>
-                              <input type="number" min="1" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={entry.nights} onChange={e => updateEntry(group.key, i, { nights: e.target.value })} />
+                              <input type="number" inputMode="decimal" min="1" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={entry.nights} onChange={e => updateEntry(group.key, i, { nights: e.target.value })} />
                             </div>
                           )}
                           <div>
                             <label className={`text-[10px] font-semibold uppercase tracking-widest block mb-1 ${entry.lowConfidenceFields.includes('localAmount') ? 'text-amber-600' : 'text-gray-500'}`}>Local amount</label>
-                            <input type="number" step="0.01" className={`w-full text-sm border rounded-lg px-3 py-2 tabular-nums ${entry.lowConfidenceFields.includes('localAmount') ? 'border-amber-400 bg-amber-50' : 'border-[#e5e3df]'}`} value={entry.localAmount} onChange={e => updateEntry(group.key, i, { localAmount: e.target.value })} />
+                            <input type="number" inputMode="decimal" step="0.01" className={`w-full text-sm border rounded-lg px-3 py-2 tabular-nums ${entry.lowConfidenceFields.includes('localAmount') ? 'border-amber-400 bg-amber-50' : 'border-[#e5e3df]'}`} value={entry.localAmount} onChange={e => updateEntry(group.key, i, { localAmount: e.target.value })} />
                           </div>
                           <div>
                             <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Local currency</label>
@@ -699,7 +712,7 @@ export default function UploadReceiptModal({ open, onClose, onLogged, projectId,
                             <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">
                               Exchange rate ({entry.localCurrency.trim().toUpperCase() || 'local'} per 1 {settlementCurrency})
                             </label>
-                            <input type="number" step="0.0001" min="0" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={entry.exchangeRate} onChange={e => updateEntry(group.key, i, { exchangeRate: e.target.value })} />
+                            <input type="number" inputMode="decimal" step="0.0001" min="0" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={entry.exchangeRate} onChange={e => updateEntry(group.key, i, { exchangeRate: e.target.value })} />
                             <RateCheck
                               base={settlementCurrency}
                               quote={entry.localCurrency}

@@ -64,9 +64,9 @@ export default function NewItemForm({
 
   return (
     <form onSubmit={submit} className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-      <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-6 p-4 sm:p-6">
         {type === 'link' && (
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {(
               [
                 { key: 'video', icon: PlayCircle, title: 'Training video', sub: 'Loom, YouTube, Vimeo…' },
@@ -129,7 +129,7 @@ export default function NewItemForm({
         )}
         {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">{error}</p>}
       </div>
-      <div className="flex flex-wrap items-center gap-3 rounded-b-2xl border-t border-[#eceae5] bg-[#fcfbf9] px-6 py-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-b-2xl border-t border-[#eceae5] bg-[#fcfbf9] px-4 sm:px-6 py-4">
         <Button type="submit" size="sm" loading={busy}>
           Save as draft
         </Button>

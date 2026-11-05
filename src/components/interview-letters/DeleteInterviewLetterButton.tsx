@@ -49,7 +49,7 @@ export default function DeleteInterviewLetterButton({
         <button
           onClick={openModal}
           aria-label="Delete interview letter project"
-          className="rounded-full bg-white/90 p-1.5 text-gray-400 shadow-sm ring-1 ring-[#e5e3df] transition-colors hover:bg-red-50 hover:text-red-600"
+          className="rounded-full bg-white/90 p-1.5 touch:p-2.5 text-gray-400 shadow-sm ring-1 ring-[#e5e3df] transition-colors hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 size={15} />
         </button>
@@ -64,7 +64,7 @@ export default function DeleteInterviewLetterButton({
       )}
 
       {error && (
-        <div className="fixed bottom-4 right-4 z-50 max-w-xs border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 shadow-lg">
+        <div className="fixed bottom-4 left-4 right-4 z-50 sm:left-auto max-w-xs border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 shadow-lg">
           {error}
           <button onClick={() => setError(null)} className="ml-3 text-red-400 hover:text-red-700">✕</button>
         </div>

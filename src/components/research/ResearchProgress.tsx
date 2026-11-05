@@ -263,7 +263,7 @@ function StepTrack({ steps, active }: { steps: string[]; active: number }) {
 
 function Stat({ icon: Icon, value, label }: { icon: LucideIcon; value: number; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-2.5 py-1.5 text-xs text-gray-500 shadow-sm">
+    <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-2.5 py-1.5 touch:py-2.5 text-xs text-gray-500 shadow-sm">
       <Icon size={12} className="text-gray-400" />
       <AnimatedNumber value={value} />
       <span>{label}</span>

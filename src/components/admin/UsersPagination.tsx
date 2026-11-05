@@ -44,7 +44,7 @@ export default function UsersPagination({ page, totalPages, totalCount, search, 
         <button
           onClick={() => go(page - 1)}
           disabled={page <= 1 || isPending}
-          className="px-3 py-1.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 touch:py-2.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           ← Prev
         </button>
@@ -67,7 +67,7 @@ export default function UsersPagination({ page, totalPages, totalCount, search, 
         <button
           onClick={() => go(page + 1)}
           disabled={page >= totalPages || isPending}
-          className="px-3 py-1.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 touch:py-2.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Next →
         </button>

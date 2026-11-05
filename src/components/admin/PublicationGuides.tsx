@@ -71,7 +71,7 @@ export default function PublicationGuides({ publicationId, initialGuides }: { pu
             <button type="button" onClick={() => setViewing(`${base}/${g.id}`)} className="inline-flex items-center gap-1 text-gray-500 hover:text-black">
               <Eye size={12} /> View
             </button>
-            <button type="button" onClick={() => remove(g.id)} className="text-gray-400 hover:text-red-500" aria-label="Remove">
+            <button type="button" onClick={() => remove(g.id)} className="touch:p-2.5 text-gray-400 hover:text-red-500" aria-label="Remove">
               <Trash2 size={12} />
             </button>
           </span>
@@ -80,7 +80,7 @@ export default function PublicationGuides({ publicationId, initialGuides }: { pu
       {guides.length === 0 && <p className="text-xs text-gray-400">No style guides.</p>}
       {error && <p className="text-xs text-red-500">{error}</p>}
       {guides.length < MAX_PUBLICATION_GUIDES && (
-        <label className="mt-1 inline-flex cursor-pointer items-center gap-1.5 self-start text-xs text-gray-500 transition-colors hover:text-black">
+        <label className="mt-1 inline-flex touch:py-2.5 cursor-pointer items-center gap-1.5 self-start text-xs text-gray-500 transition-colors hover:text-black">
           {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
           Add guide (.pdf, .docx)
           <input type="file" multiple accept=".pdf,.docx" className="hidden" disabled={uploading} onChange={(e) => { const picked = Array.from(e.target.files || []); e.target.value = ''; upload(picked) }} />

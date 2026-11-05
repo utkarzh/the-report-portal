@@ -1,6 +1,6 @@
 export default function AdminLoading() {
   return (
-    <div className="p-8 animate-pulse">
+    <div className="p-4 sm:p-6 lg:p-8 animate-pulse">
       <div className="flex items-center justify-between mb-6">
         <div className="h-4 w-24 bg-gray-200 rounded" />
         <div className="h-8 w-28 bg-gray-200 rounded" />

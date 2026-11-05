@@ -147,7 +147,7 @@ export function EmptyState({
   className?: string
 }) {
   return (
-    <div className={`flex flex-col items-center rounded-2xl border border-dashed border-[#d9d5cc] bg-white/60 px-6 py-12 text-center ${className}`}>
+    <div className={`flex flex-col items-center rounded-2xl border border-dashed border-[#d9d5cc] bg-white/60 px-4 sm:px-6 py-12 text-center ${className}`}>
       <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#eceae5] bg-white text-gray-500 shadow-sm">
         <Icon size={19} strokeWidth={1.75} />
       </span>
@@ -169,7 +169,7 @@ export function FilterChips({ options, active }: { options: { key: string; label
             key={o.key}
             href={o.href}
             scroll={false}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 touch:py-2.5 text-xs font-medium transition-colors ${
               on ? 'bg-black text-white' : 'border border-[#e5e3df] bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900'
             }`}
           >

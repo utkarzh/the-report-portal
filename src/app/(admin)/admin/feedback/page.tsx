@@ -51,7 +51,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
   ])
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-base font-semibold text-gray-900">Feedback</h1>
@@ -60,7 +60,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
           </p>
         </div>
         {(newCount || 0) > 0 && (
-          <span className="flex-shrink-0 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+          <span className="flex-shrink-0 rounded-full bg-amber-50 px-3 py-1.5 touch:py-2.5 text-xs font-semibold text-amber-700">
             {newCount} new
           </span>
         )}
@@ -75,7 +75,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
 
         <Link
           href={buildUrl(searchParams.type, statusFilter ? undefined : 'new')}
-          className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors ${
+          className={`rounded-full border px-3 py-1.5 touch:py-2.5 text-[11px] font-medium transition-colors ${
             statusFilter === 'new' ? 'border-black bg-black text-white' : 'border-[#e5e3df] bg-white text-gray-600 hover:border-gray-400'
           }`}
         >
@@ -105,7 +105,7 @@ function TypeTab({ href, active, icon, label, danger }: { href: string; active: 
   return (
     <Link
       href={href}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 touch:py-2.5 text-[11px] font-medium transition-colors ${
         active
           ? danger
             ? 'border-red-600 bg-red-600 text-white'

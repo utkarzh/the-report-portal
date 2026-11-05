@@ -103,7 +103,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
   }))
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <PrivacyNotice acknowledged={acknowledged} />
 
       <div className="mt-4 mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -150,7 +150,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
       </div>
 
       {items.length === 0 ? (
-        <div className="flex items-start gap-3 rounded-xl border border-[#e5e3df] bg-white p-8 text-sm text-gray-500 shadow-sm">
+        <div className="flex items-start gap-3 rounded-xl border border-[#e5e3df] bg-white p-4 sm:p-8 text-sm text-gray-500 shadow-sm">
           <div className="rounded-lg bg-[#f7f6f3] p-2 text-gray-600"><Handshake size={16} /></div>
           {search ? (
             <span>
@@ -163,7 +163,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {items.map((r, i) => (
               <EntityCard
                 key={r.id}

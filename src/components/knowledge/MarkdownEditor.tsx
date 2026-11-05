@@ -82,7 +82,7 @@ export default function MarkdownEditor({
                 title={label}
                 onClick={run}
                 disabled={disabled || tab === 'preview'}
-                className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-white hover:text-black disabled:opacity-40"
+                className="rounded-md p-1.5 touch:p-2.5 text-gray-500 transition-colors hover:bg-white hover:text-black disabled:opacity-40"
               >
                 <Icon size={15} />
               </button>
@@ -95,7 +95,7 @@ export default function MarkdownEditor({
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={`rounded-md px-2.5 py-1 capitalize transition-colors ${tab === t ? 'bg-black text-white' : 'text-gray-500 hover:text-gray-900'}`}
+              className={`rounded-md px-2.5 py-1 touch:py-2 capitalize transition-colors ${tab === t ? 'bg-black text-white' : 'text-gray-500 hover:text-gray-900'}`}
             >
               {t}
             </button>

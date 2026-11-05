@@ -16,7 +16,7 @@ export default async function CopywritingSectionsAdminPage() {
   const { data } = await supabase.from('copywriting_sections').select('*').order('name')
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-3xl mx-auto">
         <Breadcrumbs items={[{ label: 'Copywriting Tool', href: '/copywriting' }, { label: 'Admin', href: '/copywriting/admin' }, { label: 'Sections' }]} />
 

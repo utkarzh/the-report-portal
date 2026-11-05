@@ -54,9 +54,9 @@ export default function ExportWeekModal({ open, onClose, projectId, weekAnchor }
   const href = `/api/finance/projects/${projectId}/export?weekStart=${weekStart}&weekEnd=${weekEnd}&label=${encodeURIComponent(label)}`
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-6">
+      <div className="modal-sheet relative bg-white w-full max-w-sm shadow-2xl rounded-xl p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold">Export week (Excel)</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>

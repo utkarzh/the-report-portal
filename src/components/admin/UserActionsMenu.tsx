@@ -53,7 +53,7 @@ export default function UserActionsMenu({ user, currentAdminId }: { user: Profil
   return (
     <>
       {actionError && (
-        <div className="fixed bottom-4 right-4 z-50 bg-red-50 border border-red-200 text-xs text-red-700 px-4 py-3 shadow-lg max-w-xs">
+        <div className="fixed bottom-4 left-4 right-4 z-50 sm:left-auto bg-red-50 border border-red-200 text-xs text-red-700 px-4 py-3 shadow-lg max-w-xs">
           {actionError}
           <button onClick={() => setActionError(null)} className="ml-3 text-red-400 hover:text-red-700">✕</button>
         </div>
@@ -61,7 +61,7 @@ export default function UserActionsMenu({ user, currentAdminId }: { user: Profil
       <div className="relative">
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          className={`p-1.5 rounded-full transition-colors ${
+          className={`p-1.5 touch:p-2.5 rounded-full transition-colors ${
             menuOpen ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'
           }`}
         >

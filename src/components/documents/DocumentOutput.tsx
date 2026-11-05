@@ -9,9 +9,11 @@ import Textarea from '@/components/ui/Textarea'
 import AiDisclaimerModal, { useAiDisclaimer } from '@/components/ui/AiDisclaimerModal'
 import DeleteDocumentButton from '@/components/documents/DeleteDocumentButton'
 import DocumentGeneratingLoader from '@/components/documents/DocumentGeneratingLoader'
+import MobileDetailsToggle from '@/components/layout/MobileDetailsToggle'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { getDocConfig } from '@/lib/documents'
 import type { DocumentSession } from '@/types'
+import { useKeepScreenOn } from '@/lib/use-mobile'
 
 marked.use({ gfm: true, breaks: true })
 
@@ -48,7 +50,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   const hasStartedRef = useRef(false)
   // Follows the stream only while the user is at the bottom — scrolling up to
   // re-read earlier text detaches it instead of yanking the view back down.
-  const scroll = useStickToBottom<HTMLDivElement>(output.length)
+  const scroll = useStickToBottom<HTMLDivElement>(output.length, { startAtTopOnPhones: true })
   // True while a "Continue" pass is running, so the AI disclaimer doesn't re-pop
   // on every Continue click — only on a fresh generation / regenerate.
   const isContinueRef = useRef(false)
@@ -239,6 +241,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   }
 
   const isProcessing = streamStatus !== 'idle'
+  useKeepScreenOn(isProcessing)
   // "done" = a complete document (nothing left to continue). A partial document
   // waiting on Continue is NOT done.
   const done = Boolean(output) && !isProcessing && !needsContinue
@@ -247,30 +250,35 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
   // Fact-checking reminder — pops on a fresh generation / regenerate, but NOT
   // on Continue passes (would be annoying to re-confirm every click).
   const disclaimer = useAiDisclaimer(isProcessing && !isContinueRef.current)
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   return (
-    <div className="flex h-full bg-[#f0efec]">
+    <div className="flex h-[calc(100dvh-3.5rem)] flex-col bg-[#f0efec] lg:h-full lg:flex-row">
       <AiDisclaimerModal open={disclaimer.open} onClose={disclaimer.dismiss} />
       {/* Side panel */}
-      <aside className="flex w-64 flex-shrink-0 flex-col border-r border-[#e5e3df] bg-white">
-        <div className="flex-1 overflow-y-auto p-5">
-          <Link
-            href={`/${config.slug}`}
-            className="inline-flex items-center gap-1.5 text-xs text-gray-400 transition-colors hover:text-gray-700"
-          >
-            <ArrowLeft size={13} />
-            <span>{config.labelPlural}</span>
-          </Link>
+      <aside className="flex flex-shrink-0 flex-col border-b border-[#e5e3df] bg-white lg:w-64 lg:border-b-0 lg:border-r">
+        <div className="max-h-[55dvh] flex-1 overflow-y-auto overscroll-contain px-4 py-3 lg:max-h-none lg:p-5">
+          <div className="flex items-center justify-between gap-3 lg:block">
+            <Link
+              href={`/${config.slug}`}
+              className="inline-flex items-center gap-1.5 touch:py-2.5 text-xs text-gray-400 transition-colors hover:text-gray-700"
+            >
+              <ArrowLeft size={13} />
+              <span>{config.labelPlural}</span>
+            </Link>
+            <MobileDetailsToggle open={detailsOpen} onToggle={() => setDetailsOpen((v) => !v)} />
+          </div>
 
-          <div className="mt-5 flex items-center gap-2.5">
+          <div className="mt-5 hidden items-center gap-2.5 lg:flex">
             <div className="flex-shrink-0 rounded-lg bg-black p-2 text-white">
               <FileText size={15} />
             </div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{config.label}</p>
           </div>
-          <h1 className="mt-3 text-sm font-semibold leading-snug text-gray-900">{session.title}</h1>
+          <h1 className="mt-1.5 text-sm font-semibold leading-snug text-gray-900 lg:mt-3">{session.title}</h1>
 
-          <div className="mt-5 space-y-3.5">
+          <div className={detailsOpen ? '' : 'hidden lg:block'}>
+          <div className="mt-4 space-y-3.5 lg:mt-5">
             <InfoRow label="Project Country" value={session.project_country} />
             <InfoRow label="Media Partner" value={session.media_partner} />
             <InfoRow label="Media Country" value={session.media_country} />
@@ -300,10 +308,11 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {isAdmin && (
-          <div className="border-t border-[#e5e3df] p-5">
+          <div className={`border-t border-[#e5e3df] p-4 lg:p-5 ${detailsOpen ? '' : 'hidden lg:block'}`}>
             <DeleteDocumentButton
               documentId={session.id}
               documentTitle={session.title}
@@ -318,11 +327,11 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
         ref={scroll.ref}
         onScroll={scroll.onScroll}
         onWheel={scroll.onWheel}
-        className="min-w-0 flex-1 overflow-y-auto"
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto"
       >
-        <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
-          <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
+        <div className="mx-auto flex max-w-3xl flex-col gap-4 px-3 py-4 sm:gap-6 sm:px-6 sm:py-8">
+          <div className="rounded-2xl border border-[#e5e3df] bg-white p-4 shadow-sm sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
               <div className="flex items-center gap-2.5">
                 <div className="flex-shrink-0 rounded-lg border border-[#e5e3df] bg-[#f7f6f3] p-2 text-gray-700">
                   <FileText size={15} />
@@ -348,7 +357,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                       href={`/api/documents/${session.id}/download`}
                       download
                       title="Download (.docx)"
-                      className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+                      className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
                     >
                       <Download size={13} />
                       <span>Download</span>
@@ -357,7 +366,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                       <button
                         onClick={() => setShowForm((v) => !v)}
                         title="Regenerate this document"
-                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium transition-colors ${
                           showForm
                             ? 'bg-[#f7f6f3] text-gray-900'
                             : 'text-gray-500 hover:bg-[#f7f6f3] hover:text-gray-900'
@@ -376,7 +385,7 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
                 requires scrolling past a long document to reach. Sits directly
                 under the toolbar that opened it. */}
             {showForm && (
-              <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-5">
+              <div className="mt-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-4 sm:p-5">
                 <Textarea
                   label="Feedback"
                   hint="optional"
@@ -447,11 +456,11 @@ export default function DocumentOutput({ session, isGenerating, isAdmin = false 
               )}
 
               {error && !isProcessing && (
-                <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   <span>{error}</span>
                   <button
                     onClick={() => { setError(null); runToCompletion(output ? 'continue' : 'fresh') }}
-                    className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
+                    className="whitespace-nowrap touch:py-2 text-xs font-semibold uppercase tracking-wider text-red-700 underline underline-offset-2 hover:text-red-900"
                   >
                     {output ? 'Continue' : 'Try again'}
                   </button>
@@ -480,7 +489,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       onClick={copy}
       title="Copy to clipboard"
-      className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
+      className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900"
     >
       {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
       <span>{copied ? 'Copied' : 'Copy'}</span>

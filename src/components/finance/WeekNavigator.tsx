@@ -48,7 +48,7 @@ export default function WeekNavigator({ weekAnchor, currentWeekNumber, selectedW
       <button
         onClick={() => onChange(prevWeek)}
         disabled={prevDisabled}
-        className="w-7 h-7 rounded-full border border-[#e5e3df] bg-white flex items-center justify-center text-gray-500 hover:border-gray-300 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+        className="w-7 h-7 touch:w-10 touch:h-10 flex-shrink-0 rounded-full border border-[#e5e3df] bg-white flex items-center justify-center text-gray-500 hover:border-gray-300 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
         aria-label="Previous week"
       >
         <ChevronLeft size={14} />
@@ -57,7 +57,7 @@ export default function WeekNavigator({ weekAnchor, currentWeekNumber, selectedW
       <select
         value={selectedWeek}
         onChange={e => onChange(Number(e.target.value))}
-        className="text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg pl-3 pr-2 py-1.5 hover:border-gray-300 transition-colors"
+        className="min-w-0 flex-1 md:flex-none text-xs font-medium text-gray-700 border border-[#e5e3df] bg-white rounded-lg pl-3 pr-2 py-1.5 touch:py-2.5 hover:border-gray-300 transition-colors"
       >
         {allowAll && <option value={ALL_WEEKS}>All weeks — {totalCount}</option>}
         {weekOptions.map(n => {
@@ -75,14 +75,14 @@ export default function WeekNavigator({ weekAnchor, currentWeekNumber, selectedW
       <button
         onClick={() => onChange(nextWeek)}
         disabled={nextDisabled}
-        className="w-7 h-7 rounded-full border border-[#e5e3df] bg-white flex items-center justify-center text-gray-500 hover:border-gray-300 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+        className="w-7 h-7 touch:w-10 touch:h-10 flex-shrink-0 rounded-full border border-[#e5e3df] bg-white flex items-center justify-center text-gray-500 hover:border-gray-300 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
         aria-label="Next week"
       >
         <ChevronRight size={14} />
       </button>
 
-      {bounds && <span className="text-[11px] text-gray-400">Mon {bounds.start} – Sun {bounds.end}</span>}
-      {showingEarlier && <span className="text-[11px] text-gray-400">Dated before week 1 (starts Mon {firstWeekStart})</span>}
+      {bounds && <span className="w-full text-[11px] text-gray-400 md:w-auto">Mon {bounds.start} – Sun {bounds.end}</span>}
+      {showingEarlier && <span className="w-full text-[11px] text-gray-400 md:w-auto">Dated before week 1 (starts Mon {firstWeekStart})</span>}
     </div>
   )
 }

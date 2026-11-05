@@ -34,7 +34,7 @@ export default function ResearchRequestPanel({ flaggedGaps = [], busy, onResearc
   }
 
   return (
-    <div className="bg-white border border-[#e5e3df] p-6">
+    <div className="bg-white border border-[#e5e3df] p-4 sm:p-6">
       <div className="flex items-center gap-2">
         <Search size={14} className="text-gray-500" />
         <h3 className="text-sm font-semibold text-gray-900">Research with Gemini</h3>

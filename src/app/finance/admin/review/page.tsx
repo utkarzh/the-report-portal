@@ -104,7 +104,7 @@ export default function ReviewQueuePage() {
   }
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Review queue</h1>
         <p className="text-sm text-gray-500 mt-1">
@@ -119,7 +119,7 @@ export default function ReviewQueuePage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 mb-6 max-w-4xl">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6 max-w-4xl [&>*:first-child]:col-span-2 sm:[&>*:first-child]:col-span-1">
         <Select
           label="Project"
           options={projectOptions}
@@ -160,7 +160,7 @@ export default function ReviewQueuePage() {
       {loading ? (
         <div className="text-sm text-gray-400">Loading…</div>
       ) : visibleItems.length === 0 ? (
-        <div className="border border-[#e5e3df] bg-white rounded-xl p-8 text-center text-sm text-gray-500">
+        <div className="border border-[#e5e3df] bg-white rounded-xl p-4 sm:p-8 text-center text-sm text-gray-500">
           Nothing here right now.
         </div>
       ) : (
@@ -169,11 +169,11 @@ export default function ReviewQueuePage() {
             const unresolvedFlags = item.finance_expense_flags.filter(f => !f.resolved)
             const needsApproval = unresolvedFlags.some(f => f.flag_type === 'prior_approval_required')
             return (
-              <div key={item.id} className="bg-white border border-[#e5e3df] rounded-xl p-5">
+              <div key={item.id} className="bg-white border border-[#e5e3df] rounded-xl p-4 sm:p-5">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-2.5">
                     <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-blue-50 text-blue-700">{item.finance_projects?.name}</span>
-                    <span className="font-semibold text-sm">{item.concept}</span>
+                    <span className="w-full font-semibold text-sm sm:w-auto">{item.concept}</span>
                     <StatusBadge status={item.status} />
                     {wasSentBack(item.status, item.comments) && <SentBackBadge />}
                     {item.status === 'pending' && <WaitingBadge loggedAt={item.created_at} />}
@@ -311,9 +311,9 @@ function RejectModal({ item, onClose, onRejected }: { item: QueueItem; onClose: 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-md shadow-2xl rounded-xl p-6">
+      <div className="modal-sheet relative bg-white w-full max-w-md shadow-2xl rounded-xl p-4 sm:p-6">
         <h3 className="text-sm font-semibold mb-1">Reject expense</h3>
         <p className="text-xs text-gray-500 mb-4">{item.concept}</p>
         {error && <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded">{error}</div>}

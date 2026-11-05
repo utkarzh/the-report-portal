@@ -47,12 +47,12 @@ export default async function KnowledgeAdminDepartmentPage({ params }: { params:
   const published = content.rows.filter((r) => r.state === 'published' || r.state === 'published_with_draft').length
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <Breadcrumbs items={[{ label: 'Knowledge Base', href: '/knowledge' }, { label: 'Admin', href: '/knowledge/admin' }, { label: department.name }]} />
 
         <div className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-          <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-4 p-4 sm:p-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-4">
               <DeptMonogram name={department.name} size="lg" muted={!!department.archived_at} />
               <div className="min-w-0">
@@ -78,7 +78,7 @@ export default async function KnowledgeAdminDepartmentPage({ params }: { params:
               </Link>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[#eceae5] px-6 py-3 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[#eceae5] px-4 sm:px-6 py-3 text-xs text-gray-500">
             <span className="inline-flex items-center gap-2">
               {guardianName && <Avatar name={guardianName} size="xs" />}
               Guardian <span className="font-medium text-gray-800">{guardianName ?? 'not assigned'}</span>

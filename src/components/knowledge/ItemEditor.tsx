@@ -170,10 +170,10 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
   const publishedSummary = versions.find((v) => v.id === item.published_version_id) ?? null
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
         <div className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#eceae5] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#eceae5] p-4 sm:p-6">
             <div className="flex min-w-0 items-start gap-3.5">
               <TypeTile type={item.type} size="lg" example={item.is_example} />
               <div className="min-w-0">
@@ -195,7 +195,7 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
                 <Link
                   href={`/knowledge/items/${item.id}`}
                   target="_blank"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-900"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-900"
                 >
                   <Eye size={12} /> View live
                 </Link>
@@ -204,7 +204,7 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
             </div>
           </div>
 
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {openFeedback > 0 && (
               <Link
                 href={`${basePath}?tab=review`}
@@ -277,7 +277,7 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
                     )}
                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#eceae5] pt-3">
                       <label
-                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400 ${
+                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400 ${
                           busy ? 'pointer-events-none opacity-50' : ''
                         }`}
                       >
@@ -295,7 +295,7 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
                       </label>
                       <a
                         href={`/api/knowledge/items/${item.id}/download?versionId=${draft.id}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-white hover:text-black"
+                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-600 transition-colors hover:bg-white hover:text-black"
                       >
                         <Download size={12} /> Download
                       </a>
@@ -309,7 +309,7 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
                   </p>
                 )}
 
-                <div className="sticky bottom-0 -mx-6 -mb-6 flex flex-wrap items-center gap-2 rounded-b-2xl border-t border-[#eceae5] bg-white/95 px-6 py-4 backdrop-blur">
+                <div className="sticky bottom-0 -mx-6 -mb-6 flex flex-wrap items-center gap-2 rounded-b-2xl border-t border-[#eceae5] bg-white/95 px-4 sm:px-6 py-4 backdrop-blur">
                   <Button
                     size="sm"
                     onClick={publish}
@@ -351,12 +351,12 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
                     {live.description && <p className="mb-5 text-sm leading-6 text-gray-600">{live.description}</p>}
                     {item.type === 'text' && <div className="kb-article prose-research text-gray-800" dangerouslySetInnerHTML={{ __html: renderKbMarkdown(live.content) }} />}
                     {(item.type === 'video' || item.type === 'link') && live.url && (
-                      <a href={live.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 break-all text-sm font-medium text-gray-800 hover:underline">
+                      <a href={live.url} target="_blank" rel="noopener noreferrer" className="inline-flex touch:py-2 items-center gap-1.5 break-all text-sm font-medium text-gray-800 hover:underline">
                         <ExternalLink size={14} className="flex-shrink-0" /> {live.url}
                       </a>
                     )}
                     {item.type === 'document' && (
-                      <a href={`/api/knowledge/items/${item.id}/download`} className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-800 hover:underline">
+                      <a href={`/api/knowledge/items/${item.id}/download`} className="inline-flex touch:py-2 items-center gap-1.5 text-sm font-medium text-gray-800 hover:underline">
                         <Download size={14} /> {live.file_name} <span className="text-xs font-normal text-gray-400">({formatBytes(live.file_size)})</span>
                       </a>
                     )}
@@ -448,12 +448,12 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
                       router.refresh()
                     })
                   }
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-black"
+                  className="inline-flex touch:py-2.5 items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-black"
                 >
                   <ArchiveRestore size={13} /> Restore from archive
                 </button>
               ) : (
-                <button type="button" onClick={() => setConfirm('archive')} className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600">
+                <button type="button" onClick={() => setConfirm('archive')} className="inline-flex touch:py-2.5 items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600">
                   <Archive size={13} /> Archive this item
                 </button>
               )}

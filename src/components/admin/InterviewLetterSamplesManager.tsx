@@ -228,7 +228,7 @@ export default function InterviewLetterSamplesManager({ userId, initialSamples }
                           type="button"
                           onClick={() => remove(s.id)}
                           disabled={deletingId === s.id}
-                          className="inline-flex items-center gap-1 bg-red-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                          className="inline-flex items-center gap-1 bg-red-600 px-2 py-1 touch:py-2 text-[10px] font-semibold uppercase tracking-wider text-white transition-colors hover:bg-red-700 disabled:opacity-50"
                         >
                           {deletingId === s.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
                           Delete
@@ -236,17 +236,17 @@ export default function InterviewLetterSamplesManager({ userId, initialSamples }
                         <button
                           type="button"
                           onClick={() => setConfirmId(null)}
-                          className="bg-gray-200 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-600 transition-colors hover:bg-gray-300"
+                          className="bg-gray-200 px-2 py-1 touch:py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-600 transition-colors hover:bg-gray-300"
                         >
                           No
                         </button>
                       </div>
                     ) : (
                       <div className="flex flex-shrink-0 items-center gap-1">
-                        <button type="button" onClick={() => startEdit(s)} className="p-1.5 text-gray-400 transition-colors hover:text-black" title="Edit tags">
+                        <button type="button" onClick={() => startEdit(s)} className="p-1.5 touch:p-2.5 text-gray-400 transition-colors hover:text-black" title="Edit tags">
                           <Pencil size={14} />
                         </button>
-                        <button type="button" onClick={() => setConfirmId(s.id)} className="p-1.5 text-gray-300 transition-colors hover:text-red-500" title="Delete">
+                        <button type="button" onClick={() => setConfirmId(s.id)} className="p-1.5 touch:p-2.5 text-gray-300 transition-colors hover:text-red-500" title="Delete">
                           <Trash2 size={14} />
                         </button>
                       </div>

@@ -192,7 +192,7 @@ export default async function UsersPage({
   ).length;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-base font-semibold text-gray-900">Users</h1>
@@ -241,8 +241,8 @@ export default async function UsersPage({
         nearCount={nearCount}
       />
 
-      <div className="bg-white border border-[#e5e3df] min-h-[280px] overflow-x-auto">
-        <table className="w-full text-xs">
+      <div className="table-cards-wrap bg-white border border-[#e5e3df] min-h-[280px] overflow-x-auto">
+        <table className="table-cards w-full text-xs">
           <thead>
             <tr className="border-b border-[#e5e3df] bg-[#f9f8f6]">
               <th className="text-left px-4 py-3 font-semibold uppercase tracking-widest text-gray-400">
@@ -300,7 +300,7 @@ export default async function UsersPage({
                       : "bg-black";
                 return (
                   <tr key={user.id} className={`${rowClass} transition-colors`}>
-                    <td className="px-4 py-3">
+                    <td data-cell="title" className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {usage !== "none" && (
                           <span
@@ -324,15 +324,15 @@ export default async function UsersPage({
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Role" className="px-4 py-3">
                       <Badge variant={user.role === "admin" ? "admin" : "user"}>
                         {user.role}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Access" className="px-4 py-3">
                       <AccessPills user={user} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Tokens" className="px-4 py-3">
                       {user.token_limit == null ? (
                         // No cap (admins) — still surface how much they've used.
                         <div className="flex items-center gap-1.5">
@@ -372,7 +372,7 @@ export default async function UsersPage({
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Status" className="px-4 py-3">
                       <Badge
                         variant={
                           user.status === "active" ? "active" : "inactive"
@@ -381,14 +381,14 @@ export default async function UsersPage({
                         {user.status}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-gray-400">
+                    <td data-label="Joined" className="px-4 py-3 text-gray-400">
                       {new Date(user.created_at).toLocaleDateString("en-GB", {
                         day: "numeric",
                         month: "short",
                         year: "numeric",
                       })}
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-cell="actions" className="px-4 py-3">
                       <UserActionsMenu
                         user={user}
                         currentAdminId={adminProfile?.id ?? ""}

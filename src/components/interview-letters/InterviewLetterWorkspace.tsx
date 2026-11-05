@@ -15,6 +15,7 @@ import { formatDayMonthYear } from '@/lib/date-format'
 import { letterDownloadName, wordCount, splitEmailSubject, splitMarkdownLinks, variantLabel } from '@/lib/interview-letters'
 import { guessTemplateId } from '@/lib/download-templates/registry'
 import type { InterviewLetterProject, InterviewLetterPersonalization, InterviewLetterStage } from '@/types'
+import { useKeepScreenOn } from '@/lib/use-mobile'
 
 interface Props {
   project: InterviewLetterProject
@@ -73,7 +74,7 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
       }}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
     >
       {copied ? <Check size={13} /> : <Copy size={13} />}
       {copied ? 'Copied' : label}
@@ -205,7 +206,7 @@ function Stepper({
             disabled={!s.clickable}
             aria-current={i === selected ? 'step' : undefined}
             title={s.clickable ? `View ${s.label}` : undefined}
-            className={`flex w-full min-w-0 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${
+            className={`flex w-full min-w-0 items-center gap-2.5 rounded-xl px-2 py-1.5 touch:py-2.5 text-left transition-colors ${
               i === selected ? 'bg-[#f7f6f3]' : s.clickable ? 'hover:bg-[#faf9f7]' : 'cursor-default'
             }`}
           >
@@ -289,7 +290,7 @@ function ApprovedLetterCard({ text, onDownload }: { text: string; onDownload: ()
           <button
             type="button"
             onClick={onDownload}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
           >
             <Download size={13} /> Download
           </button>
@@ -321,6 +322,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
   const [runError, setRunError] = useState<string | null>(null)
   const [stalled, setStalled] = useState(false)
   const [busy, setBusy] = useState(false)
+  useKeepScreenOn(busy)
   // The editor's "additional context" (hook_input) is research input, not a
   // hook, so it never pre-fills the box.
   const [hook, setHook] = useState(project.confirmed_hook || project.hook_ai_suggestion || '')
@@ -338,7 +340,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
   const pollCountRef = useRef(0)
   const startedRef = useRef(false)
 
-  const scrollProps = useStickToBottom<HTMLDivElement>(`${project.stage}:${project.research.length}:${statusText}`)
+  const scrollProps = useStickToBottom<HTMLDivElement>(`${project.stage}:${project.research.length}:${statusText}`, { startAtTopOnPhones: true })
 
   // Live elapsed-time counter for the loader, ticking for as long as a
   // blank-slate AI wait is in flight — reset the moment a new one starts.
@@ -650,16 +652,16 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
   const stageMeta = STAGE_META[project.stage] || { label: project.stage, tone: 'bg-gray-100 text-gray-600' }
 
   return (
-    <div ref={scrollProps.ref} onScroll={scrollProps.onScroll} onWheel={scrollProps.onWheel} className="h-full overflow-y-auto p-6 sm:p-8">
-      <div className="mx-auto flex max-w-2xl flex-col gap-6">
+    <div ref={scrollProps.ref} onScroll={scrollProps.onScroll} onWheel={scrollProps.onWheel} className="h-[calc(100dvh-3.5rem)] overflow-y-auto p-3 sm:p-8 lg:h-full">
+      <div className="mx-auto flex max-w-2xl flex-col gap-4 sm:gap-6">
         <div className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-          <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:p-6">
             <div className="flex min-w-0 items-start gap-3">
               <div className="flex-shrink-0 rounded-xl border border-[#e5e3df] bg-[#f7f6f3] p-2.5 text-gray-700">
                 <Mail size={18} />
               </div>
               <div className="min-w-0">
-                <h1 className="truncate text-lg font-semibold text-gray-900">{project.company} — {project.media_partner}</h1>
+                <h1 className="text-lg font-semibold text-gray-900 sm:truncate">{project.company} — {project.media_partner}</h1>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
                   <span className="inline-flex items-center gap-1.5"><Globe2 size={12} />{project.project_country}</span>
                   {project.media_partner_country && (
@@ -672,7 +674,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                 </div>
               </div>
             </div>
-            <span className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${stageMeta.tone}`}>
+            <span className={`inline-flex flex-shrink-0 items-center gap-1.5 self-start rounded-full px-3 py-1 text-xs font-medium ${stageMeta.tone}`}>
               {stageMeta.label}
             </span>
           </div>
@@ -691,7 +693,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
         )}
 
         {stalled && (
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 shadow-sm">
             <span>This step seems to have stalled.</span>
             <button
               type="button"
@@ -784,7 +786,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
           )}
 
           {project.stage === 'failed' && (
-            <div className="flex flex-col items-start gap-4 rounded-2xl border border-[#e5e3df] bg-white p-8 shadow-sm">
+            <div className="flex flex-col items-start gap-4 rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-8 shadow-sm">
               <div className="rounded-full bg-red-50 p-3 text-red-600">
                 <AlertCircle size={20} />
               </div>
@@ -982,7 +984,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                                   setPersonalizationView('email')
                                 }
                               }}
-                              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 transition-colors hover:text-black"
+                              className="inline-flex touch:py-2.5 items-center gap-1.5 text-xs font-medium text-gray-600 transition-colors hover:text-black"
                             >
                               {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                               {isOpen ? 'Hide' : 'View'}
@@ -993,7 +995,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
                               <button
                                 type="button"
                                 onClick={() => setDownload({ personalization: p })}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-black"
                               >
                                 <Download size={13} /> Download letter
                               </button>

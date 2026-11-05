@@ -22,7 +22,7 @@ export default function AuditLogsPagination({ page, totalPages, totalCount }: Pr
   const end = Math.min(page * PAGE_SIZE, totalCount)
 
   return (
-    <div className="flex items-center justify-between mt-4">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-4">
       <p className="text-xs text-gray-400">
         Showing {start}–{end} of {totalCount} sign-ins
       </p>
@@ -30,16 +30,18 @@ export default function AuditLogsPagination({ page, totalPages, totalCount }: Pr
         <button
           onClick={() => router.push(buildUrl(page - 1))}
           disabled={page <= 1}
-          className="px-3 py-1.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 touch:py-2.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           ← Prev
         </button>
+
+        <span className="px-3 text-xs text-gray-500 sm:hidden">Page {page} of {totalPages}</span>
 
         {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
           <button
             key={p}
             onClick={() => router.push(buildUrl(p))}
-            className={`px-3 py-1.5 text-xs border transition-colors ${
+            className={`hidden sm:block px-3 py-1.5 text-xs border transition-colors ${
               p === page
                 ? 'bg-black text-white border-black'
                 : 'bg-white border-[#e5e3df] text-gray-600 hover:border-gray-400'
@@ -52,7 +54,7 @@ export default function AuditLogsPagination({ page, totalPages, totalCount }: Pr
         <button
           onClick={() => router.push(buildUrl(page + 1))}
           disabled={page >= totalPages}
-          className="px-3 py-1.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 touch:py-2.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Next →
         </button>

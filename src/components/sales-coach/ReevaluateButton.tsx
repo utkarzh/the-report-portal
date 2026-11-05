@@ -48,7 +48,7 @@ export default function ReevaluateButton({ negotiationId }: { negotiationId: str
       </button>
 
       {error && (
-        <div className="fixed bottom-4 right-4 z-50 max-w-xs border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 shadow-lg">
+        <div className="fixed bottom-4 left-4 right-4 z-50 sm:left-auto max-w-xs border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 shadow-lg">
           {error}
           <button onClick={() => setError(null)} className="ml-3 text-red-400 hover:text-red-700">✕</button>
         </div>

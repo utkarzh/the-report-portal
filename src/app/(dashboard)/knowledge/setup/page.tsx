@@ -13,9 +13,9 @@ export default async function KnowledgeSetupPage() {
   if (await knowledgeBaseInstalled()) redirect(profile.role === 'admin' ? '/knowledge/admin' : '/knowledge')
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-2xl mx-auto">
-        <div className="rounded-xl border border-[#e5e3df] bg-white p-8">
+        <div className="rounded-xl border border-[#e5e3df] bg-white p-4 sm:p-8">
           <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-700">
             <Database size={18} />
           </div>

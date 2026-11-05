@@ -92,7 +92,7 @@ export default function MeetingPrepLoader({
   const hint = hints[Math.min(Math.floor(elapsedSecs / 6), hints.length - 1)]
 
   return (
-    <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-[#e5e3df] bg-white p-10 text-center shadow-sm">
+    <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-[#e5e3df] bg-white p-5 sm:p-10 text-center shadow-sm">
       <GeneratingEmblem />
 
       <div className="space-y-2">

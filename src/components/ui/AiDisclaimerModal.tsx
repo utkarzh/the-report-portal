@@ -82,7 +82,7 @@ export default function AiDisclaimerModal({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          className="modal-overlay fixed inset-0 z-[60] flex items-center justify-center p-4"
           variants={backdrop}
           initial="hidden"
           animate="visible"
@@ -95,14 +95,14 @@ export default function AiDisclaimerModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="ai-disclaimer-title"
-            className="relative flex max-h-[95vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+            className="modal-sheet relative flex max-h-[95vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
             variants={panel}
             initial="hidden"
             animate="visible"
             exit="exit"
           >
             {/* Header band — stays put; only the body below scrolls if it doesn't fit */}
-            <div className="relative flex-shrink-0 overflow-hidden bg-gradient-to-br from-red-500 via-red-500 to-rose-600 px-6 py-4">
+            <div className="relative flex-shrink-0 overflow-hidden bg-gradient-to-br from-red-500 via-red-500 to-rose-600 px-4 sm:px-6 py-4">
               <div className="pointer-events-none absolute -right-6 -top-8 h-28 w-28 rounded-full bg-white/10" />
               <div className="pointer-events-none absolute -bottom-10 right-16 h-20 w-20 rounded-full bg-white/10" />
               <div className="relative flex items-center gap-3">
@@ -127,7 +127,7 @@ export default function AiDisclaimerModal({
             </div>
 
             {/* Body — the only scrollable region, so short screens/landscape phones never clip the button */}
-            <div className="overflow-y-auto px-6 py-4">
+            <div className="overflow-y-auto px-4 sm:px-6 py-4">
               <p className="text-[13px] leading-relaxed text-gray-600">
                 AI research can look confident and still be wrong. Always verify before publication — especially:
               </p>

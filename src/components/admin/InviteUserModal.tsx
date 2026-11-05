@@ -22,6 +22,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import ModuleCheckbox from "@/components/admin/ModuleCheckbox";
+import { isTouchDevice } from "@/lib/use-mobile";
 
 interface Props {
   open: boolean;
@@ -113,7 +114,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
   // Focus first input when modal opens; reset when it closes
   useEffect(() => {
     if (open) {
-      setTimeout(() => firstInputRef.current?.focus(), 50);
+      if (!isTouchDevice()) setTimeout(() => firstInputRef.current?.focus(), 50);
     } else {
       setForm(defaultForm);
       setError(null);
@@ -193,13 +194,13 @@ export default function InviteUserModal({ open, onClose }: Props) {
     setResult(null);
     setForm(defaultForm);
     setError(null);
-    setTimeout(() => firstInputRef.current?.focus(), 50);
+    if (!isTouchDevice()) setTimeout(() => firstInputRef.current?.focus(), 50);
   }
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -209,13 +210,13 @@ export default function InviteUserModal({ open, onClose }: Props) {
 
       {/* Panel */}
       <div
-        className="relative bg-white w-full max-w-md shadow-2xl flex flex-col"
+        className="modal-sheet relative bg-white w-full max-w-md shadow-2xl flex flex-col"
         role="dialog"
         aria-modal="true"
         aria-labelledby="invite-modal-title"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#e5e3df]">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-5 border-b border-[#e5e3df]">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-black flex items-center justify-center flex-shrink-0">
               <UserPlus size={15} className="text-white" />
@@ -234,7 +235,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
+            className="p-1.5 touch:p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
             aria-label="Close"
           >
             <X size={18} />
@@ -242,7 +243,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-6">
+        <div className="px-4 sm:px-6 py-6">
           {result?.type === "invite" ? (
             /* Admin success state — share the signup link */
             <div className="flex flex-col gap-5">
@@ -386,7 +387,7 @@ export default function InviteUserModal({ open, onClose }: Props) {
               ) : (
                 <Input
                   label="Monthly Token Limit *"
-                  type="number"
+                  type="number" inputMode="decimal"
                   placeholder="2000000"
                   value={form.tokenLimit}
                   onChange={(e) =>

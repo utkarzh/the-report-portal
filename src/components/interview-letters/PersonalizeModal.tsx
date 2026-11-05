@@ -74,10 +74,10 @@ export default function PersonalizeModal({ open, onClose, onCreated, projectId }
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <div className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true">
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-[#e5e3df] px-6 py-5">
+      <div className="modal-sheet relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-[#e5e3df] px-4 sm:px-6 py-5">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-black">
               <UserPlus size={16} className="text-white" />
@@ -87,17 +87,17 @@ export default function PersonalizeModal({ open, onClose, onCreated, projectId }
               <p className="mt-0.5 text-xs text-gray-500">All fields are optional</p>
             </div>
           </div>
-          <button onClick={onClose} className="flex-shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+          <button onClick={onClose} className="flex-shrink-0 rounded-lg p-1.5 touch:p-2.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
         {loading ? (
-          <div className="px-6 py-6">
+          <div className="px-4 sm:px-6 py-6">
             <InterviewLetterLoader label="Personalizing for this recipient…" elapsedSecs={elapsedSecs} variant="personalize" />
           </div>
         ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 overflow-y-auto px-6 py-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 overflow-y-auto px-4 sm:px-6 py-6">
           {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
           <Input

@@ -278,13 +278,13 @@ function ImageSlot({
         <div className="group relative overflow-hidden rounded-lg border border-[#e5e3df] bg-[#f7f6f3]">
           {/* eslint-disable-next-line @next/next/no-img-element -- private signed URL, not a static asset */}
           <img src={image.url} alt={description || `Image ${slot}`} className={`w-full max-h-[28rem] object-contain transition-opacity ${busy ? 'opacity-40' : ''}`} />
-          <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 touch:opacity-100">
             {/* Full-size original in a new tab (short-lived signed link). */}
             <a
               href={image.url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-md bg-white/95 px-2.5 py-1.5 text-[11px] font-medium text-gray-800 shadow-sm hover:bg-white"
+              className="inline-flex items-center gap-1 rounded-md bg-white/95 px-2.5 py-1.5 touch:py-2.5 text-[11px] font-medium text-gray-800 shadow-sm hover:bg-white"
             >
               <Eye size={12} /> View
             </a>
@@ -293,21 +293,21 @@ function ImageSlot({
               <button
                 onClick={() => setPickerOpen(true)}
                 disabled={!!busy}
-                className="inline-flex items-center gap-1 rounded-md bg-white/95 px-2.5 py-1.5 text-[11px] font-medium text-gray-800 shadow-sm hover:bg-white disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md bg-white/95 px-2.5 py-1.5 touch:py-2.5 text-[11px] font-medium text-gray-800 shadow-sm hover:bg-white disabled:opacity-50"
               >
                 <Search size={12} /> Free images
               </button>
               <button
                 onClick={() => inputRef.current?.click()}
                 disabled={!!busy}
-                className="inline-flex items-center gap-1 rounded-md bg-white/95 px-2.5 py-1.5 text-[11px] font-medium text-gray-800 shadow-sm hover:bg-white disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md bg-white/95 px-2.5 py-1.5 touch:py-2.5 text-[11px] font-medium text-gray-800 shadow-sm hover:bg-white disabled:opacity-50"
               >
                 {busy === 'upload' ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Replace
               </button>
               <button
                 onClick={remove}
                 disabled={!!busy}
-                className="inline-flex items-center gap-1 rounded-md bg-white/95 px-2.5 py-1.5 text-[11px] font-medium text-red-600 shadow-sm hover:bg-white disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md bg-white/95 px-2.5 py-1.5 touch:py-2.5 text-[11px] font-medium text-red-600 shadow-sm hover:bg-white disabled:opacity-50"
               >
                 {busy === 'remove' ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Remove
               </button>
@@ -325,7 +325,7 @@ function ImageSlot({
 
   return (
     <figure className="my-5">
-      <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#d9d6d0] bg-[#faf9f7] px-6 py-8 text-center">
+      <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#d9d6d0] bg-[#faf9f7] px-4 sm:px-6 py-8 text-center">
         <ImageIcon size={22} className="text-gray-400" />
         <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">Image {slot}</p>
         {description && <p className="max-w-md text-xs italic text-gray-500">{description}</p>}
@@ -334,7 +334,7 @@ function ImageSlot({
             <button
               onClick={() => inputRef.current?.click()}
               disabled={busy === 'upload'}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-400 hover:text-black disabled:opacity-50"
+              className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-400 hover:text-black disabled:opacity-50"
             >
               {busy === 'upload' ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
               {busy === 'upload' ? 'Uploading…' : 'Upload photo'}
@@ -342,7 +342,7 @@ function ImageSlot({
             <button
               onClick={() => setPickerOpen(true)}
               disabled={busy === 'upload'}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 underline-offset-2 transition-colors hover:text-black hover:underline disabled:opacity-50"
+              className="inline-flex touch:py-2.5 items-center gap-1.5 text-xs font-medium text-gray-600 underline-offset-2 transition-colors hover:text-black hover:underline disabled:opacity-50"
             >
               <Search size={12} /> Find free images for this slot
             </button>

@@ -93,7 +93,7 @@ export default function FeedbackWidget() {
       <AnimatePresence>
         {open && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-end justify-end p-4 sm:items-center sm:justify-center"
+            className="modal-overlay fixed inset-0 z-50 flex items-end justify-end p-4 sm:items-center sm:justify-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -101,7 +101,7 @@ export default function FeedbackWidget() {
             <div className="absolute inset-0 bg-black/40" onClick={close} />
 
             <motion.div
-              className="relative flex w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+              className="modal-sheet relative flex w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
               initial={{ scale: 0.95, y: 16, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.95, y: 16, opacity: 0 }}
@@ -109,13 +109,13 @@ export default function FeedbackWidget() {
             >
               <button
                 onClick={close}
-                className="absolute right-4 top-4 z-10 rounded-md p-1 text-gray-400 transition-colors hover:bg-[#f7f6f3] hover:text-gray-700"
+                className="absolute right-4 top-4 z-10 rounded-md p-1 touch:p-2.5 text-gray-400 transition-colors hover:bg-[#f7f6f3] hover:text-gray-700"
               >
                 <X size={17} />
               </button>
 
               {submitted ? (
-                <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+                <div className="flex flex-col items-center gap-3 px-4 sm:px-6 py-10 text-center">
                   <motion.div
                     initial={{ scale: 0.6, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}

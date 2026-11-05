@@ -66,8 +66,8 @@ export default function PointsBlock({
                       <div className="flex-1">
                         <Textarea ref={textareaRef} value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="text-sm" label="" />
                         <div className="mt-2 flex gap-3">
-                          <button type="button" onClick={async () => { await onSave(i, draft); setEditing(null) }} className="rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-900">Save</button>
-                          <button type="button" onClick={() => setEditing(null)} className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
+                          <button type="button" onClick={async () => { await onSave(i, draft); setEditing(null) }} className="rounded-lg bg-black px-3 py-1.5 touch:py-2.5 text-xs font-medium text-white hover:bg-gray-900">Save</button>
+                          <button type="button" onClick={() => setEditing(null)} className="px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 hover:text-gray-900">Cancel</button>
                         </div>
                       </div>
                     ) : (
@@ -84,7 +84,7 @@ export default function PointsBlock({
                         <WandSparkles size={13} className={busy === i ? 'animate-pulse' : ''} /> {busy === i ? 'Working…' : 'Regenerate'}
                       </ActionButton>
                       {pointUndo[i] !== undefined && busy === null && (
-                        <button type="button" disabled={disabled} onClick={() => onUndoPoint(i)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+                        <button type="button" disabled={disabled} onClick={() => onUndoPoint(i)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
                           <Undo2 size={13} /> Undo
                         </button>
                       )}
@@ -111,7 +111,7 @@ export default function PointsBlock({
               <WandSparkles size={13} className={busy === 'all' ? 'animate-pulse' : ''} /> {busy === 'all' ? 'Working…' : 'Reframe all three'}
             </ActionButton>
             {allUndo && busy === null && (
-              <button type="button" disabled={disabled} onClick={onUndoAll} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+              <button type="button" disabled={disabled} onClick={onUndoAll} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800">
                 <Undo2 size={13} /> Undo last reframe
               </button>
             )}

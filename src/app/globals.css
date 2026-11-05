@@ -18,6 +18,23 @@ body {
   background-color: var(--content-bg);
 }
 
+/* iOS Safari zooms the whole page when an input under 16px gets focus, and
+   doesn't zoom back. Touch devices only, so the desktop's compact forms stay. */
+@media (hover: none) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  /* iOS gives date inputs an intrinsic width that ignores w-full and overflows. */
+  input[type='date'], input[type='datetime-local'], input[type='time'] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 4px;
@@ -54,6 +71,10 @@ body {
 }
 .audio-range::-moz-range-track {
   background: transparent;
+}
+@media (hover: none) {
+  .audio-range::-webkit-slider-thumb { width: 22px; height: 22px; }
+  .audio-range::-moz-range-thumb { width: 22px; height: 22px; }
 }
 
 /* Fade masks for scrollable transcript panels */
@@ -135,9 +156,125 @@ body {
 }
 .modal-panel-in { animation: modal-panel-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* Phones: a modal becomes a bottom sheet, within thumb reach and always
+   scrollable however tall its form is. Put .modal-overlay on the fixed outer
+   element and .modal-sheet on the panel. From sm up both do nothing, and the
+   panel's own utility classes apply as on desktop. These rules sit after
+   @tailwind utilities so they win over the panel's p-4 / max-w-md / rounded-*. */
+@keyframes sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@media (max-width: 639px) {
+  .modal-overlay {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+  .modal-sheet {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 1rem 1rem 0 0;
+    animation: sheet-up 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gemini-aurora, .gemini-bloom, .gemini-sparkle, .flow-line, .fade-up,
-  .dropdown-in, .modal-backdrop-in, .modal-panel-in { animation: none; }
+  .dropdown-in, .modal-backdrop-in, .modal-panel-in, .modal-sheet { animation: none; }
+}
+
+/* Tables on phones: each row becomes a card, from the same markup. Put
+   .table-cards on the <table> and .table-cards-wrap on its overflow wrapper,
+   then data-label="Role" on each <td> (the label prints beside the value). A
+   <td> with no label spans the card: data-cell="title" for the row's heading,
+   data-cell="actions" pins the cell to the card's top right. Desktop is
+   untouched. Below lg, because these tables have six to eight columns and even
+   a tablet can't fit them. */
+@media (max-width: 1023px) {
+  .table-cards-wrap { overflow: visible; }
+  .table-cards { display: block; min-width: 0; }
+  .table-cards thead { display: none; }
+  .table-cards tbody, .table-cards tfoot { display: block; }
+  .table-cards tr { display: block; position: relative; padding: 0.75rem 1rem; }
+  .table-cards td { display: block; padding: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  .table-cards td[data-label] {
+    position: relative;
+    min-height: 1.5rem;
+    padding: 0.2rem 0 0.2rem 6.75rem;
+  }
+  .table-cards td[data-label]::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0;
+    top: 0.3rem;
+    width: 6.25rem;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #9ca3af;
+  }
+  .table-cards td[data-label] > * { justify-content: flex-start; }
+  .table-cards td[data-cell='title'] { margin-bottom: 0.4rem; padding-right: 2.25rem; }
+  .table-cards td[data-cell='actions'] { position: absolute; top: 0.4rem; right: 0.4rem; }
+
+}
+
+/* The money ledgers have fewer columns, so they stay tables from md up. Below
+   that: entry and amount on the first line, then date and status under the
+   entry, with the bulk-select box to the left. */
+@media (max-width: 767px) {
+  .table-ledger { display: block; }
+  .table-ledger thead { display: none; }
+  .table-ledger tbody { display: block; }
+  .table-ledger tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 0.625rem;
+    row-gap: 0.375rem;
+    padding: 0.75rem 0.875rem;
+  }
+  .table-ledger td { display: block; padding: 0; overflow-wrap: anywhere; }
+  .table-ledger td[data-cell='amount'] { overflow-wrap: normal; }
+  .table-ledger td[data-cell='select'] { grid-column: 1; grid-row: 1; padding-top: 0.5rem; }
+  .table-ledger td[data-cell='select']:empty { display: none; }
+  .table-ledger td[data-cell='entry'] { grid-column: 2; grid-row: 1; }
+  .table-ledger td[data-cell='amount'] { grid-column: 3; grid-row: 1; }
+  .table-ledger td[data-cell='date'] { grid-column: 2 / -1; grid-row: 2; font-size: 0.75rem; }
+  .table-ledger td[data-cell='date'] > div { display: inline; margin-left: 0.5rem; }
+  .table-ledger td[data-cell='status'] { grid-column: 2 / -1; grid-row: 3; }
+
+  /* Ledger filter dropdowns share two tidy columns instead of wrapping unevenly. */
+  .ledger-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ledger-filters > :first-child:not(select) { grid-column: 1 / -1; }
+  .ledger-filters select { width: 100%; min-width: 0; }
+}
+
+/* Touch devices: larger check and radio boxes, because a 14px box is a miss
+   waiting to happen. */
+@media (hover: none) {
+  input[type='checkbox'], input[type='radio'] { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+  a, button, summary, label { -webkit-tap-highlight-color: rgba(0, 0, 0, 0.06); }
+  summary { min-height: 2.25rem; }
+}
+
+/* In-page anchors (#section links) land clear of the sticky mobile top bar and
+   any sticky strip under it. A grid item's default min-width is its content's
+   width, so one long unbroken string (a filename, a URL) would otherwise widen
+   the whole page. */
+@media (max-width: 1023px) {
+  html { scroll-padding-top: 7rem; }
+  body { overflow-wrap: break-word; }
+  main .grid > * { min-width: 0; }
+  /* Below lg the document scrolls, so an open modal must hold the page still. */
+  body:has(.modal-overlay) { overflow: hidden; }
 }
 
 /* Regenerating-content shimmer — a soft light band sweeping across the dimmed

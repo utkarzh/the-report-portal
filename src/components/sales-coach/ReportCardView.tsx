@@ -91,9 +91,9 @@ export default function ReportCardView({
   return (
     <article className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
       {/* ── Header: Company / Meeting / Outcome ──────────────────── */}
-      <header className="px-6 pb-6 pt-8 sm:px-12">
+      <header className="px-4 pb-5 pt-6 sm:px-12 sm:pb-6 sm:pt-8">
         <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#a07530]">TRC Sales Coach — Report Card</p>
-        <dl className="mt-4 grid grid-cols-[auto,1fr] items-baseline gap-x-5 gap-y-2 text-sm">
+        <dl className="mt-4 grid grid-cols-[auto,minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 text-sm sm:gap-x-5">
           <dt className="text-xs font-medium text-gray-400">Company</dt>
           <dd className="text-lg font-semibold tracking-tight text-gray-900">{meta.company || card.company || 'Unclear from filename'}</dd>
           <dt className="text-xs font-medium text-gray-400">Meeting</dt>
@@ -104,7 +104,7 @@ export default function ReportCardView({
         <p className="mt-4 text-xs text-gray-400">{subline}</p>
       </header>
 
-      <div className="px-6 sm:px-12">
+      <div className="px-4 sm:px-12">
         {/* ── A. Negotiation Result ─────────────────────────────── */}
         <Section title="A. Negotiation Result">
           {hasNewLayout ? (
@@ -169,7 +169,7 @@ export default function ReportCardView({
                     <button
                       type="button"
                       onClick={() => onFlag(null, 'Commercial Outcome', card.commercial_outcome_summary || card.commercial_outcome_note)}
-                      className="mt-2.5 inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 transition-colors hover:text-[#a07530]"
+                      className="mt-2.5 inline-flex items-center gap-1 touch:py-2.5 text-[10px] font-medium text-gray-400 transition-colors hover:text-[#a07530]"
                     >
                       <Flag size={10} /> Something not right here?
                     </button>
@@ -189,14 +189,14 @@ export default function ReportCardView({
           ) : (
             <div className="mt-3 flex flex-col gap-4">
               {card.objections.map((o, i) => (
-                <div key={i} className="border-l-2 border-[#e5e3df] pl-5">
+                <div key={i} className="border-l-2 border-[#e5e3df] pl-3 sm:pl-5">
                   <div className="flex items-start gap-2.5">
                     <Quote size={15} className="mt-1 flex-shrink-0 text-[#a07530]" />
                     <p className="text-sm font-medium leading-6 text-gray-900">{o.objection}</p>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-gray-800"><span className="font-semibold text-gray-900">How you handled it: </span>{o.handled}</p>
                   {(o.original_wording || o.trc_improved_response) && (
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {o.original_wording && (
                         <div className="rounded-lg bg-[#faf9f7] p-3.5">
                           <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Original</p>
@@ -224,7 +224,7 @@ export default function ReportCardView({
             </div>
           ))}
 
-          <div className="mt-8 rounded-xl border border-[#c8973f]/40 bg-[#fffdf8] p-5">
+          <div className="mt-8 rounded-xl border border-[#c8973f]/40 bg-[#fffdf8] p-4 sm:p-5">
             <div className="flex items-center gap-2">
               <MessageCircleQuestion size={15} className="text-[#a07530]" />
               <p className="text-sm font-semibold text-gray-900">Final Coaching Question</p>
@@ -234,7 +234,7 @@ export default function ReportCardView({
               <button
                 type="button"
                 onClick={onDiscussCoachingQuestion}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-xs font-medium text-gray-800 transition-colors hover:border-gray-400"
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 touch:py-3 text-xs font-medium text-gray-800 transition-colors hover:border-gray-400"
               >
                 <MessageSquare size={13} /> Answer this with your coach
               </button>
@@ -243,13 +243,13 @@ export default function ReportCardView({
 
           {/* Two-track invitation — immediately before the score. */}
           {(card.coaching_invitation || onChooseTrack) && (
-            <div className="mt-4 rounded-xl bg-[#faf9f7] p-5">
+            <div className="mt-4 rounded-xl bg-[#faf9f7] p-4 sm:p-5">
               <p className="text-sm font-semibold text-gray-900">Continue With Your Coach</p>
               <p className="mt-2 text-sm leading-7 text-gray-800">
                 {card.coaching_invitation || 'You can practise the most important improvement from this meeting, or work on the next commercial action for this opportunity. Which would help you most right now?'}
               </p>
               {onChooseTrack && (
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <TrackButton icon={<Target size={15} />} track="execution" onClick={onChooseTrack} />
                   <TrackButton icon={<Compass size={15} />} track="commercial" onClick={onChooseTrack} sub={card.next_commercial_priority} />
                 </div>
@@ -260,7 +260,7 @@ export default function ReportCardView({
 
         {/* ── F. Overall Execution Score — always last ──────────── */}
         <Section title="F. Overall Execution Score">
-          <div className="rounded-xl bg-[#faf9f7] px-6 py-6">
+          <div className="rounded-xl bg-[#faf9f7] px-4 py-5 sm:px-6 sm:py-6">
             <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
               <ScoreRing pct={pct} />
               <div className="min-w-0 flex-1 text-center sm:text-left">
@@ -294,7 +294,7 @@ export default function ReportCardView({
                       type="button"
                       onClick={() => scrollToCriterion(c.key)}
                       title={`${criterionLabel(c)} — ${VERDICT_RATING[c.verdict]}`}
-                      className={`h-2.5 flex-1 rounded-full transition-opacity hover:opacity-70 ${SEGMENT[c.verdict]}`}
+                      className={`h-2.5 touch:h-4 flex-1 rounded-full transition-opacity hover:opacity-70 ${SEGMENT[c.verdict]}`}
                     />
                   ))}
                 </div>
@@ -331,7 +331,7 @@ export default function ReportCardView({
                       <button
                         type="button"
                         onClick={() => scrollToCriterion(f.key)}
-                        className="inline-flex flex-shrink-0 items-center gap-1 self-start text-xs font-medium text-gray-600 transition-colors hover:text-black sm:self-center"
+                        className="inline-flex flex-shrink-0 items-center gap-1 self-start touch:py-2.5 text-xs font-medium text-gray-600 transition-colors hover:text-black sm:self-center"
                       >
                         See the evidence <ArrowUp size={12} />
                       </button>
@@ -344,7 +344,7 @@ export default function ReportCardView({
         </Section>
       </div>
 
-      <footer className="border-t border-[#eceae5] px-6 py-3 text-center text-[11px] text-gray-400 sm:px-12">
+      <footer className="border-t border-[#eceae5] px-4 py-3 text-center text-[11px] text-gray-400 sm:px-12">
         {meta.generatedAt ? `Generated ${formatDayMonthYearTime(meta.generatedAt)}` : ''}
         {meta.modelUsed ? ` · ${meta.modelUsed}` : ''}
         {' · Evidence quoted verbatim from the transcript'}
@@ -411,7 +411,7 @@ function TimestampButton({ ms, onClick }: { ms: number; onClick: (ms: number) =>
       type="button"
       onClick={() => onClick(ms)}
       title="Play from here"
-      className="mr-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 align-[1px] font-mono text-[10px] font-medium not-italic tabular-nums text-gray-500 ring-1 ring-[#e5e3df] transition-colors hover:bg-black hover:text-white hover:ring-black"
+      className="mr-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 touch:px-3 touch:py-1.5 align-[1px] font-mono text-[10px] font-medium not-italic tabular-nums text-gray-500 ring-1 ring-[#e5e3df] transition-colors hover:bg-black hover:text-white hover:ring-black"
     >
       <Play size={8} className="fill-current" />{formatTimestamp(ms)}
     </button>
@@ -479,7 +479,7 @@ function CriterionRow({ criterion: c, onTimestampClick, onFlag }: { criterion: S
         <button
           type="button"
           onClick={() => onFlag(c.key, label, aiSaid)}
-          className="mt-2.5 inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 transition-colors hover:text-[#a07530]"
+          className="mt-2.5 inline-flex items-center gap-1 touch:py-2.5 text-[10px] font-medium text-gray-400 transition-colors hover:text-[#a07530]"
         >
           <Flag size={10} /> {c.verdict === 'uv' ? 'Tell the coach what happened' : 'Something not right here?'}
         </button>

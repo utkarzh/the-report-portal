@@ -44,9 +44,11 @@ interface AudioPlayerProps {
   // current playback position, so a parent can highlight "what's playing now"
   // (e.g. the active transcript line) without re-rendering on every frame.
   onTimeUpdate?: (seconds: number) => void
+  // Spacing above the player; defaults to the gap it needs under a card header.
+  className?: string
 }
 
-const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(function AudioPlayer({ src, onTimeUpdate }, ref) {
+const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(function AudioPlayer({ src, onTimeUpdate, className = 'mt-5' }, ref) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const onTimeUpdateRef = useRef(onTimeUpdate)
   onTimeUpdateRef.current = onTimeUpdate
@@ -287,15 +289,17 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(function Aud
   const bufPct = duration ? Math.min(100, Math.max(pct, (bufferedEnd / duration) * 100)) : 0
 
   return (
-    <div className="mt-5 rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-4">
+    <div className={`${className} rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-3 sm:p-4`}>
       <audio ref={audioRef} src={mountedSrc} preload="metadata" className="hidden" />
 
-      <div className="flex items-center gap-3">
+      {/* Phones: the scrubber gets its own full-width row above the buttons. */}
+      <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-2 sm:flex-nowrap sm:justify-start sm:gap-3">
         {/* Skip back */}
         <button
           onClick={() => skip(-10)}
           title="Back 10 seconds"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
+          aria-label="Back 10 seconds"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-white hover:text-gray-900 sm:h-9 sm:w-9"
         >
           <RotateCcw size={17} />
         </button>
@@ -304,6 +308,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(function Aud
         <button
           onClick={toggle}
           title={playing ? 'Pause' : 'Play'}
+          aria-label={playing ? 'Pause' : 'Play'}
           className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-black text-white transition-transform hover:scale-105 active:scale-95"
         >
           {buffering ? (
@@ -319,13 +324,14 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(function Aud
         <button
           onClick={() => skip(10)}
           title="Forward 10 seconds"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
+          aria-label="Forward 10 seconds"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-white hover:text-gray-900 sm:h-9 sm:w-9"
         >
           <RotateCw size={17} />
         </button>
 
         {/* Progress + times */}
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="order-first flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto sm:flex-1 sm:gap-3">
           <span className="w-10 flex-shrink-0 text-right font-mono text-xs tabular-nums text-gray-500">
             {fmt(shown)}
           </span>
@@ -358,7 +364,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(function Aud
         <button
           onClick={cycleSpeed}
           title="Playback speed"
-          className="flex-shrink-0 rounded-md px-2 py-1 text-xs font-semibold tabular-nums text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
+          className="flex-shrink-0 rounded-md px-2 py-1 touch:px-3 touch:py-3 text-xs font-semibold tabular-nums text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
         >
           {speed}×
         </button>
@@ -367,14 +373,15 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(function Aud
         <button
           onClick={toggleMute}
           title={muted ? 'Unmute' : 'Mute'}
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
+          aria-label={muted ? 'Unmute' : 'Mute'}
+          className="flex h-11 w-11 sm:h-9 sm:w-9 flex-shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
         >
           {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
         </button>
       </div>
 
       {mediaError && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           <span>{mediaError}</span>
           <button
             onClick={retry}

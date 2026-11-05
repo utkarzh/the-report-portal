@@ -238,7 +238,7 @@ export default function PromptVersionHistory({
           )}
 
           {loading ? (
-            <div className="px-6 py-10 text-sm text-gray-400">
+            <div className="px-4 sm:px-6 py-10 text-sm text-gray-400">
               Loading versions…
             </div>
           ) : (
@@ -317,14 +317,14 @@ export default function PromptVersionHistory({
                               type="button"
                               onClick={() => handleDelete(v.id)}
                               disabled={deletingId === v.id}
-                              className="text-[9px] font-semibold uppercase tracking-wider bg-red-600 text-white px-2 py-1 hover:bg-red-700 disabled:opacity-50 transition-colors"
+                              className="text-[9px] font-semibold uppercase tracking-wider bg-red-600 text-white px-2 py-1 touch:py-2 hover:bg-red-700 disabled:opacity-50 transition-colors"
                             >
                               {deletingId === v.id ? "…" : "Yes"}
                             </button>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(null)}
-                              className="text-[9px] font-semibold uppercase tracking-wider bg-gray-200 text-gray-600 px-2 py-1 hover:bg-gray-300 transition-colors"
+                              className="text-[9px] font-semibold uppercase tracking-wider bg-gray-200 text-gray-600 px-2 py-1 touch:py-2 hover:bg-gray-300 transition-colors"
                             >
                               No
                             </button>
@@ -336,7 +336,7 @@ export default function PromptVersionHistory({
                               e.stopPropagation();
                               setConfirmDeleteId(v.id);
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 transition-all"
+                            className="opacity-0 group-hover:opacity-100 touch:opacity-100 p-1.5 touch:p-2.5 text-gray-300 hover:text-red-500 transition-all"
                             title="Delete version"
                           >
                             <svg
@@ -399,7 +399,7 @@ export default function PromptVersionHistory({
                     </pre>
                   </>
                 ) : (
-                  <div className="flex-1 flex items-center justify-center text-sm text-gray-400 p-8">
+                  <div className="flex-1 flex items-center justify-center text-sm text-gray-400 p-4 sm:p-8">
                     <div className="text-center">
                       <svg
                         className="w-8 h-8 mx-auto mb-3 text-gray-200"

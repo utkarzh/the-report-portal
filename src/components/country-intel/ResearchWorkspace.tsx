@@ -7,6 +7,7 @@ import { ArrowLeft, Download, FileSpreadsheet, Pause, Play, Radar, Trash2, Check
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import { DEPTHS } from '@/lib/country-intel/depth'
 import type { CiCompany, CiContactEntry, CiProject } from '@/lib/country-intel/types'
+import { useKeepScreenOn } from '@/lib/use-mobile'
 
 type Summary = {
   tasks: Record<string, { total: number; done: number; failed: number; running: number }>
@@ -50,6 +51,7 @@ export default function ResearchWorkspace({ initialProject, initialSummary, auto
   const [project, setProject] = useState(initialProject)
   const [summary, setSummary] = useState(initialSummary)
   const [looping, setLooping] = useState(false)
+  useKeepScreenOn(looping)
   const [note, setNote] = useState<string | null>(null)
   const [companies, setCompanies] = useState<CiCompany[] | null>(null)
   const [filter, setFilter] = useState<'pass' | 'outside' | 'pending' | 'all'>('pass')
@@ -138,7 +140,7 @@ export default function ResearchWorkspace({ initialProject, initialSummary, auto
 
   return (
     <div className="mx-auto max-w-7xl">
-      <Link href="/commercial/country-intelligence" className="mb-4 inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-black"><ArrowLeft size={14} /> Country Intelligence</Link>
+      <Link href="/commercial/country-intelligence" className="mb-4 inline-flex touch:py-2 items-center gap-1.5 text-sm text-gray-500 hover:text-black"><ArrowLeft size={14} /> Country Intelligence</Link>
 
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3">
@@ -164,12 +166,12 @@ export default function ResearchWorkspace({ initialProject, initialSummary, auto
       {budgetReached && (
         <div className="mb-4 flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 sm:flex-row sm:items-center sm:justify-between">
           <span>The hard stop of ${Number(project.budget_usd).toFixed(2)} has been reached (${Number(project.spent_usd).toFixed(2)} spent). Raise it to continue — the run picks up exactly where it stopped.</span>
-          <span className="flex gap-2"><input className="w-24 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-sm" inputMode="decimal" placeholder={(Number(project.budget_usd) * 1.5).toFixed(2)} value={budgetInput} onChange={(e) => setBudgetInput(e.target.value.replace(/[^\d.]/g, ''))} />
+          <span className="flex gap-2"><input className="w-24 rounded-lg border border-red-200 bg-white px-2 py-1.5 touch:py-2.5 text-sm" inputMode="decimal" placeholder={(Number(project.budget_usd) * 1.5).toFixed(2)} value={budgetInput} onChange={(e) => setBudgetInput(e.target.value.replace(/[^\d.]/g, ''))} />
             <button onClick={() => act('resume', { budgetUsd: Number(budgetInput || (Number(project.budget_usd) * 1.5).toFixed(2)) })} className="rounded-lg bg-black px-3 py-1.5 text-white">Raise & resume</button></span>
         </div>
       )}
 
-      <div className="mb-5 grid gap-4 md:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         <div className="rounded-xl border border-[#e5e3df] bg-white p-4 shadow-sm"><p className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Meeting the criteria</p><p className="mt-1 text-2xl font-semibold">{summary.companies.passing} <span className="text-sm font-normal text-gray-500">/ {project.target_count}</span></p><p className="text-xs text-gray-500">{summary.companies.profiled} profiled · {summary.companies.total} candidates{summary.companies.clientOutside ? ` · ${summary.companies.clientOutside} client-named outside` : ''}</p></div>
         <div className="rounded-xl border border-[#e5e3df] bg-white p-4 shadow-sm"><p className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Contacts</p><p className="mt-1 text-2xl font-semibold">{summary.companies.contactsDone}</p><p className="text-xs text-gray-500">researched · {summary.companies.verified} verified</p></div>
         <div className="rounded-xl border border-[#e5e3df] bg-white p-4 shadow-sm"><p className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Spend</p><p className="mt-1 text-2xl font-semibold">${Number(project.spent_usd).toFixed(2)}</p><div className="mt-1 h-1.5 rounded bg-gray-100"><div className="h-1.5 rounded bg-gray-900" style={{ width: `${spentPct}%` }} /></div><p className="mt-1 text-xs text-gray-500">hard stop ${Number(project.budget_usd).toFixed(2)}</p></div>
@@ -182,7 +184,7 @@ export default function ResearchWorkspace({ initialProject, initialSummary, auto
         <div className="flex flex-wrap gap-2">
           {PHASES.map((ph, i) => <span key={ph.key} className={`rounded-full px-3 py-1 text-xs ${i < phaseIdx || project.status === 'complete' ? 'bg-gray-900 text-white' : i === phaseIdx ? 'border border-gray-900 font-medium text-gray-900' : 'bg-[#f7f6f3] text-gray-400'}`}>{ph.label}</span>)}
         </div>
-        <div className="mt-3 grid gap-3 text-xs text-gray-600 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-3 grid grid-cols-1 gap-3 text-xs text-gray-600 sm:grid-cols-3 lg:grid-cols-6">
           {['context', 'collect', 'select', 'profile', 'contacts', 'verify'].filter((k) => t[k]).map((k) => (
             <div key={k}><div className="flex justify-between"><span>{KIND_LABEL[k]}</span><span>{t[k].done}/{t[k].total}{t[k].failed ? ` · ${t[k].failed} failed` : ''}</span></div><div className="mt-1 h-1 rounded bg-gray-100"><div className="h-1 rounded bg-gray-700" style={{ width: `${pct(k)}%` }} /></div></div>
           ))}
@@ -197,11 +199,11 @@ export default function ResearchWorkspace({ initialProject, initialSummary, auto
 
       <div className="rounded-xl border border-[#e5e3df] bg-white shadow-sm">
         <div className="flex flex-wrap items-center gap-2 border-b border-[#e5e3df] p-3">
-          {([['pass', 'Meeting the criteria'], ['outside', 'Outside the criteria'], ['pending', 'In progress / failed'], ['all', 'All']] as const).map(([k, l]) => <button key={k} onClick={() => setFilter(k)} className={`rounded-lg px-3 py-1.5 text-xs ${filter === k ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-[#f7f6f3]'}`}>{l}</button>)}
-          <select value={sector} onChange={(e) => setSector(e.target.value)} className="rounded-lg border border-[#e5e3df] px-2 py-1.5 text-xs"><option value="all">All sectors</option>{sectors.map((s) => <option key={s} value={s}>{s}</option>)}</select>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search company or leader…" className="ml-auto w-56 rounded-lg border border-[#e5e3df] px-2.5 py-1.5 text-xs" />
+          {([['pass', 'Meeting the criteria'], ['outside', 'Outside the criteria'], ['pending', 'In progress / failed'], ['all', 'All']] as const).map(([k, l]) => <button key={k} onClick={() => setFilter(k)} className={`rounded-lg px-3 py-1.5 touch:py-2.5 text-xs ${filter === k ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-[#f7f6f3]'}`}>{l}</button>)}
+          <select value={sector} onChange={(e) => setSector(e.target.value)} className="rounded-lg border border-[#e5e3df] px-2 py-1.5 touch:py-2.5 text-xs"><option value="all">All sectors</option>{sectors.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search company or leader…" className="w-full rounded-lg sm:ml-auto sm:w-56 border border-[#e5e3df] px-2.5 py-1.5 touch:py-2.5 text-xs" />
         </div>
-        {!companies ? <p className="p-6 text-sm text-gray-500">Loading companies…</p> : rows.length === 0 ? <p className="p-6 text-sm text-gray-500">No companies here yet{project.status === 'running' ? ' — they appear as profiles finish.' : '.'}</p> : (
+        {!companies ? <p className="p-4 sm:p-6 text-sm text-gray-500">Loading companies…</p> : rows.length === 0 ? <p className="p-4 sm:p-6 text-sm text-gray-500">No companies here yet{project.status === 'running' ? ' — they appear as profiles finish.' : '.'}</p> : (
           <div className="divide-y divide-[#efede9]">
             {rows.map((c) => {
               const p = c.profile
@@ -209,16 +211,16 @@ export default function ResearchWorkspace({ initialProject, initialSummary, auto
               const isOpen = open === c.id
               return (
                 <div key={c.id}>
-                  <button onClick={() => setOpen(isOpen ? null : c.id)} className="grid w-full grid-cols-[18px_1.4fr_1fr_1fr_1.4fr_110px] items-start gap-3 px-3 py-2.5 text-left text-sm hover:bg-[#faf9f7]">
+                  <button onClick={() => setOpen(isOpen ? null : c.id)} className="grid w-full grid-cols-[18px_minmax(0,1fr)] items-start gap-x-3 gap-y-1 px-3 py-2.5 md:grid-cols-[18px_1.4fr_1fr_1fr_1.4fr_110px] md:gap-3 text-left text-sm hover:bg-[#faf9f7]">
                     {isOpen ? <ChevronDown size={15} className="mt-0.5" /> : <ChevronRight size={15} className="mt-0.5" />}
                     <span><span className="font-medium text-gray-900">{p?.name || c.name}</span>{c.origin === 'client' && <span className="ml-2 rounded bg-[#f7f6f3] px-1.5 py-0.5 text-[10px] text-gray-500">client list</span>}<br /><span className="text-xs text-gray-500">{c.sector || 'Other'}{p?.headquarters ? ` · ${p.headquarters}` : ''}</span></span>
-                    <span className="text-xs text-gray-700">{p?.leader?.name || '—'}<br /><span className="text-gray-500">{p?.leader?.title}</span></span>
-                    <span className="text-xs text-gray-700">{c.verdict ? <><span className={c.verdict.pass ? 'text-emerald-700' : 'text-red-700'}>{c.verdict.label}</span><br /><span className="text-gray-500">{c.verdict.revenue_usd ? `≈ USD ${Math.round(c.verdict.revenue_usd / 1e6)}M` : 'revenue unverified'}</span></> : c.status === 'failed' ? <span className="text-red-600">Profile failed</span> : <span className="text-gray-400">Pending</span>}</span>
-                    <span className="text-xs text-gray-700">{pr ? <>{pr.name}{pr.role ? <span className="text-gray-500">, {pr.role}</span> : null}<br /><span className="text-gray-600">{pr.mobile || pr.phone || pr.email}</span></> : c.contacts_done ? '—' : <span className="text-gray-400">{c.status === 'profiled' ? 'not yet' : ''}</span>}</span>
-                    <span className="text-xs text-gray-500">{c.verified ? 'verified' : c.contacts_done ? 'contacts found' : c.status}</span>
+                    <span className="col-start-2 text-xs md:col-start-auto text-gray-700">{p?.leader?.name || '—'}<br /><span className="text-gray-500">{p?.leader?.title}</span></span>
+                    <span className="col-start-2 text-xs md:col-start-auto text-gray-700">{c.verdict ? <><span className={c.verdict.pass ? 'text-emerald-700' : 'text-red-700'}>{c.verdict.label}</span><br /><span className="text-gray-500">{c.verdict.revenue_usd ? `≈ USD ${Math.round(c.verdict.revenue_usd / 1e6)}M` : 'revenue unverified'}</span></> : c.status === 'failed' ? <span className="text-red-600">Profile failed</span> : <span className="text-gray-400">Pending</span>}</span>
+                    <span className="col-start-2 text-xs md:col-start-auto text-gray-700">{pr ? <>{pr.name}{pr.role ? <span className="text-gray-500">, {pr.role}</span> : null}<br /><span className="text-gray-600">{pr.mobile || pr.phone || pr.email}</span></> : c.contacts_done ? '—' : <span className="text-gray-400">{c.status === 'profiled' ? 'not yet' : ''}</span>}</span>
+                    <span className="col-start-2 text-xs md:col-start-auto text-gray-500">{c.verified ? 'verified' : c.contacts_done ? 'contacts found' : c.status}</span>
                   </button>
                   {isOpen && p && (
-                    <div className="grid gap-5 bg-[#faf9f7] px-10 py-4 text-sm lg:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-5 bg-[#faf9f7] px-4 py-4 text-sm md:px-10 lg:grid-cols-2">
                       <div className="space-y-2">
                         <p className="text-gray-800">{p.company_narrative}</p>
                         <p><span className="font-medium">Leader:</span> {p.leader.name}{p.leader.since ? ` (since ${p.leader.since})` : ''} — {p.leader.trajectory}</p>

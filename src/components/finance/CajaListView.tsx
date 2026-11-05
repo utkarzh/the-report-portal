@@ -55,8 +55,8 @@ export default function CajaListView({ projectId, backHref }: { projectId: strin
   }
 
   return (
-    <div className="p-8 max-w-4xl">
-      <Link href={backHref} className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 mb-3">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl">
+      <Link href={backHref} className="inline-flex items-center gap-1.5 touch:py-2.5 text-xs text-gray-500 hover:text-gray-900 mb-3">
         <ArrowLeft size={13} /> Project
       </Link>
       <div className="flex justify-between items-start flex-wrap gap-3 mb-6">
@@ -71,7 +71,7 @@ export default function CajaListView({ projectId, backHref }: { projectId: strin
       {loading ? (
         <div className="text-sm text-gray-400">Loading…</div>
       ) : cajas.length === 0 ? (
-        <div className="border border-[#e5e3df] bg-white rounded-xl p-8 text-center text-sm text-gray-500">
+        <div className="border border-[#e5e3df] bg-white rounded-xl p-4 sm:p-8 text-center text-sm text-gray-500">
           No cajas yet — open this week to start grouping expenses for submission.
         </div>
       ) : (

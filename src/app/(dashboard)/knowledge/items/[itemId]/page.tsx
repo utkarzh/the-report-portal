@@ -70,7 +70,7 @@ export default async function KnowledgeItemPage({ params }: { params: { itemId: 
   ]
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <KnowledgeHeader ctx={ctx} active="browse" adminBar={false} />
         <Breadcrumbs
@@ -81,7 +81,7 @@ export default async function KnowledgeItemPage({ params }: { params: { itemId: 
           ]}
         />
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
           <article className="min-w-0 rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
             <div className="p-6 sm:p-8">
               <div className="flex items-center gap-2.5">
@@ -129,7 +129,7 @@ export default async function KnowledgeItemPage({ params }: { params: { itemId: 
 
               {item.type === 'document' && (
                 <>
-                  <div className="flex flex-col gap-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-4 rounded-xl border border-[#e5e3df] bg-[#faf9f7] p-5 sm:flex-row sm:items-center sm:justify-between lg:flex-col lg:items-stretch xl:flex-row xl:items-center">
                     <div className="flex min-w-0 items-center gap-3">
                       <TypeTile type="document" size="lg" />
                       <div className="min-w-0">
@@ -152,7 +152,7 @@ export default async function KnowledgeItemPage({ params }: { params: { itemId: 
                         <FileText size={11} /> Text preview
                         {v.extracted_text.length > PREVIEW_CHARS && <span className="font-medium normal-case tracking-normal text-gray-400">· first {PREVIEW_CHARS.toLocaleString('en-US')} characters</span>}
                       </p>
-                      <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-xl border border-[#eceae5] bg-[#fcfbf9] p-5 font-sans text-[13px] leading-relaxed text-gray-700">
+                      <pre className="max-h-[60dvh] overflow-y-auto whitespace-pre-wrap rounded-xl border border-[#eceae5] bg-[#fcfbf9] p-5 font-sans text-[13px] leading-relaxed text-gray-700">
                         {v.extracted_text.slice(0, PREVIEW_CHARS)}
                         {v.extracted_text.length > PREVIEW_CHARS ? '\n\n… Download the file for the full document.' : ''}
                       </pre>
@@ -201,7 +201,7 @@ export default async function KnowledgeItemPage({ params }: { params: { itemId: 
                     <li key={t.id}>
                       <a
                         href={`#${t.id}`}
-                        className={`block truncate rounded-md px-2 py-1 text-[13px] text-gray-600 transition-colors hover:bg-[#faf9f7] hover:text-gray-900 ${t.level === 3 ? 'pl-5 text-xs' : ''}`}
+                        className={`block truncate rounded-md px-2 py-1 touch:py-2 text-[13px] text-gray-600 transition-colors hover:bg-[#faf9f7] hover:text-gray-900 ${t.level === 3 ? 'pl-5 text-xs' : ''}`}
                       >
                         {t.text}
                       </a>

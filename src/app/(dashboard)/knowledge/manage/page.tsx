@@ -102,8 +102,8 @@ export default async function KnowledgeManagePage() {
           </div>
           <dl className="mt-5 grid grid-cols-4 gap-2">
             {tiles.map((t) => (
-              <div key={t.label} className="flex flex-col-reverse rounded-lg bg-[#faf9f7] px-2 py-2.5 text-center">
-                <dt className="mt-1.5 text-[9px] font-medium uppercase leading-tight tracking-wider text-gray-400">{t.label}</dt>
+              <div key={t.label} className="flex flex-col-reverse rounded-lg bg-[#faf9f7] px-1 py-2.5 text-center sm:px-2">
+                <dt className="mt-1.5 text-[9px] font-medium uppercase leading-tight tracking-wider text-gray-400 [overflow-wrap:normal]">{t.label}</dt>
                 <dd className={`text-base font-semibold tabular-nums leading-none ${t.tone}`}>{t.n}</dd>
               </div>
             ))}
@@ -126,7 +126,7 @@ export default async function KnowledgeManagePage() {
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <KnowledgeHeader
           ctx={ctx}
@@ -166,13 +166,13 @@ export default async function KnowledgeManagePage() {
             {mine.length > 0 && (
               <section>
                 <SectionHeader title="Departments you guard" count={mine.length} />
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{mine.map(card)}</div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">{mine.map(card)}</div>
               </section>
             )}
             {others.length > 0 && (
               <section>
                 <SectionHeader title={mine.length ? 'Other departments' : 'All departments'} count={others.length} />
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{others.map(card)}</div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">{others.map(card)}</div>
               </section>
             )}
             {mine.length > 0 && (feedback || []).length === 0 && (

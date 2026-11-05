@@ -37,9 +37,9 @@ export default function Modal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center">
       <div className="modal-backdrop-in absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="modal-panel-in relative bg-white rounded-sm shadow-xl w-full max-w-sm mx-4 p-6">
+      <div className="modal-sheet modal-panel-in relative bg-white rounded-sm shadow-xl w-full max-w-sm mx-4 p-4 sm:p-6">
         <div
           className={`mb-4 inline-flex h-9 w-9 items-center justify-center rounded-full ${
             confirmVariant === 'danger' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'

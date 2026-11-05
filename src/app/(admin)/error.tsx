@@ -14,7 +14,7 @@ export default function AdminError({
   }, [error])
 
   return (
-    <div className="p-8 flex flex-col items-start gap-4">
+    <div className="p-4 sm:p-8 flex flex-col items-start gap-4">
       <p className="text-sm font-medium text-gray-900">Something went wrong</p>
       <p className="text-xs text-gray-500 max-w-sm">
         {error.message || 'An unexpected error occurred. Please try again.'}

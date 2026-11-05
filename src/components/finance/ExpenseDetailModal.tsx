@@ -237,15 +237,15 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="relative bg-white w-full max-w-2xl shadow-2xl rounded-xl overflow-hidden max-h-[88vh] flex flex-col"
+        className="modal-sheet relative bg-white w-full max-w-2xl shadow-2xl rounded-xl overflow-hidden max-h-[88vh] flex flex-col"
       >
-        <div className="flex items-start justify-between gap-3 px-6 py-5 border-b border-[#e5e3df] flex-shrink-0">
+        <div className="flex items-start justify-between gap-3 px-4 sm:px-6 py-5 border-b border-[#e5e3df] flex-shrink-0">
           <div className="flex items-start gap-3 min-w-0">
             <div className="w-9 h-9 rounded-lg bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Icon size={16} />
@@ -270,7 +270,7 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
           </div>
         </div>
 
-        <div className="px-6 py-5 overflow-y-auto flex flex-col gap-5">
+        <div className="px-4 sm:px-6 py-5 overflow-y-auto flex flex-col gap-5">
           <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-5">
             <div className="border border-[#e5e3df] rounded-lg overflow-hidden bg-gray-50 min-h-[160px] flex items-center justify-center flex-shrink-0">
               {e.receiptUrl ? (
@@ -333,12 +333,12 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
                   {form.category === 'accommodation' && (
                     <div>
                       <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Nights</label>
-                      <input type="number" min="1" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={form.nights} onChange={ev => updateForm({ nights: ev.target.value })} />
+                      <input type="number" inputMode="decimal" min="1" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2" value={form.nights} onChange={ev => updateForm({ nights: ev.target.value })} />
                     </div>
                   )}
                   <div>
                     <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Local amount</label>
-                    <input type="number" step="0.01" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={form.localAmount} onChange={ev => updateForm({ localAmount: ev.target.value })} />
+                    <input type="number" inputMode="decimal" step="0.01" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={form.localAmount} onChange={ev => updateForm({ localAmount: ev.target.value })} />
                   </div>
                   <div>
                     <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Local currency</label>
@@ -346,7 +346,7 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
                   </div>
                   <div>
                     <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 block mb-1">Exchange rate</label>
-                    <input type="number" step="0.0001" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={form.exchangeRate} onChange={ev => updateForm({ exchangeRate: ev.target.value })} />
+                    <input type="number" inputMode="decimal" step="0.0001" className="w-full text-sm border border-[#e5e3df] rounded-lg px-3 py-2 tabular-nums" value={form.exchangeRate} onChange={ev => updateForm({ exchangeRate: ev.target.value })} />
                   </div>
                   {settlementCurrency && (
                     <div className="col-span-2 -mt-1">
@@ -526,7 +526,7 @@ export default function ExpenseDetailModal({ expense: e, symbol, onClose, exchan
           <div>
             <button
               onClick={() => setHistoryOpen(o => !o)}
-              className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-900 transition-colors"
+              className="inline-flex touch:py-2.5 items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-900 transition-colors"
             >
               <History size={11} /> History {historyOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
             </button>

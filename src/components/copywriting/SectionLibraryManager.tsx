@@ -160,7 +160,7 @@ export default function SectionLibraryManager({ initial }: { initial: Copywritin
         {listError && <p className="px-5 pt-3 text-xs text-red-500 sm:px-6">{listError}</p>}
 
         {sections.length === 0 ? (
-          <div className="flex flex-col items-center px-6 py-12 text-center">
+          <div className="flex flex-col items-center px-4 sm:px-6 py-12 text-center">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5f4f1]">
               <LayoutList size={16} className="text-gray-500" />
             </span>
@@ -170,7 +170,7 @@ export default function SectionLibraryManager({ initial }: { initial: Copywritin
             </p>
           </div>
         ) : visible.length === 0 ? (
-          <p className="px-6 py-8 text-center text-xs text-gray-400">No section matches “{query}”.</p>
+          <p className="px-4 sm:px-6 py-8 text-center text-xs text-gray-400">No section matches “{query}”.</p>
         ) : (
           <ul className="divide-y divide-[#e5e3df]">
             <AnimatePresence initial={false}>
@@ -206,12 +206,12 @@ export default function SectionLibraryManager({ initial }: { initial: Copywritin
                           type="button"
                           onClick={saveEdit}
                           disabled={saving}
-                          className="p-1.5 text-gray-500 transition-colors hover:text-emerald-600 disabled:opacity-50"
+                          className="p-1.5 touch:p-2.5 text-gray-500 transition-colors hover:text-emerald-600 disabled:opacity-50"
                           title="Save (Enter)"
                         >
                           <Check size={15} />
                         </button>
-                        <button type="button" onClick={() => setEditingId(null)} className="p-1.5 text-gray-400 transition-colors hover:text-black" title="Cancel (Esc)">
+                        <button type="button" onClick={() => setEditingId(null)} className="p-1.5 touch:p-2.5 text-gray-400 transition-colors hover:text-black" title="Cancel (Esc)">
                           <X size={15} />
                         </button>
                       </div>
@@ -245,11 +245,11 @@ export default function SectionLibraryManager({ initial }: { initial: Copywritin
                           </button>
                         )}
                       </div>
-                      <div className="flex flex-shrink-0 items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                        <button type="button" onClick={() => startEdit(s)} className="p-1.5 text-gray-400 transition-colors hover:text-black" title="Rename">
+                      <div className="flex flex-shrink-0 items-center gap-1 opacity-100 transition-opacity sm:can-hover:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                        <button type="button" onClick={() => startEdit(s)} className="p-1.5 touch:p-2.5 text-gray-400 transition-colors hover:text-black" title="Rename">
                           <Pencil size={14} />
                         </button>
-                        <button type="button" onClick={() => setDeleting(s)} className="p-1.5 text-gray-300 transition-colors hover:text-red-500" title="Delete">
+                        <button type="button" onClick={() => setDeleting(s)} className="p-1.5 touch:p-2.5 text-gray-300 transition-colors hover:text-red-500" title="Delete">
                           <Trash2 size={14} />
                         </button>
                       </div>

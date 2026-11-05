@@ -29,7 +29,7 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Se
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="text-base font-semibold text-gray-900">Audit Logs</h1>
         <p className="text-sm text-gray-500 mt-1.5">
@@ -38,8 +38,8 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Se
         </p>
       </div>
 
-      <div className="bg-white border border-[#e5e3df] min-h-[280px] overflow-x-auto">
-        <table className="w-full text-xs min-w-[720px]">
+      <div className="table-cards-wrap bg-white border border-[#e5e3df] min-h-[280px] overflow-x-auto">
+        <table className="table-cards w-full text-xs min-w-[860px]">
           <thead>
             <tr className="border-b border-[#e5e3df] bg-[#f9f8f6]">
               <th className="text-left px-4 py-3 font-semibold uppercase tracking-widest text-gray-400">User</th>
@@ -61,7 +61,7 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Se
             ) : (
               (logs as LoginAuditLog[]).map((log) => (
                 <tr key={log.id} className="hover:bg-[#f9f8f6] transition-colors">
-                  <td className="px-4 py-3">
+                  <td data-cell="title" className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-[11px] font-semibold text-gray-500 flex-shrink-0">
                         {(log.full_name || log.email || '?')[0].toUpperCase()}
@@ -77,7 +77,7 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Se
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                  <td data-label="When" className="px-4 py-3 text-gray-600 whitespace-nowrap">
                     {new Date(log.created_at).toLocaleString('en-GB', {
                       day: 'numeric',
                       month: 'short',
@@ -86,9 +86,9 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Se
                       minute: '2-digit',
                     })}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
+                  <td data-label="Location" className="px-4 py-3 text-gray-600">
                     {log.location ? (
-                      <span className="flex items-center gap-1.5">
+                      <span className="flex items-center gap-1.5 lg:max-xl:min-w-[150px]">
                         <MapPin size={12} className="text-gray-400 flex-shrink-0" />
                         {log.location}
                       </span>
@@ -96,16 +96,16 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Se
                       <span className="text-gray-400">Unknown</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 font-mono text-[11px]">
+                  <td data-label="IP" className="px-4 py-3 text-gray-500 font-mono text-[11px]">
                     {log.ip_address || <span className="text-gray-400">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
+                  <td data-label="Device" className="px-4 py-3 text-gray-600">
                     <span className="flex items-center gap-1.5" title={log.user_agent || undefined}>
                       <Monitor size={12} className="text-gray-400 flex-shrink-0" />
                       {describeUserAgent(log.user_agent)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td data-label="Method" className="px-4 py-3">
                     {log.login_method ? (
                       <Badge variant={log.login_method === 'password' ? 'admin' : 'user'}>
                         {log.login_method === 'password' ? 'Password' : 'Code'}

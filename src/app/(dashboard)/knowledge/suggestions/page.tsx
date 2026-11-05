@@ -56,7 +56,7 @@ export default async function KnowledgeSuggestionsPage({ searchParams }: { searc
   const itemTitle = new Map((items || []).map((i) => [i.id, i.title]))
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-5xl mx-auto">
         <KnowledgeHeader ctx={ctx} active="suggestions" />
 
@@ -137,12 +137,12 @@ export default async function KnowledgeSuggestionsPage({ searchParams }: { searc
                         {(r.link_url || r.attachment_path) && (
                           <div className="mt-3 flex flex-wrap gap-2 text-xs">
                             {r.link_url && (
-                              <a href={r.link_url} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1 text-gray-600 hover:border-gray-400 hover:text-black">
+                              <a href={r.link_url} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1 touch:py-2 text-gray-600 hover:border-gray-400 hover:text-black">
                                 <ExternalLink size={12} /> <span className="truncate">{r.link_url}</span>
                               </a>
                             )}
                             {r.attachment_path && (
-                              <a href={`/api/knowledge/feedback/${r.id}/attachment`} className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1 text-gray-600 hover:border-gray-400 hover:text-black">
+                              <a href={`/api/knowledge/feedback/${r.id}/attachment`} className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] px-2.5 py-1 touch:py-2 text-gray-600 hover:border-gray-400 hover:text-black">
                                 <Paperclip size={12} /> {r.attachment_name}
                               </a>
                             )}

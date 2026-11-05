@@ -34,7 +34,7 @@ export default function FeedbackPagination({ page, totalPages, totalCount, type,
         <button
           onClick={() => router.push(buildUrl(page - 1))}
           disabled={page <= 1}
-          className="px-3 py-1.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 touch:py-2.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           ← Prev
         </button>
@@ -52,7 +52,7 @@ export default function FeedbackPagination({ page, totalPages, totalCount, type,
         <button
           onClick={() => router.push(buildUrl(page + 1))}
           disabled={page >= totalPages}
-          className="px-3 py-1.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 touch:py-2.5 text-xs bg-white border border-[#e5e3df] text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Next →
         </button>

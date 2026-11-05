@@ -38,6 +38,9 @@ export default function ListPagination({ page, totalPages, totalCount, pageSize,
   const end = Math.min(page * pageSize, totalCount)
 
   function go(p: number) {
+    // Below lg the page itself scrolls, so without this the next page of results
+    // would open with the reader still at the bottom of the list.
+    if (window.matchMedia('(max-width: 1023px)').matches) window.scrollTo({ top: 0, behavior: 'smooth' })
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     params.set('page', String(p))
@@ -55,11 +58,11 @@ export default function ListPagination({ page, totalPages, totalCount, pageSize,
       <p className="text-xs text-gray-400">
         Showing {start}–{end} of {totalCount} {label}
       </p>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         <button
           onClick={() => go(page - 1)}
           disabled={page <= 1 || isPending}
-          className="rounded-md border border-[#e5e3df] bg-white px-3 py-1.5 text-xs text-gray-600 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-md border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs text-gray-600 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
         >
           ← Prev
         </button>
@@ -72,7 +75,7 @@ export default function ListPagination({ page, totalPages, totalCount, pageSize,
               key={p}
               onClick={() => go(p)}
               disabled={isPending}
-              className={`min-w-[32px] rounded-md border px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed ${
+              className={`min-w-[32px] rounded-md border px-3 py-1.5 touch:py-2.5 text-xs transition-colors disabled:cursor-not-allowed ${
                 p === page
                   ? 'border-black bg-black text-white'
                   : 'border-[#e5e3df] bg-white text-gray-600 hover:border-gray-400'
@@ -86,7 +89,7 @@ export default function ListPagination({ page, totalPages, totalCount, pageSize,
         <button
           onClick={() => go(page + 1)}
           disabled={page >= totalPages || isPending}
-          className="rounded-md border border-[#e5e3df] bg-white px-3 py-1.5 text-xs text-gray-600 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-md border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs text-gray-600 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Next →
         </button>

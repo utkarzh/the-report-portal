@@ -45,11 +45,11 @@ export default function CategoriesList({ categories }: { categories: Category[] 
       </div>
 
       {categories.length === 0 ? (
-        <div className="bg-white border border-[#e5e3df] p-10 text-center">
+        <div className="bg-white border border-[#e5e3df] p-5 sm:p-10 text-center">
           <p className="text-sm text-gray-400">No categories yet. Create one to get started.</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white border border-[#e5e3df] p-10 text-center">
+        <div className="bg-white border border-[#e5e3df] p-5 sm:p-10 text-center">
           <p className="text-sm text-gray-400">
             No categories match &ldquo;<span className="font-medium text-gray-600">{query}</span>&rdquo;.{' '}
             <button onClick={() => setQuery('')} className="text-gray-600 underline hover:text-black">Clear search</button>
@@ -81,7 +81,7 @@ export default function CategoriesList({ categories }: { categories: Category[] 
               <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                 <Link
                   href={`/admin/categories/${cat.id}`}
-                  className="text-xs text-gray-500 hover:text-black transition-colors px-3 py-1.5 border border-[#e5e3df] hover:border-gray-400"
+                  className="text-xs text-gray-500 hover:text-black transition-colors px-3 py-1.5 touch:py-2.5 border border-[#e5e3df] hover:border-gray-400"
                 >
                   Edit
                 </Link>

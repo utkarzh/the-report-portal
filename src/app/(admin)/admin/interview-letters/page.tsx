@@ -20,7 +20,7 @@ export default async function InterviewLettersAdminPage() {
   ])
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-5xl mx-auto">
         <Breadcrumbs
           items={[

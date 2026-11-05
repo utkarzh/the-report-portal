@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Source_Serif_4 } from 'next/font/google'
 import './globals.css'
 
@@ -26,6 +26,17 @@ const sourceSerif = Source_Serif_4({
 export const metadata: Metadata = {
   title: 'The Report Editorial',
   description: 'Editorial Research Tool',
+}
+
+// interactiveWidget: on Android, the on-screen keyboard shrinks the layout, so
+// a chat composer or bottom sheet stays above it instead of behind it. Zoom is
+// deliberately left enabled for accessibility; inputs avoid iOS's focus zoom by
+// being 16px on touch devices (globals.css).
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#000000',
+  interactiveWidget: 'resizes-content',
 }
 
 export default function RootLayout({

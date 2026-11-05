@@ -32,7 +32,7 @@ export default function TranscriptPlayer({
   const flatText = fallbackText
   const words = flatText ? flatText.split(/\s+/).filter(Boolean).length : (segments || []).reduce((n, s) => n + s.text.split(/\s+/).filter(Boolean).length, 0)
 
-  const scroll = useStickToBottom<HTMLDivElement>((segments?.length ?? 0) + (flatText?.length ?? 0))
+  const scroll = useStickToBottom<HTMLDivElement>((segments?.length ?? 0) + (flatText?.length ?? 0), { startAtTopOnPhones: true })
   const activeRef = useRef<HTMLDivElement | null>(null)
 
   // Keep the active line in view while it's the one being scrolled by the
@@ -58,7 +58,7 @@ export default function TranscriptPlayer({
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+        <p className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
           <FileText size={13} /> Transcript
           {source && (
             <span className="rounded-full bg-[#f2f1ec] px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-gray-500">
@@ -67,16 +67,16 @@ export default function TranscriptPlayer({
           )}
           {hasSegments && (
             <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ed] px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-[#a07530]">
-              <Play size={9} className="fill-current" /> Click a time to listen
+              <Play size={9} className="fill-current" /> <span className="touch:hidden">Click a time to listen</span><span className="hidden touch:inline">Tap a time to listen</span>
             </span>
           )}
         </p>
         {(flatText || hasSegments) && (
           <div className="flex items-center gap-1">
-            <button onClick={copyAll} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900">
+            <button onClick={copyAll} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900">
               {copied ? <Check size={13} /> : <Copy size={13} />}<span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
-            <button onClick={() => setExpanded((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900">
+            <button onClick={() => setExpanded((v) => !v)} className="hidden lg:inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[#f7f6f3] hover:text-gray-900">
               {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}<span>{expanded ? 'Collapse' : 'Expand'}</span>
             </button>
           </div>
@@ -88,7 +88,7 @@ export default function TranscriptPlayer({
           ref={scroll.ref}
           onScroll={scroll.onScroll}
           onWheel={scroll.onWheel}
-          className={`overflow-y-auto px-1 py-2 ${expanded ? 'max-h-none' : 'max-h-[440px]'}`}
+          className={`overflow-y-auto px-1 py-2 max-lg:max-h-none ${expanded ? 'max-h-none' : 'max-h-[440px]'}`}
         >
           {hasSegments ? (
             <div className="flex flex-col">
@@ -96,13 +96,13 @@ export default function TranscriptPlayer({
                 <div
                   key={i}
                   ref={i === activeIndex ? activeRef : undefined}
-                  className={`flex gap-3 rounded-lg px-3 py-2 transition-colors ${i === activeIndex ? 'bg-[#fbf7ed]' : ''}`}
+                  className={`flex scroll-mt-56 flex-col gap-1.5 rounded-lg px-3 py-2 transition-colors sm:flex-row sm:gap-3 lg:scroll-mt-0 ${i === activeIndex ? 'bg-[#fbf7ed]' : ''}`}
                 >
                   <button
                     type="button"
                     onClick={() => onTimestampClick!(seg.start_ms)}
                     title="Play from here"
-                    className={`mt-0.5 flex h-6 flex-shrink-0 items-center gap-1 rounded-full px-2 font-mono text-[11px] font-medium tabular-nums transition-colors ${
+                    className={`mt-0.5 flex h-6 touch:h-9 flex-shrink-0 self-start items-center gap-1 rounded-full px-2 font-mono text-[11px] font-medium tabular-nums transition-colors ${
                       i === activeIndex ? 'bg-[#c8973f] text-white' : 'bg-white text-gray-500 ring-1 ring-[#e5e3df] hover:bg-black hover:text-white hover:ring-black'
                     }`}
                   >

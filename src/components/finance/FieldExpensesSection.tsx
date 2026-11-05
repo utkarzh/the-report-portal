@@ -255,8 +255,8 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
         />
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
+      <div className="ledger-filters flex items-center gap-2 flex-wrap mb-3">
+        <div className="relative w-full md:flex-1 md:w-auto md:min-w-[200px] md:max-w-xs">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             value={search}
@@ -319,11 +319,11 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
       {uploaderSummary && <UploaderSummary summary={uploaderSummary} symbol={currencySymbol} />}
 
       {ledgerRows.length === 0 ? (
-        <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-8 text-sm text-gray-500 text-center">
+        <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-4 sm:p-8 text-sm text-gray-500 text-center">
           No transactions yet. Use &quot;Upload receipt&quot; above to log your first one.
         </div>
       ) : weekLedger.length === 0 ? (
-        <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-8 text-sm text-gray-500 text-center">
+        <div className="border border-dashed border-[#d8d5cf] bg-white/60 rounded-xl p-4 sm:p-8 text-sm text-gray-500 text-center">
           {effectiveWeek !== ALL_WEEKS && (weekCounts[effectiveWeek] ?? 0) === 0 ? 'No transactions this week.' : 'No transactions match these filters.'}
         </div>
       ) : (
@@ -331,7 +331,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
         // — proper headers, same thumbnail treatment, same status badges —
         // kept consistent rather than a bespoke card layout for field users.
         <div className="bg-white border border-[#e5e3df] rounded-xl overflow-hidden overflow-x-auto shadow-sm">
-          <table className="w-full text-sm">
+          <table className="table-ledger w-full text-sm">
             <thead>
               <tr className="text-left text-[10.5px] uppercase tracking-wide text-gray-400 border-b border-[#e5e3df] bg-[#faf9f6]">
                 <th className="px-4 py-2.5 font-medium whitespace-nowrap">Date</th>
@@ -347,7 +347,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                   onClick={row.kind === 'expense' ? () => setDetailExpense(row.expense) : undefined}
                   className={`align-top hover:bg-[#faf9f6] transition-colors duration-150 ${row.kind === 'expense' ? 'cursor-pointer' : ''}`}
                 >
-                  <td className="px-4 py-3.5 tabular-nums whitespace-nowrap text-gray-500">
+                  <td data-cell="date" className="px-4 py-3.5 tabular-nums whitespace-nowrap text-gray-500">
                     {row.date}
                     {row.uploadedAt.slice(0, 10) !== row.date && (
                       <div className="text-[10.5px] text-gray-400 mt-0.5">uploaded {formatDayMonth(row.uploadedAt)}</div>
@@ -355,7 +355,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                   </td>
                   {row.kind === 'expense' ? (
                     <>
-                      <td className="px-4 py-3.5">
+                      <td data-cell="entry" className="px-4 py-3.5">
                         <div className="flex items-start gap-2.5">
                           {row.expense.receiptUrl ? (
                             <button onClick={ev => { ev.stopPropagation(); openReceipt(row.expense.receiptUrl) }} className="block group flex-shrink-0">
@@ -382,7 +382,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap">
+                      <td data-cell="amount" className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap">
                         {row.expense.status === 'verified' ? (
                           <span className="text-gray-900 font-medium">−{currencySymbol}{row.amountOut.toFixed(2)}</span>
                         ) : row.expense.status === 'rejected' ? (
@@ -391,8 +391,8 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                           <span className="text-amber-600" title="Not yet counted — awaiting verification">{currencySymbol}{row.amountOut.toFixed(2)}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3.5">
-                        <div className="flex flex-col items-start gap-1.5">
+                      <td data-cell="status" className="px-4 py-3.5">
+                        <div className="flex flex-wrap items-center gap-1.5 md:flex-col md:flex-nowrap md:items-start">
                           <StatusBadge status={row.expense.status} />
                           {wasSentBack(row.expense.status, row.expense.comments) && <SentBackBadge />}
                           {row.expense.status === 'pending' && <WaitingBadge loggedAt={row.expense.created_at} />}
@@ -401,7 +401,7 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                     </>
                   ) : (
                     <>
-                      <td className="px-4 py-3.5">
+                      <td data-cell="entry" className="px-4 py-3.5">
                         <div className="flex items-center gap-2.5">
                           <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${row.kind === 'transfer_out' ? 'bg-gray-100 text-gray-500' : 'bg-emerald-50 text-emerald-600'}`}>
                             {row.kind === 'transfer_out' ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}
@@ -413,10 +413,10 @@ export default function FieldExpensesSection({ expenses, fundings, transfersIn, 
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap font-medium">
+                      <td data-cell="amount" className="px-4 py-3.5 text-right tabular-nums whitespace-nowrap font-medium">
                         {'amountIn' in row ? <span className="text-emerald-700">+{currencySymbol}{row.amountIn.toFixed(2)}</span> : <span className="text-gray-900">−{currencySymbol}{row.amountOut.toFixed(2)}</span>}
                       </td>
-                      <td className="px-4 py-3.5 text-gray-300">—</td>
+                      <td data-cell="status" className="px-4 py-3.5 text-gray-300">—</td>
                     </>
                   )}
                 </tr>
@@ -469,13 +469,13 @@ function SpendByCategoryModal({ symbol, categorySpend, totalCategorySpend, activ
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="relative bg-white w-full max-w-2xl shadow-2xl rounded-xl p-6 max-h-[85vh] overflow-y-auto"
+        className="modal-sheet relative bg-white w-full max-w-2xl shadow-2xl rounded-xl p-4 sm:p-6 max-h-[85vh] overflow-y-auto"
       >
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-sm font-semibold text-gray-900">Spend by category</h3>

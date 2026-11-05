@@ -335,7 +335,7 @@ export default async function AnalyticsPage({
   const maxUserCost = perUserList[0]?.cost || 1;
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-5xl mx-auto">
         {/* Page header + range tabs */}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -363,7 +363,7 @@ export default async function AnalyticsPage({
         </div>
 
         {/* Summary stat cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-10">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 mb-10">
           <StatCard
             label="Total Requests"
             value={totals.requests.toLocaleString()}
@@ -397,7 +397,7 @@ export default async function AnalyticsPage({
         </div>
 
         {rows.length === 0 ? (
-          <div className="bg-white border border-[#e5e3df] p-10 text-center">
+          <div className="bg-white border border-[#e5e3df] p-5 sm:p-10 text-center">
             <Activity size={24} className="text-gray-200 mx-auto mb-3" />
             <p className="text-sm text-gray-400">
               No activity recorded for this period.
@@ -410,7 +410,7 @@ export default async function AnalyticsPage({
                 its tallest sibling — with many workflows, the (naturally short)
                 trend chart panel was being stretched into a tall card with a lot
                 of empty space, making the chart itself look tiny and broken. */}
-            <div className="grid gap-4 lg:grid-cols-5 mb-10 items-start">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-5 mb-10 items-start">
               {/* Trend — single-series magnitude over time, monochrome bars */}
               <div className="lg:col-span-3 bg-white border border-[#e5e3df] p-5">
                 <div className="flex items-center gap-2 mb-5">
@@ -496,8 +496,8 @@ export default async function AnalyticsPage({
               )}
             </div>
 
-            <div className="bg-white border border-[#e5e3df] overflow-x-auto">
-              <table className="w-full text-xs min-w-[540px]">
+            <div className="table-cards-wrap bg-white border border-[#e5e3df] overflow-x-auto">
+              <table className="table-cards w-full text-xs min-w-[540px]">
                 <thead>
                   <tr className="border-b border-[#e5e3df] bg-[#f9f8f6]">
                     <th className="text-left px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">
@@ -526,7 +526,7 @@ export default async function AnalyticsPage({
                       key={i}
                       className="hover:bg-[#f9f8f6] transition-colors"
                     >
-                      <td className="px-5 py-4">
+                      <td data-cell="title" className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-[11px] font-semibold text-gray-500 flex-shrink-0">
                             {(u.fullName || u.email)[0].toUpperCase()}
@@ -543,19 +543,19 @@ export default async function AnalyticsPage({
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-right text-gray-600 tabular-nums">
+                      <td data-label="Requests" className="px-5 py-4 text-right text-gray-600 tabular-nums">
                         {u.requests}
                       </td>
-                      <td className="px-5 py-4 text-right text-gray-600 tabular-nums">
+                      <td data-label="Input" className="px-5 py-4 text-right text-gray-600 tabular-nums">
                         {formatTokens(u.inputTokens)}
                       </td>
-                      <td className="px-5 py-4 text-right text-gray-600 tabular-nums">
+                      <td data-label="Output" className="px-5 py-4 text-right text-gray-600 tabular-nums">
                         {formatTokens(u.outputTokens)}
                       </td>
-                      <td className="px-5 py-4 text-right text-gray-600 tabular-nums">
+                      <td data-label="Searches" className="px-5 py-4 text-right text-gray-600 tabular-nums">
                         {u.webSearches}
                       </td>
-                      <td className="px-5 py-4 text-right tabular-nums">
+                      <td data-label="Cost" className="px-5 py-4 text-right tabular-nums">
                         <div className="flex items-center justify-end gap-3">
                           <div className="w-16 h-1 bg-gray-100 rounded-full overflow-hidden hidden sm:block">
                             <div
@@ -576,22 +576,22 @@ export default async function AnalyticsPage({
                 {perUserList.length > 1 && (
                   <tfoot>
                     <tr className="border-t-2 border-[#e5e3df] bg-[#f9f8f6]">
-                      <td className="px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-gray-500">
+                      <td data-cell="title" className="px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-gray-500">
                         Total
                       </td>
-                      <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
+                      <td data-label="Requests" className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
                         {totals.requests}
                       </td>
-                      <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
+                      <td data-label="Input" className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
                         {formatTokens(totals.inputTokens)}
                       </td>
-                      <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
+                      <td data-label="Output" className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
                         {formatTokens(totals.outputTokens)}
                       </td>
-                      <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
+                      <td data-label="Searches" className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
                         {totals.webSearches}
                       </td>
-                      <td className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
+                      <td data-label="Cost" className="px-5 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
                         ${totals.cost.toFixed(4)}
                       </td>
                     </tr>
@@ -626,7 +626,7 @@ function StatCard({ label, value, icon: Icon, sub }: StatCardProps) {
           {label}
         </p>
       </div>
-      <p className="text-2xl font-bold text-gray-900 tabular-nums leading-none">
+      <p className="whitespace-nowrap text-2xl font-bold text-gray-900 tabular-nums leading-none">
         {value}
       </p>
       {sub && (

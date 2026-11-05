@@ -9,6 +9,7 @@ import { TRANSCRIPTION_AUDIO_BUCKET, TRANSCRIPTION_PROVIDER } from '@/lib/transc
 import { OUTLINE_ACCEPT, OUTLINE_EXT_RE, extractOutlineText } from '@/lib/outline-extract'
 import MediaSelect from '@/components/ui/MediaSelect'
 import type { MediaOption } from '@/types'
+import { useKeepScreenOn } from '@/lib/use-mobile'
 
 
 type Phase = 'idle' | 'preparing' | 'transcoding' | 'uploading' | 'creating' | 'error'
@@ -50,6 +51,7 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
   const intervieweeComplete = Object.values(interviewee).every((v) => v.trim())
 
   const busy = phase !== 'idle' && phase !== 'error'
+  useKeepScreenOn(busy)
 
   function addFiles(list: FileList | File[] | null | undefined) {
     if (!list) return
@@ -272,7 +274,7 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
     : 'Transcribe'
 
   return (
-    <div className="rounded-2xl border border-[#e5e3df] bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6 shadow-sm">
       <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Input
           label="Interviewee Full Name *"
@@ -311,14 +313,14 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
           if (!busy) addFiles(e.dataTransfer.files)
         }}
         onClick={() => !busy && inputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-12 text-center transition ${
+        className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 sm:px-6 py-12 text-center transition ${
           dragOver ? 'border-gray-500 bg-[#f7f6f3]' : 'border-[#d4d0c8] bg-[#fcfbf8] hover:border-gray-400'
         } ${busy ? 'pointer-events-none opacity-60' : ''}`}
       >
         <div className="rounded-full bg-white p-3 text-gray-700 shadow-sm">
           <Upload size={18} />
         </div>
-        <p className="mt-4 text-sm font-medium text-gray-900">Drop or select audio file(s)</p>
+        <p className="mt-4 text-sm font-medium text-gray-900"><span className="touch:hidden">Drop or select audio file(s)</span><span className="hidden touch:inline">Tap to choose audio file(s)</span></p>
         <p className="mt-1 text-xs text-gray-500">MP3, WAV, M4A, WEBM and similar · long recordings supported</p>
         <p className="mt-1 text-xs text-gray-400">Split interview? Add up to {MAX_FILES} files — they&apos;re joined in order into one transcript.</p>
         <input
@@ -360,7 +362,7 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
                         type="button"
                         onClick={() => move(i, -1)}
                         disabled={i === 0}
-                        className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                        className="rounded-full p-1.5 touch:p-2.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
                         aria-label="Move up"
                       >
                         <ChevronUp size={15} />
@@ -369,7 +371,7 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
                         type="button"
                         onClick={() => move(i, 1)}
                         disabled={i === files.length - 1}
-                        className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                        className="rounded-full p-1.5 touch:p-2.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
                         aria-label="Move down"
                       >
                         <ChevronDown size={15} />
@@ -379,7 +381,7 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
                   <button
                     type="button"
                     onClick={() => removeAt(i)}
-                    className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                    className="rounded-full p-1.5 touch:p-2.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                     aria-label="Remove file"
                   >
                     <X size={16} />
@@ -398,9 +400,9 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
 
       {/* Optional topic-outline document */}
       <div className="mt-4 rounded-xl border border-dashed border-[#d4d0c8] bg-[#fcfbf8] px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="rounded-lg bg-white p-2 text-gray-600 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:flex-nowrap">
+          <div className="flex min-w-0 flex-1 basis-52 items-center gap-3 sm:flex-initial sm:basis-auto">
+            <div className="flex-shrink-0 rounded-lg bg-white p-2 text-gray-600 shadow-sm">
               <FileText size={16} />
             </div>
             <div className="min-w-0">
@@ -419,7 +421,7 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
               <button
                 type="button"
                 onClick={removeOutline}
-                className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 flex-shrink-0"
+                className="rounded-full p-1.5 touch:p-2.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 flex-shrink-0"
                 aria-label="Remove outline"
               >
                 <X size={16} />
@@ -429,7 +431,7 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
                 type="button"
                 onClick={() => outlineInputRef.current?.click()}
                 disabled={outlineBusy}
-                className="inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:opacity-50 flex-shrink-0"
+                className="inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:opacity-50 flex-shrink-0"
               >
                 {outlineBusy && <Loader2 size={13} className="animate-spin" />}
                 <span>{outlineBusy ? 'Reading…' : 'Add outline'}</span>
@@ -466,6 +468,7 @@ export default function TranscriptionUploader({ userId, media }: { userId: strin
                   ? 'Combining and compressing your recordings in your browser — this runs locally and can take a moment for long files.'
                   : 'Converting the recording in your browser — this runs locally and can take a moment for long files.')
               : 'Uploading audio…'}
+            <span className="hidden touch:inline"> Keep this screen open until it finishes.</span>
           </p>
         </div>
       )}

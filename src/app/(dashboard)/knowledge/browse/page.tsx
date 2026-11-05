@@ -99,10 +99,10 @@ export default async function KnowledgeBrowsePage({ searchParams }: { searchPara
 
   const itemRow = (i: PublishedRow, term = '') => (
     <li key={i.id}>
-      <Link href={`/knowledge/items/${i.id}`} className="group flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-[#faf9f7]">
+      <Link href={`/knowledge/items/${i.id}`} className="group flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-[#faf9f7] sm:px-5">
         <TypeTile type={i.type} size="sm" example={i.is_example} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-gray-900">
+          <p className="line-clamp-2 text-sm font-medium text-gray-900 [overflow-wrap:anywhere] sm:line-clamp-none sm:truncate">
             <Highlight text={i.title} term={term} />
           </p>
           {term && i.description && (
@@ -110,7 +110,7 @@ export default async function KnowledgeBrowsePage({ searchParams }: { searchPara
               <Highlight text={i.description} term={term} />
             </p>
           )}
-          <p className="mt-0.5 truncate text-[11px] text-gray-400">
+          <p className="mt-0.5 text-[11px] text-gray-400 sm:truncate">
             {ITEM_TYPE_LABELS[i.type]} · {deptName.get(i.department_id)}
             {i.topic_id && topicName.get(i.topic_id) ? ` · ${topicName.get(i.topic_id)}` : ''}
             {i.last_published_at ? ` · Updated ${timeAgo(i.last_published_at)}` : ''}
@@ -122,7 +122,7 @@ export default async function KnowledgeBrowsePage({ searchParams }: { searchPara
   )
 
   return (
-    <div className="px-4 sm:px-6 lg:px-10 py-8">
+    <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto">
         <KnowledgeHeader ctx={ctx} active="browse" />
 
@@ -164,7 +164,7 @@ export default async function KnowledgeBrowsePage({ searchParams }: { searchPara
               <>
                 <section>
                   <SectionHeader title={ctx.isAdmin ? 'All departments' : 'Your departments'} count={ctx.departments.length} />
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {ctx.departments.map((d) => {
                       const s = stats.get(d.id) ?? { items: 0, last: null }
                       const guardian = d.guardian_id ? guardianMap.get(d.guardian_id) ?? null : null

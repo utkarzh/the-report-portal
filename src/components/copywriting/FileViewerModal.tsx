@@ -53,28 +53,29 @@ export default function FileViewerModal({ endpoint, onClose }: { endpoint: strin
   const pdf = file ? isPdf(file) : false
 
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 z-[55] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-sm bg-white shadow-xl">
-        <div className="flex items-center justify-between gap-3 border-b border-[#e5e3df] px-5 py-3">
-          <div className="flex min-w-0 items-center gap-2">
+      <div className="modal-sheet relative flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-sm bg-white shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[#e5e3df] px-4 py-3 sm:flex-nowrap sm:px-5">
+          {/* Phones: the filename gets its own line, clear of the pinned close button. */}
+          <div className="flex w-full min-w-0 items-center gap-2 pr-8 sm:w-auto sm:pr-0">
             <FileText size={15} className="flex-shrink-0 text-gray-400" />
             <p className="truncate text-sm font-semibold text-gray-900">{file?.filename || 'Loading…'}</p>
-            {file && <span className="flex-shrink-0 text-[11px] text-gray-400">{file.charCount.toLocaleString()} characters</span>}
+            {file && <span className="hidden flex-shrink-0 text-[11px] text-gray-400 sm:inline">{file.charCount.toLocaleString()} characters</span>}
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
             {pdf && file?.url && (
               <div className="flex overflow-hidden rounded-md border border-[#e5e3df] text-xs">
-                <button onClick={() => setMode('original')} className={`px-2.5 py-1 ${mode === 'original' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Original</button>
-                <button onClick={() => setMode('text')} className={`px-2.5 py-1 ${mode === 'text' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Text</button>
+                <button onClick={() => setMode('original')} className={`px-2.5 py-1 touch:py-2 ${mode === 'original' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Original</button>
+                <button onClick={() => setMode('text')} className={`px-2.5 py-1 touch:py-2 ${mode === 'text' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Text</button>
               </div>
             )}
             {file?.url && (
-              <a href={file.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-[#e5e3df] px-2.5 py-1 text-xs text-gray-700 hover:border-gray-400">
+              <a href={file.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-[#e5e3df] px-2.5 py-1 touch:py-2 text-xs text-gray-700 hover:border-gray-400">
                 <ExternalLink size={12} /> Open original
               </a>
             )}
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-700" aria-label="Close">
+            <button onClick={onClose} className="absolute right-2 top-2 p-2 text-gray-400 hover:text-gray-700 sm:static sm:p-0" aria-label="Close">
               <X size={16} />
             </button>
           </div>
@@ -82,7 +83,7 @@ export default function FileViewerModal({ endpoint, onClose }: { endpoint: strin
 
         <div className="min-h-0 flex-1 overflow-auto bg-[#faf9f7]">
           {error ? (
-            <p className="p-6 text-sm text-red-600">{error}</p>
+            <p className="p-4 sm:p-6 text-sm text-red-600">{error}</p>
           ) : !file ? (
             <div className="flex h-full items-center justify-center">
               <Loader2 size={18} className="animate-spin text-gray-400" />
@@ -90,7 +91,7 @@ export default function FileViewerModal({ endpoint, onClose }: { endpoint: strin
           ) : mode === 'original' && pdf && file.url ? (
             <iframe src={file.url} title={file.filename} className="h-full w-full border-0 bg-white" />
           ) : (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {!pdf && (
                 <p className="mb-3 text-[11px] text-gray-500">
                   Showing the text extracted from this file — exactly what the AI reads. Use “Open original” to see the file itself.
