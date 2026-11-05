@@ -621,6 +621,7 @@ Three critical findings were fixed. The client chose: market and amount check; v
   - Closed projects are out of the overview grid (folded "Closed projects" section), the review queue, its nav badge and the Friday backlog email.
   - The field view shows a banner and hides every action.
   - The field "My Projects" pill is grey when closed (it was always green).
+- **Analytics counts active projects only by default** (client request, Nov 2026). "Include closed" switches every figure at once: spend, flag rate, Funds outstanding, Pending review, directors. `GET /api/finance/analytics?includeClosed=1`, and `?closed=1` on the page so a refresh or shared link keeps the choice. Spend by project is sorted highest first, links to each project and labels closed ones.
 - **Review backlog** (77 of 157 tickets pending on 26 Oct 2026, 39 for more than 14 days, oldest 49):
   - [WaitingBadge](src/components/finance/WaitingBadge.tsx) on every pending ticket: grey, amber from 7 days, red from 14.
   - A "Waiting for review · longest first" sort (`waiting_desc`), the review queue's default.
