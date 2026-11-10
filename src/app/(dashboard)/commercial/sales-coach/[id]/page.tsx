@@ -21,68 +21,71 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
 
-  // Heal a transcription that finished on AssemblyAI while nobody was polling.
-  await reconcilePendingNegotiations({ id: params.id })
-
   // RLS scopes this to the owner; admins see every negotiation.
   const supabase = createSupabaseServerClient()
-  const { data } = await supabase
-    .from('sales_coach_negotiations')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  const loadNegotiation = () =>
+    supabase.from('sales_coach_negotiations').select('*').eq('id', params.id).single()
+  let { data } = await loadNegotiation()
   if (!data) notFound()
+
+  // Heal a transcription that finished on AssemblyAI while nobody was polling.
+  // Only a row still at 'transcribing' with a job id can change, so the check
+  // (and the re-read) is skipped for every other negotiation.
+  if (data.stage === 'transcribing' && data.transcribe_job_id) {
+    const healed = await reconcilePendingNegotiations({ id: params.id })
+    if (healed > 0) data = (await loadNegotiation()).data ?? data
+  }
   const n = data as SalesCoachNegotiation
 
-  // Short-lived signed URL for the private audio object (service role).
-  let audioUrl: string | null = null
-  if (n.audio_path) {
-    const { data: signed } = await supabaseAdmin
-      .storage
-      .from(SALES_COACH_AUDIO_BUCKET)
-      .createSignedUrl(n.audio_path, 60 * 60)
-    audioUrl = signed?.signedUrl ?? null
-  }
+  // Everything below depends only on `n`, so it's fetched in parallel: one
+  // database round trip instead of five in a row.
+  const [signed, msgResult, correctionResult, latestCopyResult, creator] = await Promise.all([
+    // Short-lived signed URL for the private audio object (service role).
+    n.audio_path
+      ? supabaseAdmin.storage.from(SALES_COACH_AUDIO_BUCKET).createSignedUrl(n.audio_path, 60 * 60)
+      : Promise.resolve(null),
+    supabase
+      .from('sales_coach_messages')
+      .select('id, negotiation_id, role, content, created_at')
+      .eq('negotiation_id', n.id)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('sales_coach_corrections')
+      .select('*')
+      .eq('negotiation_id', n.id)
+      .order('created_at', { ascending: true }),
+    // The newest "Re-evaluate" copy of this negotiation (all copies point at
+    // the original), so an older card can point to it. Before migration 036 the
+    // column doesn't exist — the query fails and there's simply no link.
+    supabase
+      .from('sales_coach_negotiations')
+      .select('id')
+      .eq('reevaluated_from', n.reevaluated_from || n.id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    // Admins see who submitted it (same approach as the other modules).
+    profile.role === 'admin' && n.user_id
+      ? supabaseAdmin.from('profiles').select('full_name').eq('id', n.user_id).single()
+      : Promise.resolve(null),
+  ])
 
-  const { data: msgRows } = await supabase
-    .from('sales_coach_messages')
-    .select('id, negotiation_id, role, content, created_at')
-    .eq('negotiation_id', n.id)
-    .order('created_at', { ascending: true })
-  const messages = (msgRows || []) as SalesCoachMessage[]
+  const audioUrl: string | null = signed?.data?.signedUrl ?? null
+  const messages = (msgResult.data || []) as SalesCoachMessage[]
+  const corrections = (correctionResult.data || []) as SalesCoachCorrection[]
 
-  const { data: correctionRows } = await supabase
-    .from('sales_coach_corrections')
-    .select('*')
-    .eq('negotiation_id', n.id)
-    .order('created_at', { ascending: true })
-  const corrections = (correctionRows || []) as SalesCoachCorrection[]
-
-  // The newest "Re-evaluate" copy of this negotiation (all copies point at
-  // the original), so an older card can point to it. Before migration 036 the
-  // column doesn't exist — the query fails and there's simply no link.
   let newerReevaluationId: string | null = null
-  const { data: latestCopy, error: latestCopyError } = await supabase
-    .from('sales_coach_negotiations')
-    .select('id')
-    .eq('reevaluated_from', n.reevaluated_from || n.id)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { data: latestCopy, error: latestCopyError } = latestCopyResult
   if (latestCopy?.id && latestCopy.id !== n.id) newerReevaluationId = latestCopy.id
   else if (latestCopyError && !isMissingReevaluatedColumn(latestCopyError)) {
     console.error('Could not look up re-evaluations:', latestCopyError)
   }
 
-  // Admins see who submitted it (same approach as the other modules).
   let creatorName: string | null = null
   if (profile.role === 'admin') {
-    if (n.user_id) {
-      const { data: creator } = await supabaseAdmin.from('profiles').select('full_name').eq('id', n.user_id).single()
-      creatorName = creator?.full_name || n.submitted_by_name || 'Unknown user'
-    } else {
-      creatorName = n.submitted_by_name ? `${n.submitted_by_name} (deleted user)` : 'Deleted user'
-    }
+    creatorName = n.user_id
+      ? creator?.data?.full_name || n.submitted_by_name || 'Unknown user'
+      : n.submitted_by_name ? `${n.submitted_by_name} (deleted user)` : 'Deleted user'
   }
 
   return (

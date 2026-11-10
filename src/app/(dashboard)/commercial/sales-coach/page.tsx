@@ -43,10 +43,6 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
   if (!profile) redirect('/login')
   const isAdmin = profile.role === 'admin'
 
-  // Heal any audio submission that finished transcribing while no tab was
-  // polling, so it doesn't sit at "Transcribing" in the list.
-  await reconcilePendingNegotiations(isAdmin ? {} : { userId: profile.id })
-
   const search = typeof searchParams.search === 'string' ? searchParams.search.trim() : ''
   const page = Math.max(1, parseInt(searchParams.page || '1', 10))
   const from = (page - 1) * PAGE_SIZE
@@ -73,8 +69,22 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
   }
   // reevaluated_from marks a re-evaluation (migration 036); before 036 the
   // column doesn't exist, so list without it rather than fail.
-  let result = await runQuery(`${LIST_COLUMNS}, reevaluated_from`)
-  if (result.error && isMissingReevaluatedColumn(result.error)) result = await runQuery(LIST_COLUMNS)
+  const runList = async () => {
+    const withColumn = await runQuery(`${LIST_COLUMNS}, reevaluated_from`)
+    return withColumn.error && isMissingReevaluatedColumn(withColumn.error) ? runQuery(LIST_COLUMNS) : withColumn
+  }
+
+  // Heal any audio submission that finished transcribing while no tab was
+  // polling, so it doesn't sit at "Transcribing" in the list. It runs alongside
+  // the list and the privacy-notice read; the list is only read again in the
+  // rare case a row changed.
+  const [healed, firstResult, { data: ack }] = await Promise.all([
+    reconcilePendingNegotiations(isAdmin ? {} : { userId: profile.id }),
+    runList(),
+    // Privacy-notice acknowledgement isn't in the header profile — read it directly.
+    supabaseAdmin.from('profiles').select('sales_coach_privacy_ack_at').eq('id', profile.id).single(),
+  ])
+  const result = healed > 0 ? await runList() : firstResult
   const rows = result.data as unknown as ListRow[] | null
   const count = result.count
   const totalCount = count || 0
@@ -89,12 +99,6 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
     }
   }
 
-  // Privacy-notice acknowledgement isn't in the header profile — read it directly.
-  const { data: ack } = await supabaseAdmin
-    .from('profiles')
-    .select('sales_coach_privacy_ack_at')
-    .eq('id', profile.id)
-    .single()
   const acknowledged = Boolean(ack?.sales_coach_privacy_ack_at)
 
   const items = (rows || []).map((r) => ({

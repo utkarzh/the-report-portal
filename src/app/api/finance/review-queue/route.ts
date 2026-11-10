@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { requireFinanceAdmin } from '@/lib/finance-auth'
 import { loadExpenseComments } from '@/lib/finance-comments'
+import { signFinancePaths } from '@/lib/finance-attachments'
 
 // GET /api/finance/review-queue — brief E-01: "a review queue of logged
 // expenses ... spans all my projects, filterable by project, status, and
@@ -41,14 +42,17 @@ export async function GET(request: NextRequest) {
   // can show the image beside the extracted data (brief E-01). Each ticket's
   // comment thread comes along (migration 042), so a reply to a rejection is
   // right there when it's reviewed again.
-  const commentsByExpense = await loadExpenseComments(supabaseAdmin, (expenses ?? []).map(e => e.id))
-  const withUrls = await Promise.all((expenses ?? []).map(async (e) => {
-    const comments = commentsByExpense[e.id] ?? []
-    const path = e.finance_receipts?.file_path || e.receipt_file_path
-    if (!path) return { ...e, receiptUrl: null, comments }
-    const { data: signed } = await supabaseAdmin.storage.from('finance-receipts').createSignedUrl(path, 3600)
-    return { ...e, receiptUrl: signed?.signedUrl ?? null, comments }
-  }))
+  // Threads and links are fetched together, the links in one batch.
+  const rows = expenses ?? []
+  const pathOf = (e: (typeof rows)[number]) => e.finance_receipts?.file_path || e.receipt_file_path
+  const [commentsByExpense, receiptUrls] = await Promise.all([
+    loadExpenseComments(supabaseAdmin, rows.map(e => e.id)),
+    signFinancePaths(supabaseAdmin, rows.map(pathOf)),
+  ])
+  const withUrls = rows.map((e) => {
+    const path = pathOf(e)
+    return { ...e, receiptUrl: path ? receiptUrls.get(path) ?? null : null, comments: commentsByExpense[e.id] ?? [] }
+  })
 
   return NextResponse.json({ expenses: withUrls })
 }

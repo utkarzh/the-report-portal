@@ -6,7 +6,7 @@ import { refreshConversionFlags } from '@/lib/finance-review'
 import { isFinanceAdmin } from '@/lib/access'
 import { computeBalance, spendByCategory } from '@/lib/finance'
 import { loadExpenseComments } from '@/lib/finance-comments'
-import { signFundingAttachments } from '@/lib/finance-attachments'
+import { signFinancePaths, signFundingAttachments } from '@/lib/finance-attachments'
 import { projectWeekAnchor } from '@/lib/finance-weeks'
 
 interface Params {
@@ -31,47 +31,56 @@ export async function GET(request: Request, { params }: Params) {
     if (!membership) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const { data: project, error } = await supabaseAdmin
-    .from('finance_projects')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  // Access was checked above, so everything is read in parallel: one database
+  // round trip instead of six in a row.
+  const [
+    { data: project, error },
+    { data: members },
+    { data: rawFundings },
+    { data: rawExpenses },
+    { data: transfersIn },
+    { data: transfersOut },
+  ] = await Promise.all([
+    supabaseAdmin.from('finance_projects').select('*').eq('id', params.id).single(),
+    supabaseAdmin
+      .from('finance_project_members')
+      .select('id, user_id, project_role, created_at, profiles!finance_project_members_user_id_fkey(full_name, email)')
+      .eq('project_id', params.id)
+      .order('project_role'),
+    supabaseAdmin
+      .from('finance_fundings')
+      .select('*, profiles!finance_fundings_recorded_by_fkey(full_name, email)')
+      .eq('project_id', params.id)
+      .order('date_sent', { ascending: true }),
+    supabaseAdmin
+      .from('finance_expenses')
+      .select('*, finance_expense_flags(*), finance_receipts(file_path)')
+      .eq('project_id', params.id)
+      .order('expense_date', { ascending: false }),
+    supabaseAdmin.from('finance_transfers').select('*').eq('to_project_id', params.id),
+    supabaseAdmin.from('finance_transfers').select('*').eq('from_project_id', params.id),
+  ])
   if (error || !project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { data: members } = await supabaseAdmin
-    .from('finance_project_members')
-    .select('id, user_id, project_role, created_at, profiles!finance_project_members_user_id_fkey(full_name, email)')
-    .eq('project_id', params.id)
-    .order('project_role')
-
-  const { data: rawFundings } = await supabaseAdmin
-    .from('finance_fundings')
-    .select('*, profiles!finance_fundings_recorded_by_fkey(full_name, email)')
-    .eq('project_id', params.id)
-    .order('date_sent', { ascending: true })
-  const fundings = await signFundingAttachments(supabaseAdmin, rawFundings ?? [])
-
-  const { data: rawExpenses } = await supabaseAdmin
-    .from('finance_expenses')
-    .select('*, finance_expense_flags(*), finance_receipts(file_path)')
-    .eq('project_id', params.id)
-    .order('expense_date', { ascending: false })
-
   // Signed URLs so the ledger can show the receipt (and, if present, the
-  // optional exchange-rate proof photo) beside each line without a second
-  // round trip per row — and each ticket's comment thread (migration 042).
-  const commentsByExpense = await loadExpenseComments(supabaseAdmin, (rawExpenses ?? []).map(e => e.id))
-  const expenses = await Promise.all((rawExpenses ?? []).map(async (e) => {
-    const path = e.finance_receipts?.file_path || e.receipt_file_path
-    const receiptUrl = path ? (await supabaseAdmin.storage.from('finance-receipts').createSignedUrl(path, 3600)).data?.signedUrl ?? null : null
-    const exchangeRateProofUrl = e.exchange_rate_proof_path
-      ? (await supabaseAdmin.storage.from('finance-receipts').createSignedUrl(e.exchange_rate_proof_path, 3600)).data?.signedUrl ?? null
-      : null
-    return { ...e, receiptUrl, exchangeRateProofUrl, comments: commentsByExpense[e.id] ?? [] }
-  }))
-
-  const { data: transfersIn } = await supabaseAdmin.from('finance_transfers').select('*').eq('to_project_id', params.id)
-  const { data: transfersOut } = await supabaseAdmin.from('finance_transfers').select('*').eq('from_project_id', params.id)
+  // optional exchange-rate proof photo) beside each line, signed in one batch
+  // — and each ticket's comment thread (migration 042), fetched alongside.
+  const expenseRows = rawExpenses ?? []
+  const receiptPathOf = (e: (typeof expenseRows)[number]) => e.finance_receipts?.file_path || e.receipt_file_path
+  const [fundings, commentsByExpense, receiptUrls] = await Promise.all([
+    signFundingAttachments(supabaseAdmin, rawFundings ?? []),
+    loadExpenseComments(supabaseAdmin, expenseRows.map(e => e.id)),
+    signFinancePaths(supabaseAdmin, expenseRows.flatMap(e => [receiptPathOf(e), e.exchange_rate_proof_path])),
+  ])
+  const expenses = expenseRows.map((e) => {
+    const path = receiptPathOf(e)
+    return {
+      ...e,
+      receiptUrl: path ? receiptUrls.get(path) ?? null : null,
+      exchangeRateProofUrl: e.exchange_rate_proof_path ? receiptUrls.get(e.exchange_rate_proof_path) ?? null : null,
+      comments: commentsByExpense[e.id] ?? [],
+    }
+  })
 
   return NextResponse.json({
     project,

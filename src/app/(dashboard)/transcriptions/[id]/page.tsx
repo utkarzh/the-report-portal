@@ -16,19 +16,22 @@ export default async function TranscriptionDetailPage({ params }: { params: { id
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
 
-  // If this transcript finished on AssemblyAI while no tab was polling, persist
-  // it now so the workspace loads the completed transcript instead of spinning.
-  await reconcilePendingTranscriptions({ id: params.id })
-
   // RLS: a user only sees their own row; an admin sees all.
   const supabase = createSupabaseServerClient()
-  const { data } = await supabase
-    .from('transcriptions')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  const loadTranscription = () =>
+    supabase.from('transcriptions').select('*').eq('id', params.id).single()
+  let { data } = await loadTranscription()
 
   if (!data) notFound()
+
+  // If this transcript finished on AssemblyAI while no tab was polling, persist
+  // it now so the workspace loads the completed transcript instead of spinning.
+  // Only a row still at 'transcribing' with a job id can change, so the check
+  // (and the re-read) is skipped for every other transcript.
+  if (data.status === 'transcribing' && data.transcribe_job_id) {
+    const healed = await reconcilePendingTranscriptions({ id: params.id })
+    if (healed > 0) data = (await loadTranscription()).data ?? data
+  }
   const transcription = data as Transcription
 
   // Short-lived signed URL for the private audio object (service role).

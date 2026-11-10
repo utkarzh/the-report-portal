@@ -46,6 +46,42 @@ export async function removeUnusedFinanceFiles(projectId: string, paths: (string
   }
 }
 
+// Signed links for many files in the private finance-receipts bucket at once.
+// One Storage request per 100 paths, instead of one per file: a ledger of 150
+// tickets (receipt + rate proof) used to make up to 300 requests on every page
+// load. Pass the request-scoped client where storage RLS should decide, as with
+// a single createSignedUrl. If a batch call fails outright, its paths are
+// signed one by one, so a ledger never loses its links over this.
+const SIGN_BATCH = 100
+
+export async function signFinancePaths(
+  client: Pick<SupabaseClient, 'storage'>,
+  paths: (string | null | undefined)[],
+  expiresIn = 3600,
+): Promise<Map<string, string | null>> {
+  const unique = Array.from(new Set(paths.filter((p): p is string => !!p)))
+  const urls = new Map<string, string | null>()
+  const bucket = client.storage.from('finance-receipts')
+  const batches: string[][] = []
+  for (let i = 0; i < unique.length; i += SIGN_BATCH) batches.push(unique.slice(i, i + SIGN_BATCH))
+
+  await Promise.all(batches.map(async (batch) => {
+    const { data, error } = await bucket.createSignedUrls(batch, expiresIn)
+    if (!error && data) {
+      for (const item of data) {
+        if (item.path) urls.set(item.path, item.error ? null : item.signedUrl ?? null)
+      }
+    }
+    // Anything the batch didn't answer for (or a failed batch): one by one.
+    const missing = batch.filter((p) => !urls.has(p))
+    await Promise.all(missing.map(async (p) => {
+      const single = await bucket.createSignedUrl(p, expiresIn)
+      urls.set(p, single.data?.signedUrl ?? null)
+    }))
+  }))
+  return urls
+}
+
 export type SignedAttachment = FinanceAttachment & { url: string | null }
 
 // Short-lived signed links for every evidence file on each funding, so both
@@ -58,14 +94,12 @@ export async function signFundingAttachments<T extends Pick<FinanceFunding, 'pro
   client: Pick<SupabaseClient, 'storage'>,
   fundings: T[],
 ): Promise<(T & { attachments: SignedAttachment[] })[]> {
-  return Promise.all(fundings.map(async (f) => {
-    const files: FinanceAttachment[] = f.proof_files?.length
-      ? f.proof_files
-      : f.proof_image_path ? [{ path: f.proof_image_path, name: 'Evidence' }] : []
-    const attachments = await Promise.all(files.map(async (file) => {
-      const { data } = await client.storage.from('finance-receipts').createSignedUrl(file.path, 3600)
-      return { ...file, url: data?.signedUrl ?? null }
-    }))
-    return { ...f, attachments }
+  const filesOf = (f: T): FinanceAttachment[] => f.proof_files?.length
+    ? f.proof_files
+    : f.proof_image_path ? [{ path: f.proof_image_path, name: 'Evidence' }] : []
+  const urls = await signFinancePaths(client, fundings.flatMap((f) => filesOf(f).map((file) => file.path)))
+  return fundings.map((f) => ({
+    ...f,
+    attachments: filesOf(f).map((file) => ({ ...file, url: urls.get(file.path) ?? null })),
   }))
 }

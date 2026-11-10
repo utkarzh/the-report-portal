@@ -20,32 +20,36 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
 
-  // Heal any transcripts that finished on AssemblyAI while no tab was polling,
-  // so they don't sit stuck at 'transcribing' in the list below.
-  await reconcilePendingTranscriptions(
-    profile.role === 'user' ? { userId: profile.id } : {},
-  )
-
   const search = typeof searchParams.search === 'string' ? searchParams.search.trim() : ''
   const page = Math.max(1, parseInt(searchParams.page || '1', 10))
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
   const supabase = createSupabaseServerClient()
-  let query = supabase
-    .from('transcriptions')
-    .select('id, user_id, title, audio_filename, status, created_at, tokens_total, cost_usd', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(from, to)
+  const runList = () => {
+    let query = supabase
+      .from('transcriptions')
+      .select('id, user_id, title, audio_filename, status, created_at, tokens_total, cost_usd', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, to)
 
-  if (profile.role === 'user') {
-    query = query.eq('user_id', profile.id)
-  }
-  if (search) {
-    query = query.or(orIlikeFilter(['title', 'audio_filename'], search))
+    if (profile.role === 'user') {
+      query = query.eq('user_id', profile.id)
+    }
+    if (search) {
+      query = query.or(orIlikeFilter(['title', 'audio_filename'], search))
+    }
+    return query
   }
 
-  const { data: transcriptions, count } = await query
+  // Heal any transcripts that finished on AssemblyAI while no tab was polling,
+  // so they don't sit stuck at 'transcribing' in the list. Runs alongside the
+  // list query; the list is only read again in the rare case a row changed.
+  const [healed, firstList] = await Promise.all([
+    reconcilePendingTranscriptions(profile.role === 'user' ? { userId: profile.id } : {}),
+    runList(),
+  ])
+  const { data: transcriptions, count } = healed > 0 ? await runList() : firstList
   const totalCount = count || 0
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 

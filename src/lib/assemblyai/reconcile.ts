@@ -15,7 +15,9 @@ import { getTranscript, formatSpeakerTranscript, utteranceSegments } from './cli
 //
 // OpenAI-path rows have a NULL transcribe_job_id and are skipped, so this is a
 // no-op for that provider.
-export async function reconcilePendingTranscriptions(opts: { userId?: string; id?: string } = {}) {
+// Returns how many rows it changed, so a caller that read rows in parallel
+// knows whether to read them again.
+export async function reconcilePendingTranscriptions(opts: { userId?: string; id?: string } = {}): Promise<number> {
   let query = supabaseAdmin
     .from('transcriptions')
     .select('id, transcribe_job_id')
@@ -26,10 +28,10 @@ export async function reconcilePendingTranscriptions(opts: { userId?: string; id
   if (opts.userId) query = query.eq('user_id', opts.userId)
 
   const { data: rows } = await query
-  if (!rows?.length) return
+  if (!rows?.length) return 0
 
-  await Promise.all(
-    rows.map(async (r) => {
+  const changed = await Promise.all(
+    rows.map(async (r): Promise<boolean> => {
       try {
         const job = await getTranscript(r.transcribe_job_id as string)
         if (job.status === 'completed') {
@@ -37,19 +39,24 @@ export async function reconcilePendingTranscriptions(opts: { userId?: string; id
             .from('transcriptions')
             .update({ status: 'transcribed', raw_transcript: formatSpeakerTranscript(job), error: null })
             .eq('id', r.id)
+          return true
         } else if (job.status === 'error') {
           await supabaseAdmin
             .from('transcriptions')
             .update({ status: 'failed', error: job.error || 'Transcription failed' })
             .eq('id', r.id)
+          return true
         }
         // queued | processing → leave as-is; a later load will retry.
+        return false
       } catch {
         // Transient AssemblyAI/network error — leave the row untouched so the
         // next page load reconciles it. Never block the page render on this.
+        return false
       }
     }),
   )
+  return changed.filter(Boolean).length
 }
 
 // Same safety net for the Sales Coach module, whose audio submissions go
@@ -59,7 +66,7 @@ export async function reconcilePendingTranscriptions(opts: { userId?: string; id
 // `system_transcript` and the stage advanced to 'transcribed'. Rows at
 // 'transcribing' with NO job id are left alone — the workspace submits the job
 // on its next mount (or the user retries).
-export async function reconcilePendingNegotiations(opts: { userId?: string; id?: string } = {}) {
+export async function reconcilePendingNegotiations(opts: { userId?: string; id?: string } = {}): Promise<number> {
   let query = supabaseAdmin
     .from('sales_coach_negotiations')
     .select('id, transcribe_job_id')
@@ -70,10 +77,10 @@ export async function reconcilePendingNegotiations(opts: { userId?: string; id?:
   if (opts.userId) query = query.eq('user_id', opts.userId)
 
   const { data: rows } = await query
-  if (!rows?.length) return
+  if (!rows?.length) return 0
 
-  await Promise.all(
-    rows.map(async (r) => {
+  const changed = await Promise.all(
+    rows.map(async (r): Promise<boolean> => {
       try {
         const job = await getTranscript(r.transcribe_job_id as string)
         if (job.status === 'completed') {
@@ -87,15 +94,20 @@ export async function reconcilePendingNegotiations(opts: { userId?: string; id?:
               error: null,
             })
             .eq('id', r.id)
+          return true
         } else if (job.status === 'error') {
           await supabaseAdmin
             .from('sales_coach_negotiations')
             .update({ stage: 'failed', error: job.error || 'Transcription failed' })
             .eq('id', r.id)
+          return true
         }
+        return false
       } catch {
         // Transient — leave untouched; the next page load reconciles it.
+        return false
       }
     }),
   )
+  return changed.filter(Boolean).length
 }

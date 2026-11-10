@@ -7,7 +7,7 @@ import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { computeBalance, spendByCategory } from '@/lib/finance'
 import { loadExpenseComments } from '@/lib/finance-comments'
-import { signFundingAttachments } from '@/lib/finance-attachments'
+import { signFinancePaths, signFundingAttachments } from '@/lib/finance-attachments'
 import { formatSignedAmount } from '@/lib/finance-ledger'
 import { projectWeekAnchor } from '@/lib/finance-weeks'
 import FieldProjectActions from '@/components/finance/FieldProjectActions'
@@ -23,32 +23,40 @@ export default async function FieldProjectPage({ params }: Props) {
   const profile = getProfileFromHeaders()
   if (!profile) redirect('/login')
 
+  // Every query below only needs the project id from the URL, so they run in
+  // parallel: one database round trip instead of six in a row. RLS still
+  // scopes each one; a project the user can't see comes back empty → 404.
   const supabase = createSupabaseServerClient()
-  const { data: project } = await supabase
-    .from('finance_projects')
-    .select('*')
-    .eq('id', params.projectId)
-    .single()
+  const projectId = params.projectId
+  const [
+    { data: project },
+    { data: fundings },
+    { data: expenses },
+    { data: transfersIn },
+    { data: transfersOut },
+    { data: membership },
+  ] = await Promise.all([
+    supabase.from('finance_projects').select('*').eq('id', projectId).single(),
+    supabase
+      .from('finance_fundings')
+      .select('*, profiles!finance_fundings_recorded_by_fkey(full_name, email)')
+      .eq('project_id', projectId)
+      .order('date_sent', { ascending: false }),
+    supabase
+      .from('finance_expenses')
+      .select('*, finance_receipts(file_path), finance_expense_flags(*)')
+      .eq('project_id', projectId)
+      .order('expense_date', { ascending: false }),
+    supabase.from('finance_transfers').select('*').eq('to_project_id', projectId),
+    supabase.from('finance_transfers').select('*').eq('from_project_id', projectId),
+    supabase
+      .from('finance_project_members')
+      .select('project_role')
+      .eq('project_id', projectId)
+      .eq('user_id', profile.id)
+      .maybeSingle(),
+  ])
   if (!project) notFound()
-
-  const { data: fundings } = await supabase
-    .from('finance_fundings')
-    .select('*, profiles!finance_fundings_recorded_by_fkey(full_name, email)')
-    .eq('project_id', project.id)
-    .order('date_sent', { ascending: false })
-  const { data: expenses } = await supabase
-    .from('finance_expenses')
-    .select('*, finance_receipts(file_path), finance_expense_flags(*)')
-    .eq('project_id', project.id)
-    .order('expense_date', { ascending: false })
-  const { data: transfersIn } = await supabase.from('finance_transfers').select('*').eq('to_project_id', project.id)
-  const { data: transfersOut } = await supabase.from('finance_transfers').select('*').eq('from_project_id', project.id)
-  const { data: membership } = await supabase
-    .from('finance_project_members')
-    .select('project_role')
-    .eq('project_id', project.id)
-    .eq('user_id', profile.id)
-    .maybeSingle()
   const isDirector = membership?.project_role === 'director'
 
   const rawExpenses = (expenses ?? []) as (FinanceExpense & {
@@ -59,36 +67,40 @@ export default async function FieldProjectPage({ params }: Props) {
   // Funding evidence is shown to the field team too (several files per
   // funding since migration 042) — signed with the request-scoped client, so
   // storage RLS decides, same as the receipts below.
-  const fundingList = await signFundingAttachments(
-    supabase,
-    (fundings ?? []) as (FinanceFunding & { profiles: { full_name: string | null; email: string } | null })[],
-  )
+  //
+  // A field user should be able to see what they actually uploaded — not
+  // just the extracted text — especially when it was rejected as illegible
+  // or "looks fake" and they need to check what went wrong. Signed with the
+  // same request-scoped client, relying on the existing storage RLS that lets
+  // any project member read their own project's receipts (see migration 017).
+  // The path can live on either finance_receipts.file_path (the newer,
+  // dedicated-row model) or the older receipt_file_path column directly —
+  // same fallback the admin review-queue route uses. Funding files, receipt
+  // links and comment threads are fetched together, links in one batch.
+  const receiptPathOf = (e: (typeof rawExpenses)[number]) => e.finance_receipts?.file_path || e.receipt_file_path
+  const [fundingList, commentsByExpense, receiptUrls] = await Promise.all([
+    signFundingAttachments(
+      supabase,
+      (fundings ?? []) as (FinanceFunding & { profiles: { full_name: string | null; email: string } | null })[],
+    ),
+    loadExpenseComments(supabase, rawExpenses.map(e => e.id)),
+    signFinancePaths(supabase, rawExpenses.flatMap(e => [receiptPathOf(e), e.exchange_rate_proof_path])),
+  ])
+  const expensesWithReceipts = rawExpenses.map((e) => {
+    const path = receiptPathOf(e)
+    return {
+      ...e,
+      receiptUrl: path ? receiptUrls.get(path) ?? null : null,
+      exchangeRateProofUrl: e.exchange_rate_proof_path ? receiptUrls.get(e.exchange_rate_proof_path) ?? null : null,
+      comments: commentsByExpense[e.id] ?? [],
+    }
+  })
   const { balance, totalFunded, verifiedSpend, pendingSpend } = computeBalance(
     fundingList, expenseList, (transfersIn ?? []) as FinanceTransfer[], (transfersOut ?? []) as FinanceTransfer[],
   )
   const categorySpend = spendByCategory(expenseList)
   const currencySymbol = project.settlement_currency === 'USD' ? '$' : '€'
 
-  // A field user should be able to see what they actually uploaded — not
-  // just the extracted text — especially when it was rejected as illegible
-  // or "looks fake" and they need to check what went wrong. The signed URL
-  // is generated with the same request-scoped client used above (not the
-  // service role), relying on the existing storage RLS that already lets any
-  // project member read their own project's receipts (see migration 017).
-  // The path can live on either finance_receipts.file_path (the newer,
-  // dedicated-row model) or the older receipt_file_path column directly —
-  // same fallback the admin review-queue route uses.
-  const commentsByExpense = await loadExpenseComments(supabase, rawExpenses.map(e => e.id))
-  const expensesWithReceipts = await Promise.all(
-    rawExpenses.map(async (e) => {
-      const path = e.finance_receipts?.file_path || e.receipt_file_path
-      const receiptUrl = path ? (await supabase.storage.from('finance-receipts').createSignedUrl(path, 3600)).data?.signedUrl ?? null : null
-      const exchangeRateProofUrl = e.exchange_rate_proof_path
-        ? (await supabase.storage.from('finance-receipts').createSignedUrl(e.exchange_rate_proof_path, 3600)).data?.signedUrl ?? null
-        : null
-      return { ...e, receiptUrl, exchangeRateProofUrl, comments: commentsByExpense[e.id] ?? [] }
-    }),
-  )
   const pendingCount = rawExpenses.filter(e => e.status === 'pending').length
   // Closed by Finance: read-only — no uploads, fixes or replies (the API
   // refuses them too).
