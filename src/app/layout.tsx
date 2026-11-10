@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next'
+import { Suspense } from 'react'
 import { Inter, Source_Serif_4 } from 'next/font/google'
+import NavigationProgress from '@/components/layout/NavigationProgress'
 import './globals.css'
 
 // Self-hosted at build time (no runtime request to fonts.googleapis.com) — see
@@ -46,7 +48,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${sourceSerif.variable}`}>
-      <body>{children}</body>
+      <body>
+        {/* Suspense: it reads useSearchParams, which would otherwise opt
+            every static page (e.g. /login) out of static rendering. */}
+        <Suspense fallback={null}>
+          <NavigationProgress />
+        </Suspense>
+        {children}
+      </body>
     </html>
   )
 }

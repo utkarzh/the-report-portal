@@ -1,4 +1,5 @@
 {
+  "regions": ["icn1"],
   "crons": [
     { "path": "/api/cron/finance-reminders?type=midweek", "schedule": "0 9 * * 3" },
     { "path": "/api/cron/finance-reminders?type=friday", "schedule": "0 9 * * 5" }
