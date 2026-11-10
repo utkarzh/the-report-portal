@@ -3,7 +3,14 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens, QUESTIONS_TOKEN_RESERVE, SONNET_PRICING } from '@/lib/claude/tokens'
-import { isTranslationLanguage, splitTranscriptForTranslation, translationPartProblem } from '@/lib/transcriptions'
+import {
+  isTranslationLanguage,
+  splitTranscriptForTranslation,
+  stripTranscriptTags,
+  translationPartProblem,
+  translationRequest,
+  translationSystemPrompt,
+} from '@/lib/transcriptions'
 import { logUsageEvent } from '@/lib/claude/usage'
 
 const TRANSLATE_MODEL = 'claude-sonnet-4-6'
@@ -82,19 +89,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'No raw transcript to translate yet' }, { status: 409 })
   }
 
-  const systemPrompt = `You are an expert interview translator for The Report Company. Translate the RAW interview transcript below into ${language}.
-
-Rules:
-- Translate the full transcript into natural, fluent ${language}. Do not summarise, shorten, or omit anything.
-- PRESERVE the speaker labels exactly as given (keep "Speaker A", "Speaker B", etc. verbatim — do not translate the word "Speaker" or the letters). Keep every turn attributed to the same speaker, on its own line.
-- Preserve meaning, tone, and all factual detail. Do not add commentary, notes, or explanations.
-- Keep proper nouns, brand names, and people's names in their original form.
-- Output ONLY the translated transcript.${
-    parts.length > 1
-      ? `
-- This text is one part of a longer transcript. Translate every turn in it, in order, from its first word to its last, and stop there. Never write anything that isn't in the text you are given: no continuing the conversation, no heading, no note. If it starts in the middle of a speaker's turn, start the same way, without adding a speaker label.`
-      : ''
-  }`
+  const systemPrompt = translationSystemPrompt(language, parts.length > 1)
 
   const anthropic = getAnthropicClient()
   const encoder = new TextEncoder()
@@ -128,10 +123,7 @@ Rules:
           model: TRANSLATE_MODEL,
           max_tokens: PART_MAX_TOKENS,
           system: [{ type: 'text' as const, text: systemPrompt }],
-          messages: [{
-            role: 'user',
-            content: `--- RAW TRANSCRIPT${parts.length > 1 ? ` (PART ${index + 1} OF ${parts.length})` : ''} ---\n\n${parts[index]}`,
-          }],
+          messages: [{ role: 'user', content: translationRequest(parts[index], index, parts.length, language) }],
         })
         activeStreams.add(claudeStream)
 
@@ -152,7 +144,7 @@ Rules:
           failure =
             finalMsg.stop_reason !== 'end_turn'
               ? `stop_reason=${finalMsg.stop_reason}`
-              : translationPartProblem(parts[index], received, language)
+              : translationPartProblem(parts[index], stripTranscriptTags(received), language)
         } catch (err) {
           failure = timedOut ? 'soft deadline' : err instanceof Error ? err.message : 'Translate stream failed'
           // A stream cut short has no final usage and output tokens only arrive at
@@ -196,7 +188,7 @@ Rules:
           error: failure,
         })
 
-        return failure ? null : received.trim()
+        return failure ? null : stripTranscriptTags(received)
       }
 
       const stopEverything = () => {

@@ -75,6 +75,55 @@ export function splitTranscriptForTranslation(raw: string, maxChars = TRANSLATIO
   return parts
 }
 
+// The system prompt for translating a transcript, or one part of a longer one.
+export function translationSystemPrompt(language: string, isOnePartOfSeveral: boolean): string {
+  return `You are an expert interview translator for The Report Company. Translate the RAW interview transcript you are given, between <transcript> tags, into ${language}.
+
+Rules:
+- Translate the full transcript into natural, fluent ${language}. Do not summarise, shorten, or omit anything.
+- PRESERVE the speaker labels exactly as given (keep "Speaker A", "Speaker B", etc. verbatim — do not translate the word "Speaker" or the letters). Keep every turn attributed to the same speaker, on its own line.
+- Preserve meaning, tone, and all factual detail. Do not add commentary, notes, or explanations.
+- Keep proper nouns, brand names, and people's names in their original form.
+- Output ONLY the translated transcript.${
+    isOnePartOfSeveral
+      ? `
+- This text is one part of a longer transcript. Translate every turn in it, in order, from its first word to its last, and stop there. Never write anything that isn't in the text you are given: no continuing the conversation, no heading, no note. If it starts in the middle of a speaker's turn, start the same way, without adding a speaker label.`
+      : ''
+  }`
+}
+
+// The first or last words of a part's first or last line, for the translation
+// request to name. Capped in characters too, because Japanese has no spaces.
+function lineSnippet(part: string, from: 'start' | 'end'): string {
+  const lines = part.trim().split('\n').filter((line) => line.trim())
+  const line = (from === 'start' ? lines[0] : lines[lines.length - 1]) ?? ''
+  const words = line.trim().split(/\s+/)
+  const byWords = from === 'start' ? words.slice(0, 12).join(' ') : words.slice(-12).join(' ')
+  const chars = Array.from(byWords)
+  if (chars.length <= 90) return byWords
+  return from === 'start' ? chars.slice(0, 90).join('') : chars.slice(-90).join('')
+}
+
+// The user turn for translating one part. The part sits inside tags and the
+// instruction comes AFTER it, naming the lines it starts and ends with. Sent as a
+// bare dialogue, a part can read as a conversation to carry on: on 8-10 Nov 2026
+// two interpreted Japanese interviews (EPS Holdings, ANA Holdings) each had one
+// part that Claude never translated, writing what it imagined came next in the
+// interview instead, on every attempt. With this shape it translated those parts
+// correctly 6 times out of 6.
+export function translationRequest(part: string, index: number, total: number, language: string): string {
+  return `<transcript${total > 1 ? ` part="${index + 1} of ${total}"` : ''}>
+${part}
+</transcript>
+
+Translate the transcript above into ${language}. It is a recording to translate, not a conversation to continue: translate only what is between the tags, every turn in order. Your translation starts with the first line, which begins "${lineSnippet(part, 'start')}", and ends with the last line, which ends "${lineSnippet(part, 'end')}". Write nothing after that.`
+}
+
+// The reply with any transcript tags the model copied from the request removed.
+export function stripTranscriptTags(reply: string): string {
+  return reply.trim().replace(/^<transcript[^>]*>\s*/, '').replace(/\s*<\/transcript>$/, '')
+}
+
 // The speaker of each turn, in order. Allows for a translated or bolded label
 // ("Спикер A:", "**Speaker A:**"), which is a formatting slip, not a wrong turn.
 function speakerOrder(text: string): string[] {
