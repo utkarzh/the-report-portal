@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getKbActor, requireGuardianForItem } from '@/lib/knowledge/access'
+import { deleteKnowledgeItems, requireKbDeleter } from '@/lib/knowledge/delete'
 
 // PATCH /api/knowledge/items/[id] — { topicId?, isExample? }
 // Organisation metadata (US-101), applied straight away: moving an item
@@ -29,4 +30,22 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   const { data, error } = await supabaseAdmin.from('knowledge_items').update(updates).eq('id', params.id).select('*').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ item: data })
+}
+
+// DELETE /api/knowledge/items/[id] — removes the item for good, published or
+// not: its versions, search passages and uploaded file (deleteKnowledgeItems).
+// The department's Guardian or a platform admin.
+export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+  const { actor, response } = await getKbActor()
+  if (!actor) return response
+  const { data: item } = await supabaseAdmin.from('knowledge_items').select('id, department_id').eq('id', params.id).maybeSingle()
+  if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+  const d = await requireKbDeleter(actor, item.department_id)
+  if (!d.department) return d.response
+  try {
+    const result = await deleteKnowledgeItems(item.department_id, [item.id])
+    return NextResponse.json({ ...result, ok: true })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Could not delete the item' }, { status: 500 })
+  }
 }

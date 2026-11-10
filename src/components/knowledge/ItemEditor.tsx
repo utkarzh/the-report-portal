@@ -17,6 +17,7 @@ import {
   Pencil,
   Radio,
   Sparkles,
+  Trash2,
   Upload,
 } from 'lucide-react'
 import Button from '@/components/ui/Button'
@@ -61,6 +62,8 @@ interface Props {
   basePath: string
   topics: KnowledgeTopic[]
   canEdit: boolean
+  // Delete for good: the department's Guardian or a platform admin.
+  canDelete?: boolean
   published: LeanVersion | null
   draft: LeanVersion | null
   versions: VersionSummary[]
@@ -71,7 +74,7 @@ interface Props {
 // stays live (US-103), publish it (US-105), see history and restore (US-105),
 // replace an unreadable file (US-107), archive (US-108), file it in a topic or
 // mark it an example (US-101). Admins see the same page read-only.
-export default function ItemEditor({ item, departmentId, basePath, topics, canEdit, published, draft, versions, openFeedback }: Props) {
+export default function ItemEditor({ item, departmentId, basePath, topics, canEdit, canDelete = false, published, draft, versions, openFeedback }: Props) {
   const router = useRouter()
   const [title, setTitle] = useState(draft?.title ?? '')
   const [description, setDescription] = useState(draft?.description ?? '')
@@ -81,7 +84,7 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [progress, setProgress] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<null | 'archive' | 'discard' | { restore: VersionSummary }>(null)
+  const [confirm, setConfirm] = useState<null | 'archive' | 'discard' | 'delete' | { restore: VersionSummary }>(null)
 
   const dirty =
     !!draft &&
@@ -459,6 +462,13 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
               )}
             </div>
           )}
+          {canDelete && (
+            <div className={canEdit ? 'mt-2' : 'mt-3 border-t border-[#f0efec] pt-3'}>
+              <button type="button" onClick={() => setConfirm('delete')} className="inline-flex touch:py-2.5 items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600">
+                <Trash2 size={13} /> Delete permanently
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-[#e5e3df] bg-white p-4 shadow-sm">
@@ -520,6 +530,22 @@ export default function ItemEditor({ item, departmentId, basePath, topics, canEd
           run('archive', async () => {
             await api(`/api/knowledge/items/${item.id}/archive`, 'POST', { archive: true })
             setConfirm(null)
+            router.refresh()
+          })
+        }
+      />
+      <Modal
+        open={confirm === 'delete'}
+        onClose={() => setConfirm(null)}
+        title="Delete this item permanently?"
+        description="It's removed from browsing and AI answers for everyone, with all its versions and its uploaded file. This can't be undone. Past answers that cited it keep their source snapshot."
+        confirmLabel="Delete permanently"
+        loading={busy === 'delete'}
+        onConfirm={() =>
+          run('delete', async () => {
+            await api(`/api/knowledge/items/${item.id}`, 'DELETE')
+            setConfirm(null)
+            router.push(basePath)
             router.refresh()
           })
         }

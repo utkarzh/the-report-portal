@@ -3,8 +3,9 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ChevronRight, FolderOpen, MessageSquareWarning, Search } from 'lucide-react'
+import { AlertTriangle, ChevronRight, FolderOpen, MessageSquareWarning, Search, Trash2 } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
+import Modal from '@/components/ui/Modal'
 import RetryExtractionButton from '@/components/knowledge/RetryExtractionButton'
 import { ExampleBadge, TypeTile } from '@/components/knowledge/kb-ui'
 import { DISPLAY_STATE_META, ITEM_TYPE_LABELS, type ItemDisplayState } from '@/lib/knowledge/constants'
@@ -25,11 +26,23 @@ const FILTERS: { key: StatusFilter; label: string; match: (s: ItemDisplayState) 
 // US-119: every item in a department in one table — title, topic, type,
 // status, last published, open feedback — with items needing attention
 // clearly marked and sorted to the top. Search and status filters run in the
-// browser over the rows the page already loaded.
-export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: ContentRow[]; itemHrefBase: string; canEdit: boolean }) {
+// browser over the rows the page already loaded. With delete rights (the
+// Guardian or an admin), rows can be ticked and deleted together.
+export default function ContentTable({ rows, itemHrefBase, canEdit, canDelete = false, departmentId }: {
+  rows: ContentRow[]
+  itemHrefBase: string
+  canEdit: boolean
+  canDelete?: boolean
+  departmentId?: string
+}) {
   const router = useRouter()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<StatusFilter>('all')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const selecting = canDelete && !!departmentId
 
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f.key, rows.filter((r) => f.match(r.state)).length])) as Record<StatusFilter, number>, [rows])
 
@@ -42,6 +55,44 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
       .filter((r) => !q || r.item.title.toLowerCase().includes(q) || (r.topicName ?? '').toLowerCase().includes(q))
       .sort((a, b) => rank(a) - rank(b))
   }, [rows, query, filter])
+
+  // Only rows that still exist count (a refresh may have removed some).
+  const selectedIds = rows.filter((r) => selected.has(r.item.id)).map((r) => r.item.id)
+  const visibleIds = visible.map((r) => r.item.id)
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id))
+  const toggle = (id: string) => setSelected((s) => {
+    const next = new Set(s)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+  const toggleAllVisible = () => setSelected((s) => {
+    const next = new Set(s)
+    visibleIds.forEach((id) => (allVisibleSelected ? next.delete(id) : next.add(id)))
+    return next
+  })
+
+  async function deleteSelected() {
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch('/api/knowledge/items/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ departmentId, ids: selectedIds }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Could not delete the items')
+      setSelected(new Set())
+      setConfirmDelete(false)
+      router.refresh()
+    } catch (err) {
+      setConfirmDelete(false)
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete the items')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   if (rows.length === 0) {
     return (
@@ -96,11 +147,44 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
         </div>
       </div>
 
+      {selecting && (selectedIds.length > 0 || deleteError) && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e5e3df] bg-[#faf9f7] px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+            {selectedIds.length > 0 && (
+              <>
+                <span className="font-semibold text-gray-900">{selectedIds.length} selected</span>
+                <button type="button" onClick={toggleAllVisible} className="font-medium text-gray-600 hover:text-black touch:py-2">
+                  {allVisibleSelected ? 'Unselect all shown' : `Select all ${visibleIds.length} shown`}
+                </button>
+                <button type="button" onClick={() => setSelected(new Set())} className="font-medium text-gray-600 hover:text-black touch:py-2">Clear</button>
+              </>
+            )}
+            {deleteError && <span className="text-red-600">{deleteError}</span>}
+          </div>
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 touch:py-2.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
+            >
+              <Trash2 size={13} /> Delete selected
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="table-cards-wrap overflow-x-auto rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
         <table className="table-cards w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-[#e5e3df] bg-[#fcfbf9] text-left text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-              <th className="w-[44%] px-4 py-3">Item</th>
+              <th className="w-[44%] px-4 py-3">
+                {selecting ? (
+                  <label className="inline-flex cursor-pointer items-center gap-2.5">
+                    <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all shown" className="h-3.5 w-3.5 accent-black" />
+                    Item
+                  </label>
+                ) : 'Item'}
+              </th>
               <th className="px-4 py-3">Topic</th>
               <th className="px-4 py-3">Status</th>
               <th className="whitespace-nowrap px-4 py-3">Last published</th>
@@ -128,6 +212,18 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
                 >
                   <td data-cell="title" className="px-4 py-3">
                     <div className="flex items-start gap-3">
+                      {selecting && (
+                        // Ticking a row never opens it.
+                        <label onClick={(e) => e.stopPropagation()} className="-m-2 flex cursor-pointer items-center self-center p-2">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(r.item.id)}
+                            onChange={() => toggle(r.item.id)}
+                            aria-label={`Select ${r.item.title}`}
+                            className="h-4 w-4 accent-black"
+                          />
+                        </label>
+                      )}
                       <TypeTile type={r.item.type} size="sm" example={r.item.is_example} />
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -176,6 +272,16 @@ export default function ContentTable({ rows, itemHrefBase, canEdit }: { rows: Co
       <p className="mt-2 text-[11px] text-gray-400">
         Showing {visible.length} of {rows.length} · Items that need attention are listed first.
       </p>
+
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'item' : 'items'} permanently?`}
+        description="They're removed from browsing and AI answers for everyone, with all their versions and uploaded files. This can't be undone. Past answers that cited them keep their source snapshot."
+        confirmLabel="Delete permanently"
+        loading={deleting}
+        onConfirm={() => { void deleteSelected() }}
+      />
     </div>
   )
 }

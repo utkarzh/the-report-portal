@@ -165,7 +165,7 @@ export default async function KnowledgeManageDepartmentPage({
         {tab === 'content' ? (
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
             <TopicsManager departmentId={department.id} topics={topics} counts={counts} activeTopic={topic} canEdit={canEdit} basePath={basePath} />
-            <ContentTable rows={filtered} itemHrefBase={`${basePath}/items`} canEdit={canEdit} />
+            <ContentTable rows={filtered} itemHrefBase={`${basePath}/items`} canEdit={canEdit} canDelete={canEdit || ctx.isAdmin} departmentId={department.id} />
           </div>
         ) : (
           <div className="mt-6">

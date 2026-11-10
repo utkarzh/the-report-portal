@@ -68,6 +68,7 @@ export default async function KnowledgeItemEditorPage({ params }: { params: { de
           basePath={basePath}
           topics={(topics || []) as KnowledgeTopic[]}
           canEdit={canEdit}
+          canDelete={canEdit || ctx.isAdmin}
           published={published}
           draft={draft}
           versions={history}
