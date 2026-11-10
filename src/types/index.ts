@@ -423,6 +423,7 @@ export type UsageWorkflow =
   | "interview_letter_personalize"
   | "interview_letter_template_generate"
   | "sales_coach_coach"
+  | "sales_coach_voice"
   | "sales_coach_report_card"
   | "copywriting_analyze"
   | "copywriting_research"

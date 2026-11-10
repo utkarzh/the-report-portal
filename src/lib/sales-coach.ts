@@ -256,16 +256,24 @@ export function scoreOpportunities(card: Pick<SalesCoachReportCard, 'criteria' |
     .sort((a, b) => b.reachPct - a.reachPct)
 }
 
+// Points ("3.5/8 applicable points", "Partial (0.5)") are shown to NO ONE,
+// admins included: the Execution Score is a percentage only (CEO, 10 Nov
+// 2026: "nobody wants this… he only wants in percent"). Display only: the
+// score is still computed and stored in points. Set to true to bring them back
+// (admins then see the overall points, and every criterion its points).
+export const SHOW_SCORE_POINTS = false
+
 // The Project Prompt: "Never show a percentage without its applicable
 // denominator when UV criteria exist." Pills on list views pass this as their
-// `detail` so a UV-reduced percentage always carries its points ("4/5 · 1 UV").
-// Admin views only since 10 Nov 2026: teams see the percentage alone.
+// `detail`, so a UV-reduced percentage always says steps weren't verifiable
+// ("1 UV"; with points switched on, "4/5 · 1 UV").
 export function scoreUvDetail(
   score: number | null | undefined,
   denominator: number | null | undefined,
   uvCount: number,
 ): string | undefined {
-  return uvCount > 0 ? `${formatScore(score, denominator)} · ${uvCount} UV` : undefined
+  if (uvCount <= 0) return undefined
+  return SHOW_SCORE_POINTS ? `${formatScore(score, denominator)} · ${uvCount} UV` : `${uvCount} UV`
 }
 
 // Steps that couldn't be checked from the recording, in plain words. Keeps
@@ -280,12 +288,10 @@ export function unverifiedNote(criteria: SalesCoachCriterion[]): string | null {
     : `${uv} steps couldn't be verified from the audio, so they aren't counted for or against you.`
 }
 
-// The scoreline of the Report Card. For admins, as the Project Prompt
-// specifies: "Overall Execution Score: 79% (5.5/7 applicable points)", with
-// the UV/N-A evidence coverage appended when anything was unverifiable. For
-// everyone else, the percentage alone (CEO, 10 Nov 2026: "I would totally
-// delete for teams the 3.5/8 applicable points and just stick with the
-// percentages"); unverifiedNote() says in words what wasn't counted.
+// The scoreline of the Report Card: the percentage alone, for everyone
+// (SHOW_SCORE_POINTS); unverifiedNote() says in words what wasn't counted.
+// With points switched back on, admins (showPoints) get the Project Prompt's
+// "79% (5.5/7 applicable points)" with the UV/N-A coverage appended.
 // "NOT CALCULABLE" (never an invented 0% or 100%) when nothing could be scored.
 export function formatOverallScore(
   card: Pick<SalesCoachReportCard, 'criteria' | 'execution_score' | 'execution_denominator'>,
@@ -293,22 +299,27 @@ export function formatOverallScore(
 ): string {
   const pct = scorePercent(card.execution_score, card.execution_denominator)
   if (pct === null) return 'NOT CALCULABLE (0 applicable verified criteria)'
-  if (!showPoints) return `${pct}%`
+  if (!showPoints || !SHOW_SCORE_POINTS) return `${pct}%`
   return `${pct}% (${formatScore(card.execution_score, card.execution_denominator)} applicable points)${scoreCoverageSuffix(card.criteria)}`
 }
 
 // Rewrites the scoreline phrases in a stored report_card_markdown into the
-// current "79% (5.5/7 applicable points)" form, or "79%" alone when the
-// reader isn't an admin (showPoints: false). Rewritten rather than
-// re-rendered because older cards were stored in earlier layouts ("1.5/6
-// applicable points", "5.5/7 scored criteria", a Commercial Outcome
-// criterion) that the current renderer would not reproduce. Only matches the
-// phrases our own renderer writes, never model prose.
+// current form: "79%" alone, or with points switched on and an admin reading,
+// "79% (5.5/7 applicable points)". Rewritten rather than re-rendered because
+// older cards were stored in earlier layouts ("1.5/6 applicable points",
+// "5.5/7 scored criteria", a Commercial Outcome criterion) that the current
+// renderer would not reproduce. Only matches the phrases our own renderer
+// writes, never model prose. Without points it also drops each criterion's
+// "(1)" / "(0.5)" / "(0)".
 export function scoreTextAsPercent(markdown: string, { showPoints = true }: { showPoints?: boolean } = {}): string {
+  showPoints = showPoints && SHOW_SCORE_POINTS
   const text = showPoints
     ? markdown
-    // The current renderer's own "79% (5.5/7 applicable points — 1 UV, 1 N/A)".
-    : markdown.replace(/(\d+%) \(\d+(?:\.\d+)?\/\d+ applicable points\)(?: — \d+ UV, \d+ N\/A)?/g, '$1')
+    // The renderer's own "79% (5.5/7 applicable points — 1 UV, 1 N/A)", and
+    // the criterion ratings "Strong (1)", "Partial (0.5)", "Weak (0)".
+    : markdown
+      .replace(/(\d+%) \(\d+(?:\.\d+)?\/\d+ applicable points\)(?: — \d+ UV, \d+ N\/A)?/g, '$1')
+      .replace(/\b(Strong|Partial|Weak) \((?:1|0\.5|0)\)/g, '$1')
   return text.replace(
     /(?<!% \()(?<![\d.])(\d+(?:\.\d+)?)\s?\/\s?(\d+) (?:scored criteria|applicable points)((?: — \d+ UV, \d+ N\/A)?)/g,
     (match, s: string, d: string, coverage: string) => {
@@ -340,12 +351,13 @@ export function verdictMark(v: SalesCoachVerdict): string {
   }
 }
 
-// The rating words and points of the client's sample card: "Strong (1)",
-// "Partial (0.5)", "Weak (0)". N/A and UV carry no points.
+// The rating words of the client's sample card: "Strong", "Partial", "Weak",
+// with their points ("Strong (1)", "Partial (0.5)", "Weak (0)") only when
+// SHOW_SCORE_POINTS is on. N/A and UV carry no points.
 export const VERDICT_RATING: Record<SalesCoachVerdict, string> = {
-  pass: 'Strong (1)',
-  warn: 'Partial (0.5)',
-  fail: 'Weak (0)',
+  pass: SHOW_SCORE_POINTS ? 'Strong (1)' : 'Strong',
+  warn: SHOW_SCORE_POINTS ? 'Partial (0.5)' : 'Partial',
+  fail: SHOW_SCORE_POINTS ? 'Weak (0)' : 'Weak',
   na: 'N/A — not scored',
   uv: 'UV — Audio verification required',
 }
@@ -976,7 +988,7 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard, { showPoint
   // renumbering 1, 2, 4… as 1, 2, 3.
   lines.push(`## ${title.scorecard}`)
   lines.push(`**Overall Execution Score: ${formatOverallScore(card, { showPoints })}**`)
-  const uvNote = showPoints ? null : unverifiedNote(card.criteria)
+  const uvNote = showPoints && SHOW_SCORE_POINTS ? null : unverifiedNote(card.criteria)
   if (uvNote) lines.push(`_${uvNote}_`)
   lines.push('')
   card.criteria.forEach((c) => {

@@ -1,13 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines } from 'lucide-react'
+import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines, Phone } from 'lucide-react'
 import { isTouchDevice } from '@/lib/use-mobile'
+import VoiceCoachSession from '@/components/sales-coach/VoiceCoachSession'
+import { forgetVoiceSecret, prefetchVoiceSecret } from '@/lib/sales-coach-voice-client'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { SALES_COACH_TRACKS } from '@/lib/sales-coach'
 import type { SalesCoachMessage, SalesCoachCoachingPrompt, SalesCoachTrack } from '@/types'
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking'
+
+// The old voice mode (browser speech recognition → Claude → text-to-speech,
+// sentence by sentence) was slow and felt bolted on. It's replaced by live
+// voice calls (VoiceCoachSession). Set to true to show its toggle again.
+const LEGACY_VOICE_MODE = false
 type Msg = { role: 'user' | 'assistant'; content: string }
 
 // Minimal typing for the Web Speech API (not in the standard TS lib).
@@ -48,6 +55,8 @@ export default function CoachConversation({
   greeting,
   starters,
   trackSwitches,
+  callTitle,
+  callSubtitle,
 }: {
   negotiationId: string
   initialMessages: SalesCoachMessage[]
@@ -79,6 +88,9 @@ export default function CoachConversation({
   // executive can move between meeting execution and the next commercial
   // action at any time.
   trackSwitches?: Record<SalesCoachTrack, SalesCoachCoachingPrompt>
+  // Shown at the top of a live call: the company, then the meeting.
+  callTitle?: string
+  callSubtitle?: string
 }) {
   const [messages, setMessages] = useState<Msg[]>(
     initialMessages.map((m) => ({ role: m.role, content: m.content })),
@@ -92,6 +104,7 @@ export default function CoachConversation({
   const [handsFree, setHandsFree] = useState(true)
   const [error, setError] = useState('')
   const [sttSupported, setSttSupported] = useState(true)
+  const [callOpen, setCallOpen] = useState(false)
 
   // Refs mirroring state for use inside async callbacks / event handlers.
   const streamTextRef = useRef('')
@@ -130,6 +143,26 @@ export default function CoachConversation({
   }, [initialInput])
 
   const scroll = useStickToBottom<HTMLDivElement>(messages.length + streaming.length + interim.length)
+
+  // A live call starts in ~2 s instead of ~6 s when it's prepared before the
+  // tap: while this tab is open, keep one ready (sales-coach-voice-client.ts),
+  // and prepare a new one whenever the chat changes, since the call's prompt
+  // carries the chat so far. Preparing has no AI cost.
+  const voiceReady = !LEGACY_VOICE_MODE && canCoach && active && !callOpen
+  useEffect(() => {
+    if (!voiceReady) return
+    forgetVoiceSecret(negotiationId)
+    const prepare = () => { if (!document.hidden) prefetchVoiceSecret(negotiationId) }
+    const first = window.setTimeout(prepare, 600)
+    const keepFresh = window.setInterval(prepare, 80_000)
+    document.addEventListener('visibilitychange', prepare)
+    return () => {
+      window.clearTimeout(first)
+      window.clearInterval(keepFresh)
+      document.removeEventListener('visibilitychange', prepare)
+    }
+  }, [voiceReady, negotiationId, messages.length])
+  const prepareCall = () => { if (voiceReady) prefetchVoiceSecret(negotiationId) }
 
   // Detect Web Speech support once on mount.
   useEffect(() => {
@@ -391,6 +424,16 @@ export default function CoachConversation({
           &#x27;&#x27;), which no longer matches on hydration now that this is
           rendered with the page rather than on opening the Coaching tab. */}
       <style dangerouslySetInnerHTML={{ __html: orbStyles }} />
+      {callOpen && (
+        <VoiceCoachSession
+          negotiationId={negotiationId}
+          title={callTitle || 'Your coach'}
+          subtitle={callSubtitle}
+          trackSwitches={trackSwitches}
+          onClose={() => setCallOpen(false)}
+          onTurnsSaved={(turns) => setMessages((m) => [...m, ...turns])}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eceae5] px-5 py-3.5">
@@ -402,7 +445,22 @@ export default function CoachConversation({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {mode === 'voice' && (
+          {!LEGACY_VOICE_MODE && (
+            <button
+              type="button"
+              onClick={() => setCallOpen(true)}
+              onPointerEnter={prepareCall}
+              onFocus={prepareCall}
+              onTouchStart={prepareCall}
+              disabled={!canCoach || phase === 'thinking'}
+              title="Talk to your coach live"
+              className="group inline-flex items-center gap-2 rounded-full bg-black py-1.5 pl-1.5 pr-3.5 touch:py-2 text-xs font-medium text-white shadow-sm transition-transform hover:scale-[1.02] disabled:opacity-40"
+            >
+              <span className="sc-live-orb h-6 w-6 rounded-full" />
+              Talk live
+            </button>
+          )}
+          {LEGACY_VOICE_MODE && mode === 'voice' && (
             <>
               <ToggleChip active={handsFree} onClick={() => setHandsFree((v) => !v)} title="Keep the mic open between turns">
                 <Radio size={13} /> Hands-free
@@ -412,14 +470,16 @@ export default function CoachConversation({
               </IconToggle>
             </>
           )}
-          <ToggleChip
-            active={mode === 'voice'}
-            onClick={() => { setMode((m) => (m === 'voice' ? 'text' : 'voice')); stopEverything() }}
-            title={sttSupported ? 'Talk to the coach and hear it reply (experimental)' : 'Voice needs a browser with speech recognition'}
-            disabled={!sttSupported}
-          >
-            <Mic size={13} /> Voice <span className="rounded bg-white/20 px-1 text-[9px] uppercase tracking-wider opacity-80">experimental</span>
-          </ToggleChip>
+          {LEGACY_VOICE_MODE && (
+            <ToggleChip
+              active={mode === 'voice'}
+              onClick={() => { setMode((m) => (m === 'voice' ? 'text' : 'voice')); stopEverything() }}
+              title={sttSupported ? 'Talk to the coach and hear it reply (experimental)' : 'Voice needs a browser with speech recognition'}
+              disabled={!sttSupported}
+            >
+              <Mic size={13} /> Voice <span className="rounded bg-white/20 px-1 text-[9px] uppercase tracking-wider opacity-80">experimental</span>
+            </ToggleChip>
+          )}
         </div>
       </div>
 
@@ -444,6 +504,25 @@ export default function CoachConversation({
           <div className="mx-auto max-w-xl py-6 text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f2f1ec] text-gray-500"><MessageSquare size={20} /></div>
             <p className="text-sm leading-6 text-gray-600">{greeting || FALLBACK_GREETING}</p>
+            {!LEGACY_VOICE_MODE && (
+              <button
+                type="button"
+                onClick={() => setCallOpen(true)}
+                onPointerEnter={prepareCall}
+                onFocus={prepareCall}
+                onTouchStart={prepareCall}
+                disabled={!canCoach}
+                className="sc-live-card group mt-5 flex w-full items-center gap-4 rounded-2xl p-4 text-left text-white transition-transform hover:scale-[1.01] disabled:opacity-50 sm:p-5"
+              >
+                <span className="sc-live-orb h-12 w-12 flex-shrink-0 rounded-full" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">Talk it through live</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-white/60">A real-time call with your coach: role-play the CEO, rehearse the close, plan the next step. Interrupt any time.</span>
+                </span>
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white text-black transition-transform group-hover:scale-105"><Phone size={16} /></span>
+              </button>
+            )}
+            {!LEGACY_VOICE_MODE && <p className="mt-5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Or type a question</p>}
             {starters && starters.some((s) => s.track) ? (
               <div className="mt-5 grid grid-cols-1 gap-4 text-left sm:grid-cols-2">
                 {(['execution', 'commercial'] as SalesCoachTrack[]).map((track) => (
@@ -611,8 +690,15 @@ function ToggleChip({ active, onClick, title, disabled, children }: { active: bo
   )
 }
 
-// Scoped animations for the voice orb + streaming caret.
+// Scoped animations for the voice orb + streaming caret, and the small gold
+// orb on the "Talk live" entry points.
 const orbStyles = `
+.sc-live-orb { position: relative; overflow: hidden; isolation: isolate; background: #1e1b4b; box-shadow: 0 0 14px -2px rgba(139,92,246,.65); animation: sc-live-pulse 2.6s ease-in-out infinite; }
+.sc-live-orb::before { content: ''; position: absolute; inset: -35%; background: conic-gradient(from 0deg, #22d3ee, #6366f1, #a855f7, #ec4899, #f97316, #22d3ee); filter: blur(3px); animation: sc-live-spin 5s linear infinite; }
+.sc-live-orb::after { content: ''; position: absolute; inset: 0; border-radius: 9999px; background: radial-gradient(circle at 32% 26%, rgba(255,255,255,.75), rgba(255,255,255,0) 38%), radial-gradient(circle at 70% 80%, rgba(0,0,0,.35), transparent 60%); }
+.sc-live-card { background: radial-gradient(120% 150% at 0% 0%, #1e1b4b 0%, #0b1024 50%, #04050b 100%); box-shadow: 0 14px 34px -16px rgba(49,46,129,.7), inset 0 0 0 1px rgba(255,255,255,.06); }
+@keyframes sc-live-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes sc-live-spin { to { transform: rotate(360deg); } }
 .sc-orb { background: radial-gradient(circle at 30% 25%, #3a3a3a, #000 70%); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 .sc-orb::before, .sc-orb::after { content: ''; position: absolute; inset: 0; border-radius: 9999px; }
 .sc-orb-idle { animation: sc-breathe 3.6s ease-in-out infinite; }
@@ -627,5 +713,5 @@ const orbStyles = `
 @keyframes sc-ping { 0% { box-shadow: 0 0 0 0 rgba(30,30,30,.35); } 70% { box-shadow: 0 0 0 22px rgba(30,30,30,0); } 100% { box-shadow: 0 0 0 22px rgba(30,30,30,0); } }
 .sc-caret { display:inline-block; width:7px; height:14px; margin-left:2px; vertical-align:-2px; background:#9ca3af; border-radius:1px; animation: sc-blink 1s steps(2) infinite; }
 @keyframes sc-blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
-@media (prefers-reduced-motion: reduce) { .sc-orb, .sc-orb::before, .sc-orb::after, .sc-caret { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .sc-orb, .sc-orb::before, .sc-orb::after, .sc-caret, .sc-live-orb, .sc-live-orb::before { animation: none !important; } }
 `

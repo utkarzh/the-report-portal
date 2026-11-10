@@ -189,7 +189,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
                     {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number' && (
                       <ScorePill
                         pct={scorePercent(Number(r.execution_score), r.execution_denominator)}
-                        detail={isAdmin ? scoreUvDetail(Number(r.execution_score), r.execution_denominator, r.uv_criteria?.length || 0) : undefined}
+                        detail={scoreUvDetail(Number(r.execution_score), r.execution_denominator, r.uv_criteria?.length || 0)}
                       />
                     )}
                     {isAdmin && Number(r.cost_usd) > 0 && (

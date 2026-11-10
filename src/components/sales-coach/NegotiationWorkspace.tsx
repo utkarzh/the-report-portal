@@ -531,6 +531,8 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               greeting={coachGreetingText}
               starters={coachStarters}
               trackSwitches={trackSwitches}
+              callTitle={n.company || n.report_card?.company || 'Your negotiation'}
+              callSubtitle={n.report_card?.meeting || undefined}
             />
           </div>
           {tab === 'submission' && <SubmissionPanel n={n} open />}

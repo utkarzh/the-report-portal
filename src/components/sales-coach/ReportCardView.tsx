@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare, Target, Compass, ChevronDown, Send } from 'lucide-react'
 import {
-  SALES_COACH_CRITERIA, SALES_COACH_TRACKS, VERDICT_RATING, commercialOutcomeType, criterionDisplayNumber, evidenceLabel,
+  SALES_COACH_CRITERIA, SALES_COACH_TRACKS, SHOW_SCORE_POINTS, VERDICT_RATING, commercialOutcomeType, criterionDisplayNumber, evidenceLabel,
   followUpAssessment, formatOverallScore, formatTimestamp, meetingLabel, outcomeLabel, reportCardSections, scoreBand,
   scorePercent, titleCaseHeading, unverifiedNote, type ReportCardSectionId,
 } from '@/lib/sales-coach'
@@ -22,8 +22,8 @@ import type {
 // Result and C. Follow-Up Assessment & Recommended Actions open; D. What You
 // Did Well / Main Areas for Improvement, E. Detailed Performance Assessment
 // and F. Deeper Coaching collapsed until opened (CEO's 4 Nov 2026 brief). The
-// points ("3.5/8 applicable points") are shown to admins only; everyone sees
-// the percentage. The content of every section is unchanged from the Oct 2026
+// score is a percentage only, for everyone: no "3.5/8 applicable points" and
+// no "(0.5)" per criterion (SHOW_SCORE_POINTS). The content of every section is unchanged from the Oct 2026
 // sample-card layout; only the order, the collapsing and the points are new.
 // renderReportCardMarkdown() is the text twin of this view; both read the same
 // object. Cards generated before Oct 2026 have no strengths/improvements/
@@ -80,8 +80,8 @@ export default function ReportCardView({
   // "Ask the coach anything" (end of Deeper Coaching): sends the question to
   // the existing coaching chat, which already has all five TRC documents.
   onAskCoach?: (question: string) => void
-  // Admins see the score's points ("3.5/8 applicable points") as well as the
-  // percentage; everyone else sees the percentage alone.
+  // Admins would see the score's points as well as the percentage, but only
+  // while SHOW_SCORE_POINTS is on; it's off, so everyone sees the percentage.
   showPoints?: boolean
 }) {
   const pct = scorePercent(card.execution_score, card.execution_denominator)
@@ -182,7 +182,10 @@ export default function ReportCardView({
               })}
             </ul>
             <p className="mt-3 text-xs leading-5 text-gray-500">
-              ✅ Strong = 1, ⚠️ Partial = 0.5, ❌ Weak = 0, each criterion weighted equally. N/A (not applicable) and UV (couldn&apos;t be verified from the audio) are left out, and Commercial Outcome is never scored. Select a criterion to see its evidence.
+              {SHOW_SCORE_POINTS
+                ? '✅ Strong = 1, ⚠️ Partial = 0.5, ❌ Weak = 0, each criterion weighted equally.'
+                : 'Every criterion counts equally: Strong counts in full, Partial counts half, Weak counts nothing.'}{' '}
+              N/A (not applicable) and UV (couldn&apos;t be verified from the audio) are left out, and Commercial Outcome is never scored. Select a criterion to see its evidence.
             </p>
           </div>
         </Section>

@@ -58,6 +58,7 @@ const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
   interview_letter_template_generate:
     "Interview letter — template from document",
   sales_coach_coach: "Sales coach — coaching",
+  sales_coach_voice: "Sales coach — live voice",
   sales_coach_report_card: "Sales coach — report card",
   copywriting_analyze: "Copywriting — analyze sources",
   copywriting_research: "Copywriting — research",
@@ -93,6 +94,7 @@ const WORKFLOW_ORDER: UsageWorkflow[] = [
   "interview_letter_template_generate",
   "sales_coach_report_card",
   "sales_coach_coach",
+  "sales_coach_voice",
   "copywriting_analyze",
   "copywriting_research",
   "copywriting_plan",
