@@ -32,7 +32,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'Report Card not available yet' }, { status: 404 })
   }
 
-  const doc = buildReportCardDocx(n, n.report_card)
+  // Points in the score for admins only, as on screen.
+  const doc = buildReportCardDocx(n, n.report_card, { showPoints: profile?.role === 'admin' })
   const buffer = await Packer.toBuffer(doc)
   const base = (n.company || 'Negotiation').replace(/[^a-z0-9-_ ]/gi, '').trim() || 'negotiation'
   const filename = `${base} — Report Card.docx`

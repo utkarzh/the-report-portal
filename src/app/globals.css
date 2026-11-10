@@ -184,9 +184,17 @@ body {
   }
 }
 
+/* A section opening in place (Sales Coach Report Card): a short fade, so the
+   content arrives rather than snaps in. */
+@keyframes section-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.section-reveal { animation: section-reveal 0.24s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
 @media (prefers-reduced-motion: reduce) {
   .gemini-aurora, .gemini-bloom, .gemini-sparkle, .flow-line, .fade-up,
-  .dropdown-in, .modal-backdrop-in, .modal-panel-in, .modal-sheet { animation: none; }
+  .dropdown-in, .modal-backdrop-in, .modal-panel-in, .modal-sheet, .section-reveal { animation: none; }
 }
 
 /* Tables on phones: each row becomes a card, from the same markup. Put

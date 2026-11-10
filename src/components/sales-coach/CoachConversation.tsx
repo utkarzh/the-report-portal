@@ -42,7 +42,9 @@ export default function CoachConversation({
   canCoach,
   context,
   initialInput,
+  sendInitialInput = false,
   onInitialInputConsumed,
+  active = true,
   greeting,
   starters,
   trackSwitches,
@@ -59,7 +61,15 @@ export default function CoachConversation({
   // onInitialInputConsumed right after mount, so revisiting this tab plainly
   // (not via that button) doesn't keep re-filling it.
   initialInput?: string | null
+  // Send initialInput as the first turn instead of only pre-filling the box —
+  // used by the Report Card's "Ask the coach anything" field, where the
+  // question has already been typed and the user pressed Ask.
+  sendInitialInput?: boolean
   onInitialInputConsumed?: () => void
+  // False while the Coaching tab is hidden. The workspace keeps this mounted
+  // across tab switches so the conversation on screen survives them; voice is
+  // stopped while it is out of view.
+  active?: boolean
   // Personalized from this negotiation's own Report Card (suggestedCoachingPrompts()/
   // coachGreeting() in sales-coach.ts) — falls back to generic copy if omitted.
   greeting?: string
@@ -106,11 +116,18 @@ export default function CoachConversation({
   useEffect(() => { mutedRef.current = muted }, [muted])
   useEffect(() => { handsFreeRef.current = handsFree }, [handsFree])
   useEffect(() => { modeRef.current = mode }, [mode])
+  // A prefill can arrive at mount or later (this stays mounted across tab
+  // switches). The caller clears its copy via onInitialInputConsumed, so the
+  // same text sent again still registers as a change.
   useEffect(() => {
-    if (initialInput) onInitialInputConsumed?.()
-    // Only ever meant to fire once, for the mount that received the prefill.
+    if (!initialInput) return
+    onInitialInputConsumed?.()
+    // send() ignores a second call while a turn is in flight (busyRef), so a
+    // double-run effect in development can't send the question twice.
+    if (sendInitialInput && canCoach) sendRef.current(initialInput)
+    else setInput(initialInput)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [initialInput])
 
   const scroll = useStickToBottom<HTMLDivElement>(messages.length + streaming.length + interim.length)
 
@@ -269,6 +286,12 @@ export default function CoachConversation({
     setPhase('idle')
   }, [stopListening, stopSpeaking])
 
+  // Out of view: stop the mic and any reply being spoken, as leaving the tab
+  // did when it used to unmount. A typed reply keeps streaming in.
+  useEffect(() => {
+    if (!active && modeRef.current === 'voice') stopEverything()
+  }, [active, stopEverything])
+
   // ---- Sending a turn ----------------------------------------------------
 
   const send = useCallback(async (text: string) => {
@@ -364,7 +387,10 @@ export default function CoachConversation({
 
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-      <style>{orbStyles}</style>
+      {/* As raw HTML: a text child is entity-escaped on the server (content: '' →
+          &#x27;&#x27;), which no longer matches on hydration now that this is
+          rendered with the page rather than on opening the Coaching tab. */}
+      <style dangerouslySetInnerHTML={{ __html: orbStyles }} />
 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eceae5] px-5 py-3.5">
@@ -497,7 +523,7 @@ export default function CoachConversation({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isTouchDevice()) { e.preventDefault(); if (input.trim()) send(input) } }}
-              placeholder={canCoach ? 'Ask the coach anything about this negotiation… (Enter to send, Shift+Enter for a new line)' : 'Coaching opens once the Report Card exists.'}
+              placeholder={canCoach ? 'Ask the coach anything: about this negotiation, or any TRC technique… (Enter to send, Shift+Enter for a new line)' : 'Coaching opens once the Report Card exists.'}
               disabled={!canCoach || phase === 'thinking'}
               rows={2}
               className="max-h-40 min-h-[56px] flex-1 resize-none rounded-xl border border-[#e5e3df] bg-white px-3.5 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400 disabled:opacity-50"

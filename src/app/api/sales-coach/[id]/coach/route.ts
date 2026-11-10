@@ -128,7 +128,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   // in the same terms — it never quotes "5.5/7" to someone shown "79%".
   const cardText = n.report_card_markdown?.trim()
   const reportCardBlock = n.report_card
-    ? `--- REPORT CARD (already produced for this negotiation) ---\n${cardText ? scoreTextAsPercent(cardText) : JSON.stringify(n.report_card, null, 2)}`
+    ? `--- REPORT CARD (already produced for this negotiation) ---\n${cardText ? scoreTextAsPercent(cardText, { showPoints: profile.role === 'admin' }) : JSON.stringify(n.report_card, null, 2)}`
     : '--- REPORT CARD ---\nThe formal Report Card has not been generated yet. Coach directly from the transcript and context.'
 
   const systemText = [

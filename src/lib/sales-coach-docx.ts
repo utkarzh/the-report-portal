@@ -17,9 +17,14 @@ marked.use({ gfm: true, breaks: true })
 // sample card: the "TRC SALES COACH — REPORT CARD" title with a small
 // publication/date line, then the card body — Company / Meeting / Outcome,
 // sections A–F — rendered from the same markdown the UI's "Copy as text"
-// produces, via the shared renderer. The Overall Execution Score is the last
-// thing in the document, per the Project Prompt.
-export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachReportCard): Document {
+// produces, via the shared renderer. The Execution Scorecard is the first
+// section (CEO, 10 Nov 2026), and its points are printed only when an admin
+// downloads it (showPoints); everyone else gets the percentage alone.
+export function buildReportCardDocx(
+  n: SalesCoachNegotiation,
+  card: SalesCoachReportCard,
+  { showPoints = false }: { showPoints?: boolean } = {},
+): Document {
   const dateStr = new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   const subline = [
     [n.media_publication, n.country].filter(Boolean).join(' · '),
@@ -41,8 +46,8 @@ export function buildReportCardDocx(n: SalesCoachNegotiation, card: SalesCoachRe
 
   // The markdown opens with the same title, which the header above already
   // prints; everything after it (Company / Meeting / Outcome, A–F) is the body.
-  const markdown = renderReportCardMarkdown(card)
-  const body = scoreTextAsPercent(markdown).replace(/^# TRC SALES COACH — REPORT CARD\n/, '')
+  const markdown = renderReportCardMarkdown(card, { showPoints })
+  const body = scoreTextAsPercent(markdown, { showPoints }).replace(/^# TRC SALES COACH — REPORT CARD\n/, '')
   const tokens = marked.lexer(body)
 
   const footer = () =>

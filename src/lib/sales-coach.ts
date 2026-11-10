@@ -259,6 +259,7 @@ export function scoreOpportunities(card: Pick<SalesCoachReportCard, 'criteria' |
 // The Project Prompt: "Never show a percentage without its applicable
 // denominator when UV criteria exist." Pills on list views pass this as their
 // `detail` so a UV-reduced percentage always carries its points ("4/5 · 1 UV").
+// Admin views only since 10 Nov 2026: teams see the percentage alone.
 export function scoreUvDetail(
   score: number | null | undefined,
   denominator: number | null | undefined,
@@ -279,30 +280,41 @@ export function unverifiedNote(criteria: SalesCoachCriterion[]): string | null {
     : `${uv} steps couldn't be verified from the audio, so they aren't counted for or against you.`
 }
 
-// The final scoreline of the Report Card, exactly as the Project Prompt
+// The scoreline of the Report Card. For admins, as the Project Prompt
 // specifies: "Overall Execution Score: 79% (5.5/7 applicable points)", with
-// the UV/N-A evidence coverage appended when anything was unverifiable, and
+// the UV/N-A evidence coverage appended when anything was unverifiable. For
+// everyone else, the percentage alone (CEO, 10 Nov 2026: "I would totally
+// delete for teams the 3.5/8 applicable points and just stick with the
+// percentages"); unverifiedNote() says in words what wasn't counted.
 // "NOT CALCULABLE" (never an invented 0% or 100%) when nothing could be scored.
-export function formatOverallScore(card: Pick<SalesCoachReportCard, 'criteria' | 'execution_score' | 'execution_denominator'>): string {
+export function formatOverallScore(
+  card: Pick<SalesCoachReportCard, 'criteria' | 'execution_score' | 'execution_denominator'>,
+  { showPoints = true }: { showPoints?: boolean } = {},
+): string {
   const pct = scorePercent(card.execution_score, card.execution_denominator)
   if (pct === null) return 'NOT CALCULABLE (0 applicable verified criteria)'
+  if (!showPoints) return `${pct}%`
   return `${pct}% (${formatScore(card.execution_score, card.execution_denominator)} applicable points)${scoreCoverageSuffix(card.criteria)}`
 }
 
 // Rewrites the scoreline phrases in a stored report_card_markdown into the
-// current "79% (5.5/7 applicable points)" form. Rewritten rather than
+// current "79% (5.5/7 applicable points)" form, or "79%" alone when the
+// reader isn't an admin (showPoints: false). Rewritten rather than
 // re-rendered because older cards were stored in earlier layouts ("1.5/6
 // applicable points", "5.5/7 scored criteria", a Commercial Outcome
-// criterion) that the current renderer would not reproduce. Skips a phrase
-// already preceded by its percentage (the current renderer's own output), and
-// only matches the phrases our own renderer writes, never model prose.
-export function scoreTextAsPercent(markdown: string): string {
-  return markdown.replace(
+// criterion) that the current renderer would not reproduce. Only matches the
+// phrases our own renderer writes, never model prose.
+export function scoreTextAsPercent(markdown: string, { showPoints = true }: { showPoints?: boolean } = {}): string {
+  const text = showPoints
+    ? markdown
+    // The current renderer's own "79% (5.5/7 applicable points — 1 UV, 1 N/A)".
+    : markdown.replace(/(\d+%) \(\d+(?:\.\d+)?\/\d+ applicable points\)(?: — \d+ UV, \d+ N\/A)?/g, '$1')
+  return text.replace(
     /(?<!% \()(?<![\d.])(\d+(?:\.\d+)?)\s?\/\s?(\d+) (?:scored criteria|applicable points)((?: — \d+ UV, \d+ N\/A)?)/g,
     (match, s: string, d: string, coverage: string) => {
       const pct = formatScorePercent(Number(s), Number(d))
       if (pct === '—') return match
-      return `${pct} (${formatScore(Number(s), Number(d))} applicable points)${coverage}`
+      return showPoints ? `${pct} (${formatScore(Number(s), Number(d))} applicable points)${coverage}` : pct
     },
   )
 }
@@ -845,18 +857,96 @@ export function validateReportCard(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Text rendering — the client's sample Report Card (Oct 2026), line for line:
+// Text rendering (Copy as text, the .docx, the card handed to the coaching
+// chat), in the section order above (4 Nov 2026):
 //   TRC SALES COACH — REPORT CARD / Company / Meeting / Outcome
-//   A. Negotiation Result → B. What You Did Well → C. Main Areas for
-//   Improvement → D. Detailed Performance Assessment ("1. Sales Offer Buildup
-//   — ✅ Strong (1)" + Evidence / Assessment / Commercial reality / Better
-//   approach; 3 = Commercial Outcome — NOT SCORED) → E. Deeper Coaching
-//   (ending with the one reflective question and the two-track invitation)
-//   → F. Overall Execution Score, LAST.
+//   A. Negotiation Result → B. Follow-Up Assessment & Recommended Actions →
+//   C. What You Did Well / Main Areas for Improvement → D. Detailed
+//   Performance Assessment ("1. Sales Offer Buildup — ✅ Strong (1)" +
+//   Evidence / Assessment / Commercial reality / Better approach; 3 =
+//   Commercial Outcome — NOT SCORED) → E. Deeper Coaching (ending with the one
+//   reflective question and the two-track invitation) → F. Execution
+//   Scorecard, LAST (overall score + one line per criterion).
 // Derived from the structured card so the text and the UI can never disagree.
-// Cards from before this layout (no strengths/improvements) skip B and C
-// rather than printing them empty.
+// Text has nothing to collapse, so every section is printed in full.
+// Sections a card has no content for are left out (see reportCardSections()).
 // ────────────────────────────────────────────────────────────────────────────
+
+// ────────────────────────────────────────────────────────────────────────────
+// Section order (CEO's "Report Card Improvements" brief of 4 Nov 2026, then
+// his 10 Nov comment on the score: "take this high up in the page, first thing
+// they see, not the last"): the score first, then quick conclusions, depth on
+// demand. Display only: the model still writes the same fields, the score is
+// computed the same way, and every stored card re-renders in this order with
+// no re-run.
+//   A. Execution Scorecard — open, a compact list of the existing ratings
+//   B. Negotiation Result — open
+//   C. Follow-Up Assessment & Recommended Actions — open (built in code from
+//      fields the card already has, see followUpAssessment())
+//   D. What You Did Well / Main Areas for Improvement — collapsed on screen
+//   E. Detailed Performance Assessment — collapsed on screen
+//   F. Deeper Coaching — collapsed on screen
+// A section with nothing to show (Follow-Up and What You Did Well on cards
+// from before Oct 2026) is left out, and the letters close up so they never
+// skip.
+// ────────────────────────────────────────────────────────────────────────────
+
+export type ReportCardSectionId = 'result' | 'follow_up' | 'review' | 'detail' | 'coaching' | 'scorecard'
+
+const REPORT_CARD_SECTION_TITLES: Record<ReportCardSectionId, string> = {
+  result: 'Negotiation Result',
+  follow_up: 'Follow-Up Assessment & Recommended Actions',
+  review: 'What You Did Well / Main Areas for Improvement',
+  detail: 'Detailed Performance Assessment',
+  coaching: 'Deeper Coaching',
+  scorecard: 'Execution Scorecard',
+}
+
+export function reportCardSections(card: SalesCoachReportCard): { id: ReportCardSectionId; title: string }[] {
+  const ids: ReportCardSectionId[] = ['scorecard', 'result']
+  if (followUpAssessment(card)) ids.push('follow_up')
+  if (Array.isArray(card.strengths)) ids.push('review')
+  ids.push('detail', 'coaching')
+  return ids.map((id, i) => ({ id, title: `${String.fromCharCode(65 + i)}. ${REPORT_CARD_SECTION_TITLES[id]}` }))
+}
+
+// B. Follow-Up Assessment: where the opportunity stands and the next step.
+// Assembled from what the model already wrote, never a second assessment:
+// each row is a criterion's "Commercial reality" line (criteria 4-9, the
+// buyer-controlled facts: buy-in, preference, space and price, agreement,
+// decision-makers, next meeting), and the next step is the card's
+// next_commercial_priority. N/A criteria have no commercial reality, so a
+// signed or lost deal shows only the rows that apply. null when the card has
+// neither (cards from before Oct 2026).
+const FOLLOW_UP_ROWS: { key: string; label: string }[] = [
+  { key: 'ceo_buyin', label: 'CEO buy-in' },
+  { key: 'ceo_preference', label: 'CEO preference' },
+  { key: 'space_price_retorno', label: 'Space and price' },
+  { key: 'space_price_agreement', label: 'Agreement' },
+  { key: 'next_steps_stakeholders', label: 'Decision-makers and next steps' },
+  { key: 'scheduled_meeting', label: 'Next meeting' },
+]
+
+export interface FollowUpAssessment {
+  rows: { key: string; label: string; text: string }[]
+  nextStep: string | null
+}
+
+export function followUpAssessment(card: SalesCoachReportCard): FollowUpAssessment | null {
+  const rows = FOLLOW_UP_ROWS.flatMap(({ key, label }) => {
+    const text = (card.criteria.find((c) => c.key === key)?.commercial_reality || '').trim()
+    return text ? [{ key, label, text }] : []
+  })
+  const nextStep = (card.next_commercial_priority || '').trim() || null
+  return rows.length === 0 && !nextStep ? null : { rows, nextStep }
+}
+
+// The scorecard's number for a criterion ("4."), or '' for a criterion only
+// older cards have (the pre-Section-3 "Outcome" criterion).
+export function criterionDisplayNumber(key: string): string {
+  const n = SALES_COACH_CRITERIA.find((c) => c.key === key)?.number
+  return n ? `${n}.` : ''
+}
 
 // A meaningful evidence label ("Your question", "CEO's response") is kept;
 // generic ones ("Quote", "Evidence") are dropped since the line already says
@@ -866,10 +956,13 @@ export function evidenceLabel(label: string | undefined): string {
   return !l || /^(quote|quoted|evidence)$/i.test(l) ? '' : l
 }
 
-export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
+// showPoints: false (anyone but an admin) prints the score as a percentage
+// alone, plus the plain-words note when steps couldn't be verified.
+export function renderReportCardMarkdown(card: SalesCoachReportCard, { showPoints = true }: { showPoints?: boolean } = {}): string {
   const lines: string[] = []
   const hasNewLayout = Array.isArray(card.strengths)
   const outcomeType = commercialOutcomeType(card.declared_outcome)
+  const title = Object.fromEntries(reportCardSections(card).map((s) => [s.id, s.title])) as Partial<Record<ReportCardSectionId, string>>
 
   lines.push('# TRC SALES COACH — REPORT CARD')
   lines.push(`**Company:** ${card.company || 'Unclear from filename'}  `)
@@ -877,7 +970,23 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
   lines.push(`**Outcome:** ${outcomeType}`)
   lines.push('')
 
-  lines.push('## A. Negotiation Result')
+  // A. Execution Scorecard: the ratings given in the Detailed Performance
+  // Assessment, one line each — a summary, never a second assessment. First,
+  // so the score is the first thing read. The `**n.**` keeps markdown from
+  // renumbering 1, 2, 4… as 1, 2, 3.
+  lines.push(`## ${title.scorecard}`)
+  lines.push(`**Overall Execution Score: ${formatOverallScore(card, { showPoints })}**`)
+  const uvNote = showPoints ? null : unverifiedNote(card.criteria)
+  if (uvNote) lines.push(`_${uvNote}_`)
+  lines.push('')
+  card.criteria.forEach((c) => {
+    const meta = SALES_COACH_CRITERIA.find((k) => k.key === c.key)
+    const number = criterionDisplayNumber(c.key)
+    lines.push(`- **${number ? `${number} ` : ''}${meta?.label || c.label}** — ${verdictRating(c.verdict)}`)
+  })
+  lines.push('')
+
+  lines.push(`## ${title.result}`)
   lines.push(hasNewLayout ? `**${outcomeType} — ${card.headline}**` : `**${card.commercial_outcome_label}**`)
   if (!hasNewLayout) lines.push(card.headline)
   lines.push('')
@@ -888,18 +997,33 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
   }
   lines.push('')
 
+  const followUp = followUpAssessment(card)
+  if (followUp && title.follow_up) {
+    lines.push(`## ${title.follow_up}`)
+    if (followUp.rows.length > 0) {
+      lines.push('**Where it stands:**')
+      followUp.rows.forEach((r) => lines.push(`- **${r.label}:** ${r.text}`))
+      lines.push('')
+    }
+    if (followUp.nextStep) {
+      lines.push(`**Recommended next step:** ${followUp.nextStep}`)
+      lines.push('')
+    }
+  }
+
   const points = (heading: string, items: SalesCoachCardPoint[] | undefined, empty: string) => {
-    lines.push(`## ${heading}`)
+    lines.push(`### ${heading}`)
     if (!items || items.length === 0) lines.push(empty)
     else items.forEach((p, i) => lines.push(`${i + 1}. **${p.title.replace(/\.$/, '')}.** ${p.detail}`))
     lines.push('')
   }
-  if (hasNewLayout) {
-    points('B. What You Did Well', card.strengths, 'No strengths could be grounded in the transcript evidence.')
-    points('C. Main Areas for Improvement', card.improvements, 'No material controllable improvements were identified.')
+  if (hasNewLayout && title.review) {
+    lines.push(`## ${title.review}`)
+    points('What You Did Well', card.strengths, 'No strengths could be grounded in the transcript evidence.')
+    points('Main Areas for Improvement', card.improvements, 'No material controllable improvements were identified.')
   }
 
-  lines.push('## D. Detailed Performance Assessment')
+  lines.push(`## ${title.detail}`)
   card.criteria.forEach((c, i) => {
     const meta = SALES_COACH_CRITERIA.find((k) => k.key === c.key)
     if (i === 2) {
@@ -935,7 +1059,7 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
     lines.push('')
   })
 
-  lines.push('## E. Deeper Coaching')
+  lines.push(`## ${title.coaching}`)
   lines.push('### Objections and Handling')
   if (card.objections.length > 0) {
     card.objections.forEach((o, i) => {
@@ -967,9 +1091,6 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard): string {
     lines.push(card.coaching_invitation)
     lines.push('')
   }
-
-  lines.push('## F. Overall Execution Score')
-  lines.push(`**Overall Execution Score: ${formatOverallScore(card)}**`)
   return lines.join('\n').trim() + '\n'
 }
 

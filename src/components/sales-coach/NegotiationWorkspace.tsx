@@ -16,7 +16,7 @@ import CorrectionModal, { type FlagTarget } from '@/components/sales-coach/Corre
 import ReevaluateButton from '@/components/sales-coach/ReevaluateButton'
 import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
-import { coachGreeting, coachingTrackSwitches, formatOutcomeDetails, outcomeLabel, pickTranscript, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
+import { coachGreeting, coachingTrackSwitches, formatOutcomeDetails, outcomeLabel, pickTranscript, renderReportCardMarkdown, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
 import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection } from '@/types'
 import { useKeepScreenOn } from '@/lib/use-mobile'
@@ -71,6 +71,9 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   const [corrections, setCorrections] = useState<SalesCoachCorrection[]>(initialCorrections)
   const [flagTarget, setFlagTarget] = useState<FlagTarget | null>(null)
   const [coachPrefill, setCoachPrefill] = useState<string | null>(null)
+  // True when the prefill is a question typed in the card's "Ask the coach
+  // anything" field: it is sent straight away rather than left in the box.
+  const [coachAutoSend, setCoachAutoSend] = useState(false)
   const [busy, setBusy] = useState<Busy>(() =>
     initial.stage === 'transcribing' ? 'transcribing' : initial.stage === 'analyzing' ? 'analyzing' : null,
   )
@@ -456,7 +459,13 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
                 >
                   <Flag size={13} /> Give feedback
                 </button>
-                <CopyTextButton text={n.report_card_markdown ? scoreTextAsPercent(n.report_card_markdown) : null} />
+                {/* Rendered fresh (like the .docx), so older cards copy in the current section order too.
+                    Points in the score for admins only, as on screen. */}
+                <CopyTextButton
+                  text={n.report_card
+                    ? scoreTextAsPercent(renderReportCardMarkdown(n.report_card, { showPoints: isAdmin }), { showPoints: isAdmin })
+                    : null}
+                />
                 <a
                   href={`/api/sales-coach/${n.id}/download`}
                   className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-900"
@@ -467,22 +476,33 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
             )}
           </div>
 
-          {tab === 'card' && n.report_card && (
-            <ReportCardView
-              card={n.report_card}
-              meta={meta}
-              onTimestampClick={audioUrl ? jumpToTranscript : undefined}
-              corrections={corrections}
-              onFlag={(criterionKey, fieldLabel, aiSaid) => setFlagTarget({ criterionKey, fieldLabel, aiSaid })}
-              onDiscussCoachingQuestion={() => {
-                setCoachPrefill(n.report_card?.coaching_question || '')
-                setTab('coach')
-              }}
-              onChooseTrack={(track) => {
-                setCoachPrefill(trackSwitches?.[track].prompt || '')
-                setTab('coach')
-              }}
-            />
+          {/* Kept mounted while another tab is shown, so the sections someone
+              opened are still open when they come back (e.g. after a timestamp
+              in the Detailed Performance Assessment jumped to the transcript). */}
+          {n.report_card && (
+            <div hidden={tab !== 'card'}>
+              <ReportCardView
+                card={n.report_card}
+                meta={meta}
+                showPoints={isAdmin}
+                onTimestampClick={audioUrl ? jumpToTranscript : undefined}
+                corrections={corrections}
+                onFlag={(criterionKey, fieldLabel, aiSaid) => setFlagTarget({ criterionKey, fieldLabel, aiSaid })}
+                onDiscussCoachingQuestion={() => {
+                  setCoachPrefill(n.report_card?.coaching_question || '')
+                  setTab('coach')
+                }}
+                onChooseTrack={(track) => {
+                  setCoachPrefill(trackSwitches?.[track].prompt || '')
+                  setTab('coach')
+                }}
+                onAskCoach={(question) => {
+                  setCoachPrefill(question)
+                  setCoachAutoSend(true)
+                  setTab('coach')
+                }}
+              />
+            </div>
           )}
           {tab === 'transcript' && (
             <div className="rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6 shadow-sm">
@@ -495,19 +515,24 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               />
             </div>
           )}
-          {tab === 'coach' && (
+          {/* Also kept mounted, so a conversation started from the card's
+              "Ask the coach anything" field is still on screen after going
+              back to the card and asking again. */}
+          <div hidden={tab !== 'coach'}>
             <CoachConversation
+              active={tab === 'coach'}
               negotiationId={n.id}
               initialMessages={messages}
               canCoach
               context={{ hasReportCard: true, transcriptWords: transcript.text.split(/\s+/).filter(Boolean).length }}
               initialInput={coachPrefill}
-              onInitialInputConsumed={() => setCoachPrefill(null)}
+              sendInitialInput={coachAutoSend}
+              onInitialInputConsumed={() => { setCoachPrefill(null); setCoachAutoSend(false) }}
               greeting={coachGreetingText}
               starters={coachStarters}
               trackSwitches={trackSwitches}
             />
-          )}
+          </div>
           {tab === 'submission' && <SubmissionPanel n={n} open />}
         </>
       )}

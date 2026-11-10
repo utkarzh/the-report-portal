@@ -1,9 +1,11 @@
 'use client'
 
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare, ArrowUp, TrendingUp, Target, Compass } from 'lucide-react'
+import { useState } from 'react'
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare, Target, Compass, ChevronDown, Send } from 'lucide-react'
 import {
-  SALES_COACH_CRITERIA, SALES_COACH_TRACKS, VERDICT_RATING, commercialOutcomeType, evidenceLabel, formatOverallScore,
-  formatTimestamp, meetingLabel, outcomeLabel, scoreBand, scoreOpportunities, scorePercent, titleCaseHeading, unverifiedNote,
+  SALES_COACH_CRITERIA, SALES_COACH_TRACKS, VERDICT_RATING, commercialOutcomeType, criterionDisplayNumber, evidenceLabel,
+  followUpAssessment, formatOverallScore, formatTimestamp, meetingLabel, outcomeLabel, reportCardSections, scoreBand,
+  scorePercent, titleCaseHeading, unverifiedNote, type ReportCardSectionId,
 } from '@/lib/sales-coach'
 import { BAND_TONE, ScoreRing } from '@/components/sales-coach/ScoreDisplay'
 import { formatDayMonthYearTime, formatDayMonth } from '@/lib/date-format'
@@ -12,17 +14,20 @@ import type {
   SalesCoachCardPoint, SalesCoachTrack, SalesCoachEvidence,
 } from '@/types'
 
-// The Report Card as ONE document, laid out exactly like the client's sample
-// card (Oct 2026): TRC SALES COACH — REPORT CARD / Company / Meeting /
-// Outcome → A. Negotiation Result → B. What You Did Well → C. Main Areas for
-// Improvement → D. Detailed Performance Assessment ("1. Sales Offer Buildup —
-// ✅ Strong (1)" with Evidence / Assessment / Commercial reality / Better
-// approach; 3 = Commercial Outcome — NOT SCORED) → E. Deeper Coaching (the one
-// reflective question, then the two-track invitation) → F. Overall Execution
-// Score, LAST — no score appears anywhere above it. renderReportCardMarkdown()
-// is the text twin of this view; both read the same object. Cards generated
-// before this layout have no strengths/improvements/commercial reality; those
-// parts are simply left out.
+// The Report Card as ONE document: TRC SALES COACH — REPORT CARD / Company /
+// Meeting / Outcome, then the sections in the order of reportCardSections():
+// A. Execution Scorecard FIRST and always open (CEO, 10 Nov 2026: "first
+// thing they see, not the last") — a compact list of the ratings the Detailed
+// Performance Assessment gives, never a second assessment; B. Negotiation
+// Result and C. Follow-Up Assessment & Recommended Actions open; D. What You
+// Did Well / Main Areas for Improvement, E. Detailed Performance Assessment
+// and F. Deeper Coaching collapsed until opened (CEO's 4 Nov 2026 brief). The
+// points ("3.5/8 applicable points") are shown to admins only; everyone sees
+// the percentage. The content of every section is unchanged from the Oct 2026
+// sample-card layout; only the order, the collapsing and the points are new.
+// renderReportCardMarkdown() is the text twin of this view; both read the same
+// object. Cards generated before Oct 2026 have no strengths/improvements/
+// commercial reality; those sections are simply left out.
 
 const VERDICT: Record<SalesCoachVerdict, { chip: string; icon: React.ReactNode }> = {
   pass: { chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200', icon: <CheckCircle2 size={13} /> },
@@ -60,6 +65,8 @@ export default function ReportCardView({
   onFlag,
   onDiscussCoachingQuestion,
   onChooseTrack,
+  onAskCoach,
+  showPoints = false,
 }: {
   card: SalesCoachReportCard
   meta: ReportCardMeta
@@ -70,18 +77,39 @@ export default function ReportCardView({
   // The two-track invitation at the end of Deeper Coaching: open the coaching
   // chat on either track. Both are offered for every outcome.
   onChooseTrack?: (track: SalesCoachTrack) => void
+  // "Ask the coach anything" (end of Deeper Coaching): sends the question to
+  // the existing coaching chat, which already has all five TRC documents.
+  onAskCoach?: (question: string) => void
+  // Admins see the score's points ("3.5/8 applicable points") as well as the
+  // percentage; everyone else sees the percentage alone.
+  showPoints?: boolean
 }) {
-  const scored = card.criteria.filter((c) => c.scored)
-  const count = (v: SalesCoachVerdict) => scored.filter((c) => c.verdict === v).length
   const pct = scorePercent(card.execution_score, card.execution_denominator)
   const band = scoreBand(pct)
-  const focus = scoreOpportunities(card).slice(0, 2)
-  const landed = scored.filter((c) => c.verdict === 'pass').map(criterionLabel)
   const uvNote = unverifiedNote(card.criteria)
   const outcomeType = commercialOutcomeType(card.declared_outcome)
   const outcomeChip = card.declared_outcome ? OUTCOME_TONE[card.declared_outcome] : 'bg-stone-100 text-stone-700'
-  const hasNewLayout = Array.isArray(card.strengths)
   const meeting = card.meeting || meetingLabel(meta.interviewee)
+  const hasNewLayout = Array.isArray(card.strengths)
+  const title = Object.fromEntries(reportCardSections(card).map((s) => [s.id, s.title])) as Partial<Record<ReportCardSectionId, string>>
+  const followUp = followUpAssessment(card)
+  const strengths = card.strengths || []
+  const improvements = card.improvements || []
+
+  // What You Did Well, Detailed Performance Assessment and Deeper Coaching
+  // start collapsed; the scorecard, result and follow-up are always open.
+  const [open, setOpen] = useState({ review: false, detail: false, coaching: false })
+  const toggle = (k: keyof typeof open) => setOpen((o) => ({ ...o, [k]: !o[k] }))
+  // A scorecard row opens the Detailed Performance Assessment and jumps to that
+  // criterion's evidence.
+  function openCriterion(key: string) {
+    setOpen((o) => ({ ...o, detail: true }))
+    setTimeout(() => scrollToCriterion(key), 60)
+  }
+
+  const objectionsHint = card.objections.length === 0
+    ? 'No objections raised'
+    : `${card.objections.length} ${card.objections.length === 1 ? 'objection' : 'objections'} and how to handle ${card.objections.length === 1 ? 'it' : 'them'}`
   const subline = [
     [meta.publication, meta.country].filter(Boolean).join(' · '),
     `Negotiation of ${new Date(meta.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
@@ -105,8 +133,62 @@ export default function ReportCardView({
       </header>
 
       <div className="px-4 sm:px-12">
-        {/* ── A. Negotiation Result ─────────────────────────────── */}
-        <Section title="A. Negotiation Result">
+        {/* ── A. Execution Scorecard (open, always first) ───────── */}
+        {/* The first thing read (CEO, 10 Nov 2026). A compact summary of the
+            ratings the Detailed Performance Assessment gives, row for row —
+            never a second assessment. Each row opens that section at the
+            criterion. Points only for admins; everyone sees the percentage. */}
+        <Section title={title.scorecard!}>
+          <div className="rounded-xl bg-[#faf9f7] px-4 py-5 sm:px-6 sm:py-6">
+            <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
+              <ScoreRing pct={pct} size={96} />
+              <div className="min-w-0 flex-1 text-center sm:text-left">
+                <p className="text-base font-semibold tabular-nums text-gray-900">Overall Execution Score: {formatOverallScore(card, { showPoints })}</p>
+                {band ? (
+                  <p className={`mt-1 text-sm font-semibold ${BAND_TONE[band.tone].text}`}>{band.label}</p>
+                ) : (
+                  <p className="mt-1 text-sm leading-6 text-gray-600">There wasn&apos;t enough verifiable material in the recording to calculate a score.</p>
+                )}
+                {uvNote && (
+                  <p className="mt-1.5 flex items-start justify-center gap-1.5 text-xs leading-5 text-gray-500 sm:justify-start">
+                    <HelpCircle size={12} className="mt-0.5 flex-shrink-0 text-sky-500" />
+                    {uvNote}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <ul className="mt-5 divide-y divide-[#e9e7e2] border-t border-[#e9e7e2]">
+              {card.criteria.map((c) => {
+                const number = criterionDisplayNumber(c.key)
+                const style = VERDICT[c.verdict]
+                return (
+                  <li key={c.key}>
+                    <button
+                      type="button"
+                      onClick={() => openCriterion(c.key)}
+                      className="group flex w-full items-center justify-between gap-3 py-2.5 touch:py-3.5 text-left"
+                    >
+                      <span className="min-w-0 text-sm text-gray-800 transition-colors group-hover:text-black">
+                        {number && <span className="mr-1.5 tabular-nums text-gray-400">{number}</span>}
+                        {criterionLabel(c)}
+                      </span>
+                      <span className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${style.chip}`}>
+                        {style.icon}{SCORECARD_RATING[c.verdict]}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <p className="mt-3 text-xs leading-5 text-gray-500">
+              ✅ Strong = 1, ⚠️ Partial = 0.5, ❌ Weak = 0, each criterion weighted equally. N/A (not applicable) and UV (couldn&apos;t be verified from the audio) are left out, and Commercial Outcome is never scored. Select a criterion to see its evidence.
+            </p>
+          </div>
+        </Section>
+
+        {/* ── B. Negotiation Result (open) ──────────────────────── */}
+        <Section title={title.result!}>
           {hasNewLayout ? (
             <p className="text-[15px] font-semibold leading-relaxed text-gray-900">{outcomeType} — {card.headline}</p>
           ) : (
@@ -136,20 +218,64 @@ export default function ReportCardView({
           )}
         </Section>
 
-        {/* ── B / C ─────────────────────────────────────────────── */}
-        {hasNewLayout && (
-          <>
-            <Section title="B. What You Did Well">
-              <PointList items={card.strengths} empty="No strengths could be grounded in the transcript evidence." marker="bg-emerald-50 text-emerald-700" />
-            </Section>
-            <Section title="C. Main Areas for Improvement">
-              <PointList items={card.improvements} empty="No material controllable improvements were identified." marker="bg-amber-50 text-amber-700" />
-            </Section>
-          </>
+        {/* ── C. Follow-Up Assessment (open) ────────────────────── */}
+        {followUp && title.follow_up && (
+          <Section title={title.follow_up}>
+            {followUp.rows.length > 0 && (
+              <>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">Where it stands</p>
+                <dl className="mt-3 flex flex-col gap-3">
+                  {followUp.rows.map((r) => (
+                    <div key={r.key} className="grid grid-cols-1 gap-0.5 sm:grid-cols-[11rem,minmax(0,1fr)] sm:gap-5">
+                      <dt className="text-sm font-semibold text-gray-900">{r.label}</dt>
+                      <dd className="text-sm leading-6 text-gray-700">{r.text}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </>
+            )}
+            {followUp.nextStep && (
+              <div className={`${followUp.rows.length > 0 ? 'mt-5' : ''} rounded-xl bg-[#fbf7ed] px-4 py-3.5`}>
+                <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">
+                  <Compass size={12} /> Recommended next step
+                </p>
+                <p className="mt-1.5 text-sm leading-6 text-gray-900">{followUp.nextStep}</p>
+              </div>
+            )}
+            {onChooseTrack && (
+              <button
+                type="button"
+                onClick={() => onChooseTrack('commercial')}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 touch:py-3 text-xs font-medium text-gray-800 transition-colors hover:border-gray-400"
+              >
+                <MessageSquare size={13} /> Work on the next steps with your coach
+              </button>
+            )}
+          </Section>
         )}
 
-        {/* ── D. Detailed Performance Assessment ────────────────── */}
-        <Section title="D. Detailed Performance Assessment">
+        {/* ── D. What You Did Well / Main Areas for Improvement ── */}
+        {title.review && (
+          <Collapsible
+            title={title.review}
+            hint={`${plural(strengths.length, 'strength')} · ${plural(improvements.length, 'area', 'areas')} for improvement`}
+            open={open.review}
+            onToggle={() => toggle('review')}
+          >
+            <h4 className="mb-3 text-sm font-semibold text-gray-900">What You Did Well</h4>
+            <PointList items={card.strengths} empty="No strengths could be grounded in the transcript evidence." marker="bg-emerald-50 text-emerald-700" />
+            <h4 className="mb-3 mt-7 text-sm font-semibold text-gray-900">Main Areas for Improvement</h4>
+            <PointList items={card.improvements} empty="No material controllable improvements were identified." marker="bg-amber-50 text-amber-700" />
+          </Collapsible>
+        )}
+
+        {/* ── E. Detailed Performance Assessment (collapsed) ────── */}
+        <Collapsible
+          title={title.detail!}
+          hint="Each criterion with the evidence, the assessment and better wording"
+          open={open.detail}
+          onToggle={() => toggle('detail')}
+        >
           <ol className="divide-y divide-[#eceae5]">
             {card.criteria.flatMap((c, i) => {
               const row = <CriterionRow key={c.key} criterion={c} onTimestampClick={onTimestampClick} onFlag={onFlag} />
@@ -179,10 +305,15 @@ export default function ReportCardView({
               ]
             })}
           </ol>
-        </Section>
+        </Collapsible>
 
-        {/* ── E. Deeper Coaching ────────────────────────────────── */}
-        <Section title="E. Deeper Coaching">
+        {/* ── F. Deeper Coaching (collapsed) ────────────────────── */}
+        <Collapsible
+          title={title.coaching!}
+          hint={`${objectionsHint} · your coaching question${onAskCoach ? ' · ask the coach anything' : ''}`}
+          open={open.coaching}
+          onToggle={() => toggle('coaching')}
+        >
           <h4 className="text-sm font-semibold text-gray-900">Objections and Handling</h4>
           {card.objections.length === 0 ? (
             <p className="mt-2 text-sm text-gray-500">No genuine objections were raised in the transcript.</p>
@@ -241,7 +372,7 @@ export default function ReportCardView({
             )}
           </div>
 
-          {/* Two-track invitation — immediately before the score. */}
+          {/* Two-track invitation. */}
           {(card.coaching_invitation || onChooseTrack) && (
             <div className="mt-4 rounded-xl bg-[#faf9f7] p-4 sm:p-5">
               <p className="text-sm font-semibold text-gray-900">Continue With Your Coach</p>
@@ -251,97 +382,16 @@ export default function ReportCardView({
               {onChooseTrack && (
                 <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <TrackButton icon={<Target size={15} />} track="execution" onClick={onChooseTrack} />
-                  <TrackButton icon={<Compass size={15} />} track="commercial" onClick={onChooseTrack} sub={card.next_commercial_priority} />
+                  {/* The next step itself is in the Follow-Up Assessment, so it isn't repeated here. */}
+                  <TrackButton icon={<Compass size={15} />} track="commercial" onClick={onChooseTrack} />
                 </div>
               )}
             </div>
           )}
-        </Section>
 
-        {/* ── F. Overall Execution Score — always last ──────────── */}
-        <Section title="F. Overall Execution Score">
-          <div className="rounded-xl bg-[#faf9f7] px-4 py-5 sm:px-6 sm:py-6">
-            <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
-              <ScoreRing pct={pct} />
-              <div className="min-w-0 flex-1 text-center sm:text-left">
-                <p className="text-base font-semibold tabular-nums text-gray-900">Overall Execution Score: {formatOverallScore(card)}</p>
-                {band ? (
-                  <>
-                    <p className={`mt-1 text-sm font-semibold ${BAND_TONE[band.tone].text}`}>{band.label}</p>
-                    <p className="mt-1 text-sm leading-6 text-gray-600">{band.hint}</p>
-                  </>
-                ) : (
-                  <p className="mt-1 text-sm leading-6 text-gray-600">There wasn&apos;t enough verifiable material in the recording to calculate a score.</p>
-                )}
-                <p className="mt-2 text-xs leading-5 text-gray-500">
-                  Every applicable criterion carries equal weight: ✅ Strong = 1, ⚠️ Partial = 0.5, ❌ Weak = 0. N/A and UV are left out, and Commercial Outcome is never scored.
-                </p>
-              </div>
-            </div>
+          {onAskCoach && <AskCoachBox onAsk={onAskCoach} />}
+        </Collapsible>
 
-            {scored.length > 0 && (
-              <div className="mt-6">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">How your score breaks down</p>
-                  <p className="whitespace-nowrap text-[11px] text-gray-500">
-                    {[count('pass') && `${count('pass')} strong`, count('warn') && `${count('warn')} partial`, count('fail') && `${count('fail')} weak`].filter(Boolean).join(' · ')}
-                  </p>
-                </div>
-                <div className="mt-2 flex gap-1">
-                  {scored.map((c) => (
-                    <button
-                      key={c.key}
-                      type="button"
-                      onClick={() => scrollToCriterion(c.key)}
-                      title={`${criterionLabel(c)} — ${VERDICT_RATING[c.verdict]}`}
-                      className={`h-2.5 touch:h-4 flex-1 rounded-full transition-opacity hover:opacity-70 ${SEGMENT[c.verdict]}`}
-                    />
-                  ))}
-                </div>
-                {landed.length > 0 && (
-                  <p className="mt-3 text-xs leading-5 text-gray-600">
-                    <span className="font-semibold text-emerald-700">What landed: </span>
-                    {landed.join(', ')}
-                  </p>
-                )}
-                {uvNote && (
-                  <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-5 text-gray-500">
-                    <HelpCircle size={12} className="mt-0.5 flex-shrink-0 text-sky-500" />
-                    {uvNote}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {focus.length > 0 && (
-              <div className="mt-5 border-t border-[#e9e7e2] pt-4">
-                <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">
-                  <TrendingUp size={12} /> Where the points went
-                </p>
-                <ul className="mt-3 flex flex-col gap-2.5">
-                  {focus.map((f) => (
-                    <li key={f.key} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                      <p className="text-sm text-gray-800">
-                        <span className="font-semibold text-gray-900">{f.label}</span>
-                        <span className={`ml-2 text-xs font-medium ${f.verdict === 'fail' ? 'text-red-700' : 'text-amber-700'}`}>
-                          {f.verdict === 'fail' ? 'Weak' : 'Partial'}
-                        </span>
-                        <span className="mt-0.5 block text-xs text-gray-500">Getting this fully right would take you to {f.reachPct}%.</span>
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => scrollToCriterion(f.key)}
-                        className="inline-flex flex-shrink-0 items-center gap-1 self-start touch:py-2.5 text-xs font-medium text-gray-600 transition-colors hover:text-black sm:self-center"
-                      >
-                        See the evidence <ArrowUp size={12} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </Section>
       </div>
 
       <footer className="border-t border-[#eceae5] px-4 py-3 text-center text-[11px] text-gray-400 sm:px-12">
@@ -360,6 +410,86 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       {children}
     </section>
   )
+}
+
+// A section that opens on demand. While closed, a one-line hint says what is
+// inside, so nothing is hidden without a clue that it is there.
+function Collapsible({ title, hint, open, onToggle, children }: {
+  title: string
+  hint: string
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <section className="border-t border-[#eceae5]">
+      <h3>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="group flex w-full items-start justify-between gap-4 py-6 text-left"
+        >
+          <span className="min-w-0">
+            <span className="block text-base font-semibold tracking-tight text-gray-900">{title}</span>
+            {!open && <span className="mt-1 block text-xs leading-5 text-gray-500">{hint}</span>}
+          </span>
+          <span className="mt-0.5 inline-flex flex-shrink-0 items-center gap-1 text-xs font-medium text-gray-500 transition-colors group-hover:text-black">
+            {open ? 'Hide' : 'Show'}
+            <ChevronDown size={15} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+          </span>
+        </button>
+      </h3>
+      {open && <div className="pb-7">{children}</div>}
+    </section>
+  )
+}
+
+// The CEO's brief (4 Nov 2026): "a big field where they can ask whatever they
+// want and the AI can surface the materials that we have written/uploaded".
+// The coaching chat already answers from all five TRC documents; this only
+// makes the place to ask it obvious. The question goes to that same chat.
+function AskCoachBox({ onAsk }: { onAsk: (question: string) => void }) {
+  const [question, setQuestion] = useState('')
+  const submit = () => {
+    const q = question.trim()
+    if (!q) return
+    onAsk(q)
+    setQuestion('')
+  }
+  return (
+    <div className="mt-4 rounded-xl border border-[#c8973f]/40 bg-white p-4 sm:p-5">
+      <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+        <MessageSquare size={15} className="text-[#a07530]" /> Ask the Coach Anything
+      </p>
+      <p className="mt-1.5 text-xs leading-5 text-gray-500">
+        About this negotiation, or about any part of the TRC method. The coach answers from TRC&apos;s own sales documents: the Overcoming Objections manual, the Sales Coaching Method, the negotiation examples and the follow-up playbook.
+      </p>
+      <textarea
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit() } }}
+        rows={4}
+        maxLength={4000}
+        placeholder="For example: How do I deal with “It’s not my decision” type of objections?"
+        className="mt-3 w-full resize-y rounded-xl border border-[#e5e3df] bg-white px-3.5 py-2.5 text-sm leading-6 text-gray-900 outline-none placeholder:text-gray-400 focus:border-gray-400"
+      />
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!question.trim()}
+          className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 touch:py-3 text-xs font-medium text-white transition-colors hover:bg-gray-900 disabled:opacity-40"
+        >
+          <Send size={13} /> Ask the coach
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`
 }
 
 function PointList({ items, empty, marker }: { items?: SalesCoachCardPoint[]; empty: string; marker: string }) {
@@ -488,20 +618,21 @@ function CriterionRow({ criterion: c, onTimestampClick, onFlag }: { criterion: S
   )
 }
 
-const SEGMENT: Record<SalesCoachVerdict, string> = {
-  pass: 'bg-emerald-500',
-  warn: 'bg-amber-400',
-  fail: 'bg-red-400',
-  na: 'bg-stone-200',
-  uv: 'bg-sky-200',
+// The scorecard's chips are short; its legend spells out N/A and UV.
+const SCORECARD_RATING: Record<SalesCoachVerdict, string> = {
+  pass: VERDICT_RATING.pass,
+  warn: VERDICT_RATING.warn,
+  fail: VERDICT_RATING.fail,
+  na: 'N/A',
+  uv: 'UV',
 }
 
 function criterionLabel(c: SalesCoachCriterion): string {
   return SALES_COACH_CRITERIA.find((k) => k.key === c.key)?.label || c.label
 }
 
-// Jump from the score breakdown / "where the points went" list to that
-// criterion's evidence, with a brief highlight so the eye lands on the right row.
+// Jump from a scorecard row to that criterion's evidence in D, with a brief
+// highlight so the eye lands on the right row.
 function scrollToCriterion(key: string) {
   const el = document.getElementById(`criterion-${key}`)
   if (!el) return

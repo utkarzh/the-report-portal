@@ -33,17 +33,18 @@ export function ScorePill({ pct, withLabel = false, dark = false, detail }: { pc
   )
 }
 
-// The Report Card's headline ring.
-export function ScoreRing({ pct, size = 116 }: { pct: number | null; size?: number }) {
+// The Report Card's headline ring. `caption` is the small word under the
+// number; pass null when the label beside the ring already says it.
+export function ScoreRing({ pct, size = 116, caption = 'Execution' }: { pct: number | null; size?: number; caption?: string | null }) {
   const band = scoreBand(pct)
-  const stroke = 9
+  const stroke = size >= 130 ? 10 : 9
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
   const filled = pct === null ? 0 : Math.max(0, Math.min(100, pct)) / 100
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#ebe8e2" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#ece7de" strokeWidth={stroke} />
         {band && (
           <circle
             cx={size / 2}
@@ -58,11 +59,14 @@ export function ScoreRing({ pct, size = 116 }: { pct: number | null; size?: numb
         )}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-semibold tabular-nums tracking-tight text-gray-900">
+        <span
+          className="font-semibold tabular-nums tracking-tight text-stone-900"
+          style={{ fontSize: Math.round(size * 0.25), lineHeight: 1 }}
+        >
           {pct === null ? '—' : pct}
-          {pct !== null && <span className="text-base font-medium text-gray-400">%</span>}
+          {pct !== null && <span className="ml-px text-[0.5em] font-medium text-stone-400">%</span>}
         </span>
-        <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-gray-400">Execution</span>
+        {caption && <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-stone-500">{caption}</span>}
       </div>
     </div>
   )

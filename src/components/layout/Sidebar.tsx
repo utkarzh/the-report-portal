@@ -290,7 +290,7 @@ export default function Sidebar({
             )}
             {canAccessSalesNegotiationCoach && (
               <NavLink
-                item={{ label: "Sales Coach", href: "/commercial/sales-coach", icon: Handshake, beta: true }}
+                item={{ label: "Sales Coach", href: "/commercial/sales-coach", icon: Handshake }}
                 collapsed={collapsed}
                 pathname={pathname}
               />
