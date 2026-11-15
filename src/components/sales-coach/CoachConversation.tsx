@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines, Phone } from 'lucide-react'
 import { isTouchDevice } from '@/lib/use-mobile'
 import VoiceCoachSession from '@/components/sales-coach/VoiceCoachSession'
+import { LiveCoachLockup } from '@/components/sales-coach/LiveCoachBrand'
 import { forgetVoiceSecret, prefetchVoiceSecret } from '@/lib/sales-coach-voice-client'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { SALES_COACH_TRACKS } from '@/lib/sales-coach'
@@ -535,8 +536,8 @@ export default function CoachConversation({
               >
                 <span className="sc-live-orb h-12 w-12 flex-shrink-0 rounded-full" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold">Live Coach</span>
-                  <span className="mt-0.5 block text-xs leading-5 text-white/60">A real-time voice call with your coach: role-play the CEO, rehearse the close, plan the next step. Interrupt any time.</span>
+                  <LiveCoachLockup size="sm" />
+                  <span className="mt-2 block text-xs leading-5 text-white/60">A real-time voice call with your coach: role-play the CEO, rehearse the close, plan the next step. Interrupt any time.</span>
                 </span>
                 <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white text-black transition-transform group-hover:scale-105"><Phone size={16} /></span>
               </button>

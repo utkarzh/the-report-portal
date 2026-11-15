@@ -8,6 +8,7 @@ import { SALES_COACH_TRACKS } from '@/lib/sales-coach'
 import { voiceUsageFromResponse, type VoiceUsage } from '@/lib/sales-coach-voice'
 import { VoiceSecretError, forgetVoiceSecret, takeVoiceSecret } from '@/lib/sales-coach-voice-client'
 import VoiceOrb, { ORB_PALETTES, type OrbMode } from '@/components/sales-coach/VoiceOrb'
+import { LiveCoachLockup } from '@/components/sales-coach/LiveCoachBrand'
 import type { SalesCoachCoachingPrompt, SalesCoachTrack } from '@/types'
 
 // A live voice coaching call (see sales-coach-voice.ts). The browser talks to
@@ -536,11 +537,13 @@ export default function VoiceCoachSession({
       {/* Header */}
       <header className="relative z-10 flex items-start justify-between gap-4 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8 sm:pt-7">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.3em] text-white/60">
-            <span className={`h-1.5 w-1.5 rounded-full transition-colors duration-700 ${live ? 'vc-live-dot' : 'bg-white/30'}`} style={live ? { backgroundColor: glowB } : undefined} />
-            Live Coach
-          </p>
-          <p className="mt-1.5 truncate text-sm font-medium text-white/90">{title}</p>
+          {/* TRC's wordmark beside the product name (16 Nov 2026); the dot
+              still shows whether the call is connected. */}
+          <LiveCoachLockup
+            size="sm"
+            dot={<span className={`h-1.5 w-1.5 rounded-full transition-colors duration-700 ${live ? 'vc-live-dot' : 'bg-white/30'}`} style={live ? { backgroundColor: glowB } : undefined} />}
+          />
+          <p className="mt-2.5 truncate text-sm font-medium text-white/90">{title}</p>
           {subtitle && <p className="truncate text-xs text-white/45">{subtitle}</p>}
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">

@@ -201,6 +201,7 @@ body {
 .sc-live-card { background: radial-gradient(120% 150% at 0% 0%, #1e1b4b 0%, #0b1024 50%, #04050b 100%); box-shadow: 0 14px 34px -16px rgba(49,46,129,.7), inset 0 0 0 1px rgba(255,255,255,.06); }
 .sc-live-dot { position: relative; display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #6366f1; }
 .sc-live-dot::after { content: ''; position: absolute; inset: 0; border-radius: 9999px; background: #6366f1; animation: sc-live-ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
+.sc-live-dot-light, .sc-live-dot-light::after { background: #7dd3fc; }
 @keyframes sc-live-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 @keyframes sc-live-spin { to { transform: rotate(360deg); } }
 @keyframes sc-live-ping { 75%, 100% { transform: scale(2.6); opacity: 0; } }
