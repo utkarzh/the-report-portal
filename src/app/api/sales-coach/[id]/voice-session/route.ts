@@ -4,11 +4,11 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { SALES_COACH_COACH_RESERVE } from '@/lib/claude/tokens'
 import { pickTranscript } from '@/lib/sales-coach'
-import { loadKnowledgeBundle } from '@/lib/sales-coach-context'
+import { loadKnowledgeBundle, loadLiveCoachInstructions } from '@/lib/sales-coach-context'
 import { buildCoachSystemText } from '@/lib/sales-coach-coach-prompt'
 import {
-  LIVE_VOICE_FORMAT, LIVE_VOICE_REMINDER, VOICE_MAX_SECONDS, VOICE_MODEL, VOICE_SECRET_TTL_SECONDS,
-  callerBlock, conversationSoFarBlock, realtimeSessionConfig,
+  LIVE_VOICE_FORMAT, VOICE_MAX_SECONDS, VOICE_MODEL, VOICE_SECRET_TTL_SECONDS,
+  callerBlock, conversationSoFarBlock, liveCoachInstructionsBlock, realtimeSessionConfig,
 } from '@/lib/sales-coach-voice'
 import type { SalesCoachNegotiation } from '@/types'
 
@@ -17,7 +17,8 @@ export const maxDuration = 30
 // POST /api/sales-coach/[id]/voice-session — starts a live voice coaching call.
 // Same access and budget checks as a text coaching turn, then mints a
 // short-lived OpenAI Realtime client secret carrying the whole coaching prompt
-// (persona, five TRC documents, Report Card, transcript, chat so far). The
+// (persona, five TRC documents, Report Card, transcript, chat so far, and the
+// admin-editable Live Coach Instructions last). The
 // browser uses it to connect to OpenAI directly over WebRTC; the standard API
 // key never leaves the server. No AI cost here: the call is billed turn by turn
 // through /voice-turns.
@@ -30,9 +31,9 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: 'Live voice coaching is not set up on this server.' }, { status: 503 })
   }
 
-  // All four reads at once: preparing a call sits in front of the executive
+  // All five reads at once: preparing a call sits in front of the executive
   // hearing the coach. Nothing is returned until the checks below pass.
-  const [{ data: profile }, { data: neg }, knowledge, { data: history }] = await Promise.all([
+  const [{ data: profile }, { data: neg }, knowledge, { data: history }, liveCoachInstructions] = await Promise.all([
     supabaseAdmin
       .from('profiles')
       .select('id, full_name, role, status, tokens_used, token_limit, can_access_sales_negotiation_coach')
@@ -41,6 +42,7 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
     supabaseAdmin.from('sales_coach_negotiations').select('*').eq('id', params.id).single(),
     loadKnowledgeBundle(),
     supabaseAdmin.from('sales_coach_messages').select('role, content').eq('negotiation_id', params.id).order('created_at', { ascending: true }),
+    loadLiveCoachInstructions(),
   ])
   if (!profile || profile.status === 'inactive') {
     return NextResponse.json({ error: 'Account inactive' }, { status: 403 })
@@ -65,7 +67,7 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
     buildCoachSystemText(n, knowledge, { format: LIVE_VOICE_FORMAT, showPoints: profile.role === 'admin' }),
     conversationSoFarBlock(history || []),
     callerBlock({ callerName: profile.full_name, isOwner: n.user_id === user.id, executiveName: n.submitted_by_name }),
-    LIVE_VOICE_REMINDER,
+    liveCoachInstructionsBlock(liveCoachInstructions),
   ].filter(Boolean).join('\n\n')
 
   try {

@@ -2,7 +2,7 @@
 // server loads the five TRC documents, the card, the transcript and the chat,
 // then OpenAI accepts the ~46k-token prompt and returns a client secret) took
 // 4-5 s, all before the browser could even start connecting. So the Coaching
-// tab prepares one in the background (prefetchVoiceSecret) and "Talk live"
+// tab and the Report Card prepare one in the background (prefetchVoiceSecret) and "Live Coach"
 // takes it (takeVoiceSecret), leaving only the ~2 s WebRTC connection. A
 // secret lives 120 s (VOICE_SECRET_TTL_SECONDS); one older than FRESH_MS is
 // never used. Minting has no AI cost: nothing is billed until the call talks.

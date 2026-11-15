@@ -18,6 +18,7 @@ import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
 import { coachGreeting, coachingTrackSwitches, formatOutcomeDetails, outcomeLabel, pickTranscript, renderReportCardMarkdown, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
+import { prefetchVoiceSecret } from '@/lib/sales-coach-voice-client'
 import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection } from '@/types'
 import { useKeepScreenOn } from '@/lib/use-mobile'
 
@@ -74,6 +75,11 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   // True when the prefill is a question typed in the card's "Ask the coach
   // anything" field: it is sent straight away rather than left in the box.
   const [coachAutoSend, setCoachAutoSend] = useState(false)
+  // Bumped by the Report Card's Live Coach buttons; CoachConversation opens
+  // the call (it owns the call and saves its turns into the chat).
+  const [liveCoachRequest, setLiveCoachRequest] = useState(0)
+  const startLiveCoach = useCallback(() => setLiveCoachRequest((r) => r + 1), [])
+  const prepareLiveCoach = useCallback(() => prefetchVoiceSecret(initial.id), [initial.id])
   const [busy, setBusy] = useState<Busy>(() =>
     initial.stage === 'transcribing' ? 'transcribing' : initial.stage === 'analyzing' ? 'analyzing' : null,
   )
@@ -451,6 +457,18 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
             </div>
             {tab === 'card' && (
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={startLiveCoach}
+                  onPointerEnter={prepareLiveCoach}
+                  onFocus={prepareLiveCoach}
+                  onTouchStart={prepareLiveCoach}
+                  title="Start a live voice call with your coach"
+                  className="inline-flex items-center gap-2 rounded-full bg-[#0b1024] py-1 pl-1 pr-3.5 touch:py-1.5 text-xs font-medium text-white shadow-sm transition-transform hover:scale-[1.02]"
+                >
+                  <span className="sc-live-orb h-6 w-6 rounded-full" />
+                  Live Coach
+                </button>
                 <ReevaluateButton negotiationId={n.id} />
                 <button
                   type="button"
@@ -501,6 +519,8 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
                   setCoachAutoSend(true)
                   setTab('coach')
                 }}
+                onStartLiveCoach={startLiveCoach}
+                onPrepareLiveCoach={prepareLiveCoach}
               />
             </div>
           )}
@@ -533,6 +553,8 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               trackSwitches={trackSwitches}
               callTitle={n.company || n.report_card?.company || 'Your negotiation'}
               callSubtitle={n.report_card?.meeting || undefined}
+              callRequest={liveCoachRequest}
+              keepCallReady={tab === 'card'}
             />
           </div>
           {tab === 'submission' && <SubmissionPanel n={n} open />}

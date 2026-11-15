@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
-import { isSalesCoachKnowledgeKey } from '@/lib/sales-coach'
+import { isSalesCoachAdminDocKey } from '@/lib/sales-coach'
 import { isSalesCoachAdminEmail } from '@/lib/sales-coach-admins'
 
 interface Params {
@@ -21,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // RLS-scoped read below still needs the caller's own client.
   const supabase = createSupabaseServerClient()
 
-  if (!isSalesCoachKnowledgeKey(params.docKey)) {
+  if (!isSalesCoachAdminDocKey(params.docKey)) {
     return NextResponse.json({ error: 'Invalid document' }, { status: 400 })
   }
 
@@ -45,7 +45,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  if (!isSalesCoachKnowledgeKey(params.docKey)) {
+  if (!isSalesCoachAdminDocKey(params.docKey)) {
     return NextResponse.json({ error: 'Invalid document' }, { status: 400 })
   }
 
@@ -64,7 +64,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { error: insertError } = await supabaseAdmin
       .from('sales_coach_knowledge')
       .insert({ doc_key: params.docKey, content: promptText, updated_by: user.id })
-    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })
+    if (insertError) return NextResponse.json({ error: saveErrorMessage(insertError) }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 
@@ -72,7 +72,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .from('sales_coach_knowledge_versions')
     .insert({ doc_key: params.docKey, content: current.content, saved_by: user.id })
   if (versionError) {
-    return NextResponse.json({ error: 'Failed to snapshot version: ' + versionError.message }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to snapshot version: ' + saveErrorMessage(versionError) }, { status: 500 })
   }
 
   const { error } = await supabaseAdmin
@@ -83,4 +83,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ success: true })
+}
+
+// The doc_key CHECK constraints only allow 'live_coach' once migration 045 has
+// run; say so instead of showing Postgres's constraint name.
+function saveErrorMessage(error: { code?: string; message: string }): string {
+  if (error.code === '23514' && error.message.includes('doc_key')) {
+    return 'This document can be saved once the database update for it (migration 045_sales_coach_live_coach_and_patterns.sql) has been run. Until then the Live Coach uses its built-in instructions.'
+  }
+  return error.message
 }

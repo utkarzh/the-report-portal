@@ -99,6 +99,10 @@ export const SALES_COACH_COACH_RESERVE = 55_000;
 // up to ~96k (~110k) when the single corrective re-prompt runs — which the
 // reserve covers.
 export const SALES_COACH_ANALYZE_RESERVE = 120_000;
+// Pattern analysis (13 Nov 2026): one call reading the five knowledge docs
+// (~46k tokens) plus one digest per Report Card (~1k tokens each, up to 60)
+// and writing ~1.5-3k tokens. 150k covers "All" for the largest history.
+export const SALES_COACH_PATTERN_RESERVE = 150_000;
 
 // AI Copywriting Tool — five Claude stages per article. Analysis reads every
 // uploaded source plus TRC guides/examples/publication guide (can be large);

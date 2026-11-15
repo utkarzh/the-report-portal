@@ -1,5 +1,6 @@
 import type {
   SalesCoachKnowledgeKey,
+  SalesCoachAdminDocKey,
   SalesCoachOutcome,
   SalesCoachReportCard,
   SalesCoachCriterion,
@@ -63,6 +64,28 @@ export const SALES_COACH_KNOWLEDGE_DOCS: {
 
 export function isSalesCoachKnowledgeKey(v: unknown): v is SalesCoachKnowledgeKey {
   return SALES_COACH_KNOWLEDGE_DOCS.some((d) => d.key === v)
+}
+
+// The sixth admin document (13 Nov 2026, migration 045): how the Live Coach
+// delivers on a live voice call (energy, length of a turn, the opening,
+// role-play). Deliberately NOT one of SALES_COACH_KNOWLEDGE_DOCS: it never
+// reaches the Report Card or the text coach, only the live call's prompt, so
+// editing it can't change a score. Its built-in text is
+// LIVE_COACH_DEFAULT_INSTRUCTIONS in sales-coach-voice.ts.
+export const SALES_COACH_LIVE_COACH_DOC: { key: 'live_coach'; label: string; description: string } = {
+  key: 'live_coach',
+  label: 'Live Coach Instructions',
+  description: 'How the Live Coach sounds and behaves on a live voice call: its tone and energy, how long each answer is, how it opens the call, and how it role-plays. Delivery only — never used for Report Cards or the text coach.',
+}
+
+// Every document the admin area edits, in display order.
+export const SALES_COACH_ADMIN_DOCS: { key: SalesCoachAdminDocKey; label: string; description: string }[] = [
+  ...SALES_COACH_KNOWLEDGE_DOCS,
+  SALES_COACH_LIVE_COACH_DOC,
+]
+
+export function isSalesCoachAdminDocKey(v: unknown): v is SalesCoachAdminDocKey {
+  return SALES_COACH_ADMIN_DOCS.some((d) => d.key === v)
 }
 
 export function isSalesCoachOutcome(v: unknown): v is SalesCoachOutcome {

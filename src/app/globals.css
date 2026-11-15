@@ -192,9 +192,23 @@ body {
 }
 .section-reveal { animation: section-reveal 0.24s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* Sales Coach Live Coach: the small animated orb on every entry point to a live
+   voice call (Report Card card, chat header, chat empty state), in the call
+   screen's own colours, plus its dark card and pulsing "live" dot. */
+.sc-live-orb { position: relative; overflow: hidden; isolation: isolate; background: #1e1b4b; box-shadow: 0 0 14px -2px rgba(139,92,246,.65); animation: sc-live-pulse 2.6s ease-in-out infinite; }
+.sc-live-orb::before { content: ''; position: absolute; inset: -35%; background: conic-gradient(from 0deg, #22d3ee, #6366f1, #a855f7, #ec4899, #f97316, #22d3ee); filter: blur(3px); animation: sc-live-spin 5s linear infinite; }
+.sc-live-orb::after { content: ''; position: absolute; inset: 0; border-radius: 9999px; background: radial-gradient(circle at 32% 26%, rgba(255,255,255,.75), rgba(255,255,255,0) 38%), radial-gradient(circle at 70% 80%, rgba(0,0,0,.35), transparent 60%); }
+.sc-live-card { background: radial-gradient(120% 150% at 0% 0%, #1e1b4b 0%, #0b1024 50%, #04050b 100%); box-shadow: 0 14px 34px -16px rgba(49,46,129,.7), inset 0 0 0 1px rgba(255,255,255,.06); }
+.sc-live-dot { position: relative; display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #6366f1; }
+.sc-live-dot::after { content: ''; position: absolute; inset: 0; border-radius: 9999px; background: #6366f1; animation: sc-live-ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
+@keyframes sc-live-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes sc-live-spin { to { transform: rotate(360deg); } }
+@keyframes sc-live-ping { 75%, 100% { transform: scale(2.6); opacity: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   .gemini-aurora, .gemini-bloom, .gemini-sparkle, .flow-line, .fade-up,
-  .dropdown-in, .modal-backdrop-in, .modal-panel-in, .modal-sheet, .section-reveal { animation: none; }
+  .dropdown-in, .modal-backdrop-in, .modal-panel-in, .modal-sheet, .section-reveal,
+  .sc-live-orb, .sc-live-orb::before, .sc-live-dot::after { animation: none; }
 }
 
 /* Tables on phones: each row becomes a card, from the same markup. Put
@@ -458,3 +472,23 @@ body {
 .kb-article li {
   line-height: 1.8;
 }
+
+/* Sales Coach pattern analysis (admin): the AI's Markdown, set like the
+   Report Card — serif section headings with a gold rule, stone text held to a
+   readable measure. */
+.pattern-prose { color: #44403c; font-size: 15px; line-height: 1.75; }
+.pattern-prose > * { max-width: 44rem; }
+.pattern-prose h2 { font-family: var(--font-serif), Georgia, serif; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; color: #1c1917; margin: 2.25rem 0 0.75rem; padding-top: 1.5rem; border-top: 1px solid #ece9e3; }
+.pattern-prose h2:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.pattern-prose h2::before { content: ''; display: block; width: 28px; height: 2px; margin-bottom: 0.75rem; background: #c8973f; border-radius: 2px; }
+.pattern-prose h3 { font-size: 1rem; font-weight: 600; color: #1c1917; margin: 1.25rem 0 0.4rem; }
+.pattern-prose p { margin: 0 0 0.85rem; }
+.pattern-prose ul, .pattern-prose ol { margin: 0 0 0.95rem; padding-left: 1.35rem; }
+.pattern-prose ul { list-style: disc; }
+.pattern-prose ol { list-style: decimal; }
+.pattern-prose li { margin-bottom: 0.45rem; padding-left: 0.15rem; }
+.pattern-prose li::marker { color: #a07530; }
+.pattern-prose strong { font-weight: 600; color: #1c1917; }
+.pattern-prose em { font-style: italic; }
+.pattern-prose blockquote { margin: 0 0 1rem; padding: 0.75rem 1rem; border-left: 2px solid #d4b06a; background: #faf8f5; border-radius: 0 0.5rem 0.5rem 0; color: #292524; }
+.pattern-prose hr { display: none; }

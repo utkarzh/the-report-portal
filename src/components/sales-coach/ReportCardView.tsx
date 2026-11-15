@@ -1,7 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare, Target, Compass, ChevronDown, Send } from 'lucide-react'
+import { useRef, useState } from 'react'
+import {
+  CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare,
+  Target, Compass, ChevronDown, ChevronRight, ChevronUp, Send, TrendingUp, ArrowRight, Phone,
+} from 'lucide-react'
 import {
   SALES_COACH_CRITERIA, SALES_COACH_TRACKS, SHOW_SCORE_POINTS, VERDICT_RATING, commercialOutcomeType, criterionDisplayNumber, evidenceLabel,
   followUpAssessment, formatOverallScore, formatTimestamp, meetingLabel, outcomeLabel, reportCardSections, scoreBand,
@@ -14,35 +17,79 @@ import type {
   SalesCoachCardPoint, SalesCoachTrack, SalesCoachEvidence,
 } from '@/types'
 
-// The Report Card as ONE document: TRC SALES COACH — REPORT CARD / Company /
-// Meeting / Outcome, then the sections in the order of reportCardSections():
-// A. Execution Scorecard FIRST and always open (CEO, 10 Nov 2026: "first
-// thing they see, not the last") — a compact list of the ratings the Detailed
-// Performance Assessment gives, never a second assessment; B. Negotiation
-// Result and C. Follow-Up Assessment & Recommended Actions open; D. What You
-// Did Well / Main Areas for Improvement, E. Detailed Performance Assessment
-// and F. Deeper Coaching collapsed until opened (CEO's 4 Nov 2026 brief). The
-// score is a percentage only, for everyone: no "3.5/8 applicable points" and
-// no "(0.5)" per criterion (SHOW_SCORE_POINTS). The content of every section is unchanged from the Oct 2026
-// sample-card layout; only the order, the collapsing and the points are new.
-// renderReportCardMarkdown() is the text twin of this view; both read the same
-// object. Cards generated before Oct 2026 have no strengths/improvements/
-// commercial reality; those sections are simply left out.
+// The Report Card on screen: a title strip (Company · Meeting, Outcome), then
+// the sections in the order reportCardSections() gives: A. Execution Scorecard
+// first (the CEO, 10 Nov 2026: "first thing they see, not the last") — a
+// compact list of the ratings the Detailed Performance Assessment gives, never
+// a second assessment; then, per his 4 Nov brief, B. Negotiation Result and
+// C. Follow-Up Assessment & Recommended Actions open; D. What You Did Well /
+// Main Areas for Improvement, E. Detailed Performance Assessment and F. Deeper
+// Coaching collapsed until opened. The score is a percentage only, for
+// everyone (SHOW_SCORE_POINTS). After C, a Live Coach card starts a live voice
+// call with the coach. The content of every section is unchanged from the Oct
+// 2026 sample-card layout. renderReportCardMarkdown() is the text twin of this
+// view; both read the same object. Cards generated before Oct 2026 have no
+// strengths/improvements/commercial reality; those sections are simply left
+// out.
+//
+// This is the look the client approved (live 6–10 Nov 2026). On 9 Nov the file
+// was overwritten by an older, plainer version, which is what shipped with the
+// scorecard move on 10 Nov; it was restored from that deployment on 13 Nov.
+// Keep this design.
+//
+// Look (6 Nov 2026, reworked the same day after review): every section is its
+// own white card on the page's grey, so A and B can't run together. The
+// "TRC SALES COACH — REPORT CARD" line and the Company / Meeting / Outcome form
+// labels are gone from the screen (the page header above already names the
+// company, people, publication and date); one title strip carries company ·
+// meeting and the outcome badge. B's "Where it stands" lines are tiles, and the
+// recommended next step is the card's one dark panel, with a large gold button
+// into the coach's commercial track. Stone greys so the text sits with the
+// gold, serif for the headline and the coaching question, running text held
+// to ~80 characters. Collapsed sections lift on hover; an opened one fades in
+// and has a second Hide at the bottom. The scorecard is a two-column panel
+// from md up. The Word file and Copy as text keep the full TRC header.
+// Presentation only: same words, same order.
 
 const VERDICT: Record<SalesCoachVerdict, { chip: string; icon: React.ReactNode }> = {
-  pass: { chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200', icon: <CheckCircle2 size={13} /> },
-  warn: { chip: 'bg-amber-50 text-amber-700 ring-amber-200', icon: <AlertTriangle size={13} /> },
-  fail: { chip: 'bg-red-50 text-red-700 ring-red-200', icon: <XCircle size={13} /> },
-  na: { chip: 'bg-stone-100 text-stone-600 ring-stone-200', icon: <MinusCircle size={13} /> },
-  uv: { chip: 'bg-sky-50 text-sky-700 ring-sky-200', icon: <HelpCircle size={13} /> },
+  pass: { chip: 'bg-emerald-50 text-emerald-800 ring-emerald-600/20', icon: <CheckCircle2 size={13} /> },
+  warn: { chip: 'bg-amber-50 text-amber-800 ring-amber-600/25', icon: <AlertTriangle size={13} /> },
+  fail: { chip: 'bg-rose-50 text-rose-800 ring-rose-600/20', icon: <XCircle size={13} /> },
+  na: { chip: 'bg-stone-100 text-stone-600 ring-stone-500/20', icon: <MinusCircle size={13} /> },
+  uv: { chip: 'bg-sky-50 text-sky-800 ring-sky-600/20', icon: <HelpCircle size={13} /> },
 }
 
-const OUTCOME_TONE: Record<SalesCoachOutcome, string> = {
-  signed: 'bg-emerald-600 text-white',
-  retorno: 'bg-sky-50 text-sky-800 ring-1 ring-sky-200',
-  lost: 'bg-red-50 text-red-800 ring-1 ring-red-200',
-  uncertain: 'bg-stone-100 text-stone-700 ring-1 ring-stone-200',
+const OUTCOME_TONE: Record<SalesCoachOutcome, { chip: string; dot: string }> = {
+  signed: { chip: 'bg-emerald-50 text-emerald-800 ring-emerald-600/20', dot: 'bg-emerald-500' },
+  retorno: { chip: 'bg-sky-50 text-sky-800 ring-sky-600/20', dot: 'bg-sky-500' },
+  lost: { chip: 'bg-rose-50 text-rose-800 ring-rose-600/20', dot: 'bg-rose-500' },
+  uncertain: { chip: 'bg-stone-100 text-stone-700 ring-stone-500/20', dot: 'bg-stone-400' },
 }
+const OUTCOME_NONE = { chip: 'bg-stone-100 text-stone-700 ring-stone-500/20', dot: 'bg-stone-400' }
+
+// Small-caps labels used across the card.
+const KICKER = 'text-[10.5px] font-semibold uppercase tracking-[0.16em] text-stone-500'
+const KICKER_GOLD = 'text-[10.5px] font-semibold uppercase tracking-[0.18em] text-[#8f6626]'
+const SUBHEAD = 'text-[15px] font-semibold tracking-[-0.01em] text-stone-900'
+const NUMBER =
+  'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-stone-100 text-[11px] font-semibold tabular-nums text-stone-600 ring-1 ring-inset ring-stone-900/[0.06]'
+const CHIP = 'inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset'
+// Running text stops at ~80 characters a line; boxes and tables keep the full width.
+const MEASURE = 'max-w-[40rem]'
+const HEADLINE =
+  'max-w-[46rem] text-pretty font-serif text-[19px] font-medium leading-[1.5] tracking-[-0.01em] text-stone-900 sm:text-[24px] sm:leading-[1.42]'
+const HAIRLINE = 'border-[#ece9e3]'
+const GOLD_PANEL = 'rounded-xl bg-[#fbf7ee] ring-1 ring-inset ring-[#c8973f]/25'
+const FOCUS =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8973f]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white'
+// Each section is its own card on the page's grey, so no two sections run together.
+const CARD =
+  'rounded-2xl bg-white ring-1 ring-[#e6e2da] shadow-[0_1px_2px_rgba(28,25,23,0.04),0_14px_34px_-26px_rgba(28,25,23,0.28)]'
+const CARD_BODY = 'px-5 py-6 sm:px-10 sm:py-8'
+// D's rows reach a little past the text, so a row highlighted from the scorecard has room around it.
+const CRITERION_ROW = '-mx-3 px-3 py-7 sm:-mx-4 sm:px-4'
+const PRIMARY_BUTTON =
+  `inline-flex items-center gap-2 rounded-lg bg-stone-900 px-4 py-2.5 touch:py-3 text-xs font-medium text-white shadow-[0_1px_2px_rgba(28,25,23,0.25)] transition hover:bg-black disabled:opacity-40 ${FOCUS}`
 
 export interface ReportCardMeta {
   company: string | null
@@ -67,6 +114,8 @@ export default function ReportCardView({
   onChooseTrack,
   onAskCoach,
   showPoints = false,
+  onStartLiveCoach,
+  onPrepareLiveCoach,
 }: {
   card: SalesCoachReportCard
   meta: ReportCardMeta
@@ -83,12 +132,17 @@ export default function ReportCardView({
   // Admins would see the score's points as well as the percentage, but only
   // while SHOW_SCORE_POINTS is on; it's off, so everyone sees the percentage.
   showPoints?: boolean
+  // Live Coach: starts a live voice call with the coach (OpenAI Realtime), the
+  // same call as the Coaching tab's. Prepare is called on hover/focus/touch so
+  // the call is ready by the time it is tapped.
+  onStartLiveCoach?: () => void
+  onPrepareLiveCoach?: () => void
 }) {
   const pct = scorePercent(card.execution_score, card.execution_denominator)
   const band = scoreBand(pct)
   const uvNote = unverifiedNote(card.criteria)
   const outcomeType = commercialOutcomeType(card.declared_outcome)
-  const outcomeChip = card.declared_outcome ? OUTCOME_TONE[card.declared_outcome] : 'bg-stone-100 text-stone-700'
+  const outcomeTone = card.declared_outcome ? OUTCOME_TONE[card.declared_outcome] : OUTCOME_NONE
   const meeting = card.meeting || meetingLabel(meta.interviewee)
   const hasNewLayout = Array.isArray(card.strengths)
   const title = Object.fromEntries(reportCardSections(card).map((s) => [s.id, s.title])) as Partial<Record<ReportCardSectionId, string>>
@@ -96,12 +150,12 @@ export default function ReportCardView({
   const strengths = card.strengths || []
   const improvements = card.improvements || []
 
-  // What You Did Well, Detailed Performance Assessment and Deeper Coaching
-  // start collapsed; the scorecard, result and follow-up are always open.
+  // Review, Detail and Coaching start collapsed; Scorecard, Result and
+  // Follow-Up are always open.
   const [open, setOpen] = useState({ review: false, detail: false, coaching: false })
   const toggle = (k: keyof typeof open) => setOpen((o) => ({ ...o, [k]: !o[k] }))
-  // A scorecard row opens the Detailed Performance Assessment and jumps to that
-  // criterion's evidence.
+  // A scorecard row opens the Detailed Performance Assessment and jumps to
+  // that criterion's evidence.
   function openCriterion(key: string) {
     setOpen((o) => ({ ...o, detail: true }))
     setTimeout(() => scrollToCriterion(key), 60)
@@ -110,55 +164,49 @@ export default function ReportCardView({
   const objectionsHint = card.objections.length === 0
     ? 'No objections raised'
     : `${card.objections.length} ${card.objections.length === 1 ? 'objection' : 'objections'} and how to handle ${card.objections.length === 1 ? 'it' : 'them'}`
-  const subline = [
-    [meta.publication, meta.country].filter(Boolean).join(' · '),
-    `Negotiation of ${new Date(meta.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-    meta.submittedBy ? `Submitted by ${meta.submittedBy}` : '',
-  ].filter(Boolean).join(' · ')
+  const company = meta.company || card.company || null
 
   return (
-    <article className="rounded-2xl border border-[#e5e3df] bg-white shadow-sm">
-      {/* ── Header: Company / Meeting / Outcome ──────────────────── */}
-      <header className="px-4 pb-5 pt-6 sm:px-12 sm:pb-6 sm:pt-8">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#a07530]">TRC Sales Coach — Report Card</p>
-        <dl className="mt-4 grid grid-cols-[auto,minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 text-sm sm:gap-x-5">
-          <dt className="text-xs font-medium text-gray-400">Company</dt>
-          <dd className="text-lg font-semibold tracking-tight text-gray-900">{meta.company || card.company || 'Unclear from filename'}</dd>
-          <dt className="text-xs font-medium text-gray-400">Meeting</dt>
-          <dd className="text-gray-800">{meeting}</dd>
-          <dt className="text-xs font-medium text-gray-400">Outcome</dt>
-          <dd><span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${outcomeChip}`}>{outcomeType}</span></dd>
-        </dl>
-        <p className="mt-4 text-xs text-gray-400">{subline}</p>
-      </header>
-
-      <div className="px-4 sm:px-12">
-        {/* ── A. Execution Scorecard (open, always first) ───────── */}
-        {/* The first thing read (CEO, 10 Nov 2026). A compact summary of the
-            ratings the Detailed Performance Assessment gives, row for row —
-            never a second assessment. Each row opens that section at the
-            criterion. Points only for admins; everyone sees the percentage. */}
-        <Section title={title.scorecard!}>
-          <div className="rounded-xl bg-[#faf9f7] px-4 py-5 sm:px-6 sm:py-6">
-            <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
-              <ScoreRing pct={pct} size={96} />
-              <div className="min-w-0 flex-1 text-center sm:text-left">
-                <p className="text-base font-semibold tabular-nums text-gray-900">Overall Execution Score: {formatOverallScore(card, { showPoints })}</p>
-                {band ? (
-                  <p className={`mt-1 text-sm font-semibold ${BAND_TONE[band.tone].text}`}>{band.label}</p>
-                ) : (
-                  <p className="mt-1 text-sm leading-6 text-gray-600">There wasn&apos;t enough verifiable material in the recording to calculate a score.</p>
-                )}
-                {uvNote && (
-                  <p className="mt-1.5 flex items-start justify-center gap-1.5 text-xs leading-5 text-gray-500 sm:justify-start">
-                    <HelpCircle size={12} className="mt-0.5 flex-shrink-0 text-sky-500" />
-                    {uvNote}
-                  </p>
-                )}
-              </div>
+    <article className="flex flex-col gap-4 text-stone-900 antialiased selection:bg-[#f1e3c2] sm:gap-5">
+      {/* ── A. Execution Scorecard, under the card's title strip ── */}
+      {/* The first thing read (CEO, 10 Nov 2026). A compact summary of the
+          ratings the Detailed Performance Assessment gives, row for row —
+          never a second assessment. Each row opens that section at the
+          criterion. */}
+      <section className={`${CARD} overflow-hidden`}>
+        <div aria-hidden className="h-[3px] bg-gradient-to-r from-[#e6cf9c] via-[#b8862f] to-[#e6cf9c]" />
+        <header className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-2.5 border-b ${HAIRLINE} bg-[#fbf9f5] px-5 py-3.5 sm:px-10`}>
+          <p className="min-w-0 text-[13px] leading-5 text-stone-500">
+            {company && <span className="block font-semibold text-stone-900 sm:inline">{company}</span>}
+            {company && meeting && <span aria-hidden className="mx-2 hidden text-stone-300 sm:inline">·</span>}
+            {meeting}
+          </p>
+          <OutcomeBadge tone={outcomeTone}>{outcomeType}</OutcomeBadge>
+        </header>
+        <div className={CARD_BODY}>
+          <SectionHeading title={title.scorecard!} />
+          <div className="mt-6 overflow-hidden rounded-2xl ring-1 ring-inset ring-[#e6e2da] md:grid md:grid-cols-[17.5rem,minmax(0,1fr)]">
+            <div className="flex flex-col items-center justify-center bg-gradient-to-b from-[#fbf8f2] to-[#f6f0e4] px-6 py-8 text-center md:border-r md:border-[#ebe7e0]">
+              <ScoreRing pct={pct} size={136} caption={null} />
+              <p className={`mt-5 ${KICKER}`}>Overall Execution Score</p>
+              <p className="mt-1.5 text-[16px] font-semibold tabular-nums tracking-[-0.01em] text-stone-900">{formatOverallScore(card, { showPoints })}</p>
+              {band ? (
+                <span className={`mt-3 ${CHIP} ${BAND_TONE[band.tone].soft} ${BAND_TONE[band.tone].text}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${BAND_TONE[band.tone].dot}`} />
+                  {band.label}
+                </span>
+              ) : (
+                <p className="mt-2 text-sm leading-6 text-stone-600">There wasn&apos;t enough verifiable material in the recording to calculate a score.</p>
+              )}
+              {uvNote && (
+                <p className="mt-4 flex max-w-[15rem] items-start gap-1.5 text-left text-xs leading-5 text-stone-500">
+                  <HelpCircle size={12} className="mt-0.5 flex-shrink-0 text-sky-600" />
+                  {uvNote}
+                </p>
+              )}
             </div>
 
-            <ul className="mt-5 divide-y divide-[#e9e7e2] border-t border-[#e9e7e2]">
+            <ul className="divide-y divide-[#efece6] border-t border-[#ebe7e0] bg-white md:border-t-0">
               {card.criteria.map((c) => {
                 const number = criterionDisplayNumber(c.key)
                 const style = VERDICT[c.verdict]
@@ -167,209 +215,240 @@ export default function ReportCardView({
                     <button
                       type="button"
                       onClick={() => openCriterion(c.key)}
-                      className="group flex w-full items-center justify-between gap-3 py-2.5 touch:py-3.5 text-left"
+                      className={`group flex w-full items-center gap-3 px-4 py-3 touch:py-3.5 text-left transition-colors hover:bg-[#fcf9f3] focus-visible:bg-[#fcf9f3] focus-visible:outline-none sm:px-5`}
                     >
-                      <span className="min-w-0 text-sm text-gray-800 transition-colors group-hover:text-black">
-                        {number && <span className="mr-1.5 tabular-nums text-gray-400">{number}</span>}
-                        {criterionLabel(c)}
-                      </span>
-                      <span className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${style.chip}`}>
+                      {number ? <span className={NUMBER}>{number.replace(/\.$/, '')}</span> : <span className="w-6 flex-shrink-0" />}
+                      <span className="min-w-0 flex-1 text-sm font-medium text-stone-800 transition-colors group-hover:text-stone-950">{criterionLabel(c)}</span>
+                      <span className={`${CHIP} ${style.chip}`}>
                         {style.icon}{SCORECARD_RATING[c.verdict]}
                       </span>
+                      <ChevronRight size={15} className="-mr-1 flex-shrink-0 text-stone-300 transition group-hover:translate-x-0.5 group-hover:text-[#a07530]" />
                     </button>
                   </li>
                 )
               })}
             </ul>
-            <p className="mt-3 text-xs leading-5 text-gray-500">
-              {SHOW_SCORE_POINTS
-                ? '✅ Strong = 1, ⚠️ Partial = 0.5, ❌ Weak = 0, each criterion weighted equally.'
-                : 'Every criterion counts equally: Strong counts in full, Partial counts half, Weak counts nothing.'}{' '}
-              N/A (not applicable) and UV (couldn&apos;t be verified from the audio) are left out, and Commercial Outcome is never scored. Select a criterion to see its evidence.
-            </p>
-          </div>
-        </Section>
 
-        {/* ── B. Negotiation Result (open) ──────────────────────── */}
-        <Section title={title.result!}>
+            <div className="border-t border-[#ebe7e0] bg-[#fcfbf9] px-5 py-4 md:col-span-2 sm:px-6">
+              <p className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs font-medium text-stone-700">
+                <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={12} className="text-emerald-600" /> {SHOW_SCORE_POINTS ? 'Strong = 1' : 'Strong counts in full'}</span>
+                <span className="inline-flex items-center gap-1.5"><AlertTriangle size={12} className="text-amber-600" /> {SHOW_SCORE_POINTS ? 'Partial = 0.5' : 'Partial counts half'}</span>
+                <span className="inline-flex items-center gap-1.5"><XCircle size={12} className="text-rose-600" /> {SHOW_SCORE_POINTS ? 'Weak = 0' : 'Weak counts nothing'}</span>
+              </p>
+              <p className="mt-1.5 text-xs leading-5 text-stone-500">
+                Each criterion is weighted equally. N/A (not applicable) and UV (couldn&apos;t be verified from the audio) are left out, and Commercial Outcome is never scored. Select a criterion to see its evidence.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── B. Negotiation Result (open) ──────────────────────── */}
+      <section className={CARD}>
+        <div className={CARD_BODY}>
+          <SectionHeading title={title.result!} />
           {hasNewLayout ? (
-            <p className="text-[15px] font-semibold leading-relaxed text-gray-900">{outcomeType} — {card.headline}</p>
+            <p className={`mt-6 ${HEADLINE}`}>
+              <span className="sr-only">{outcomeType} — </span>{card.headline}
+            </p>
           ) : (
             <>
-              <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${outcomeChip}`}>{card.commercial_outcome_label}</span>
-              <p className="mt-3 text-[15px] font-medium leading-relaxed text-gray-900">{card.headline}</p>
+              {/* Older cards carry their own outcome label ("Signed — full
+                  page"); the title strip already shows the outcome type. */}
+              {card.commercial_outcome_label && (
+                <div className="mt-6"><OutcomeBadge tone={outcomeTone} large>{card.commercial_outcome_label}</OutcomeBadge></div>
+              )}
+              <p className={`${card.commercial_outcome_label ? 'mt-4' : 'mt-6'} ${HEADLINE}`}>{card.headline}</p>
             </>
           )}
-          <p className="mt-3 text-sm leading-7 text-gray-700">{card.summary}</p>
-          {!hasNewLayout && card.report_summary && <p className="mt-3 text-sm leading-7 text-gray-700">{card.report_summary}</p>}
+          <p className={`mt-5 ${MEASURE} text-[15px] leading-[1.75] text-stone-600`}>{card.summary}</p>
+          {!hasNewLayout && card.report_summary && <p className={`mt-4 ${MEASURE} text-[15px] leading-[1.75] text-stone-600`}>{card.report_summary}</p>}
 
           {corrections.length > 0 && (
-            <div className="mt-5 rounded-xl bg-[#faf9f7] p-4">
-              <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+            <div className="mt-7 rounded-xl bg-[#faf8f5] px-4 py-4 ring-1 ring-inset ring-[#ebe7e0] sm:px-5">
+              <p className={`flex items-center gap-1.5 ${KICKER}`}>
                 <Flag size={11} className="text-[#a07530]" /> Corrections on record
               </p>
-              <div className="mt-2.5 flex flex-col gap-2.5">
+              <ul className="mt-3 flex flex-col gap-3">
                 {corrections.map((c) => (
-                  <div key={c.id} className="text-sm leading-6 text-gray-800">
-                    <span className="font-semibold text-gray-900">{c.field_label}. </span>
+                  <li key={c.id} className={`${MEASURE} text-sm leading-6 text-stone-700`}>
+                    <span className="font-semibold text-stone-900">{c.field_label}. </span>
                     {c.correction}
-                    <span className="ml-1.5 text-xs text-gray-400">· {formatDayMonth(c.created_at)}</span>
-                  </div>
+                    <span className="ml-1.5 whitespace-nowrap text-xs text-stone-500">· {formatDayMonth(c.created_at)}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
-        </Section>
+        </div>
+      </section>
 
-        {/* ── C. Follow-Up Assessment (open) ────────────────────── */}
-        {followUp && title.follow_up && (
-          <Section title={title.follow_up}>
+      {/* ── C. Follow-Up Assessment (open) ────────────────────── */}
+      {followUp && title.follow_up && (
+        <section className={CARD}>
+          <div className={CARD_BODY}>
+            <SectionHeading title={title.follow_up} />
             {followUp.rows.length > 0 && (
-              <>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">Where it stands</p>
-                <dl className="mt-3 flex flex-col gap-3">
-                  {followUp.rows.map((r) => (
-                    <div key={r.key} className="grid grid-cols-1 gap-0.5 sm:grid-cols-[11rem,minmax(0,1fr)] sm:gap-5">
-                      <dt className="text-sm font-semibold text-gray-900">{r.label}</dt>
-                      <dd className="text-sm leading-6 text-gray-700">{r.text}</dd>
-                    </div>
-                  ))}
+              <div className="mt-6">
+                <p className={KICKER}>Where it stands</p>
+                {/* An odd last tile takes the full row rather than leaving a hole. */}
+                <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:[&>*:last-child:nth-child(odd)]:col-span-2">
+                  {followUp.rows.map((r) => <StandingTile key={r.key} label={r.label} text={r.text} />)}
                 </dl>
-              </>
-            )}
-            {followUp.nextStep && (
-              <div className={`${followUp.rows.length > 0 ? 'mt-5' : ''} rounded-xl bg-[#fbf7ed] px-4 py-3.5`}>
-                <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">
-                  <Compass size={12} /> Recommended next step
-                </p>
-                <p className="mt-1.5 text-sm leading-6 text-gray-900">{followUp.nextStep}</p>
               </div>
             )}
-            {onChooseTrack && (
-              <button
-                type="button"
-                onClick={() => onChooseTrack('commercial')}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 touch:py-3 text-xs font-medium text-gray-800 transition-colors hover:border-gray-400"
-              >
-                <MessageSquare size={13} /> Work on the next steps with your coach
-              </button>
+            {(followUp.nextStep || onChooseTrack) && (
+              <NextStepPanel text={followUp.nextStep} onStart={onChooseTrack ? () => onChooseTrack('commercial') : undefined} />
             )}
-          </Section>
-        )}
+          </div>
+        </section>
+      )}
 
-        {/* ── D. What You Did Well / Main Areas for Improvement ── */}
-        {title.review && (
-          <Collapsible
-            title={title.review}
-            hint={`${plural(strengths.length, 'strength')} · ${plural(improvements.length, 'area', 'areas')} for improvement`}
-            open={open.review}
-            onToggle={() => toggle('review')}
-          >
-            <h4 className="mb-3 text-sm font-semibold text-gray-900">What You Did Well</h4>
-            <PointList items={card.strengths} empty="No strengths could be grounded in the transcript evidence." marker="bg-emerald-50 text-emerald-700" />
-            <h4 className="mb-3 mt-7 text-sm font-semibold text-gray-900">Main Areas for Improvement</h4>
-            <PointList items={card.improvements} empty="No material controllable improvements were identified." marker="bg-amber-50 text-amber-700" />
-          </Collapsible>
-        )}
+      {/* ── Live Coach: talk it through out loud ──────────────── */}
+      {onStartLiveCoach && <LiveCoachCard onStart={onStartLiveCoach} onPrepare={onPrepareLiveCoach} />}
 
-        {/* ── E. Detailed Performance Assessment (collapsed) ────── */}
+      {/* ── D, E, F: collapsed until opened ───────────────────── */}
+      {/* ── D. What You Did Well / Main Areas for Improvement ── */}
+      {title.review && (
         <Collapsible
-          title={title.detail!}
-          hint="Each criterion with the evidence, the assessment and better wording"
-          open={open.detail}
-          onToggle={() => toggle('detail')}
+          title={title.review}
+          hint={`${plural(strengths.length, 'strength')} · ${plural(improvements.length, 'area', 'areas')} for improvement`}
+          open={open.review}
+          onToggle={() => toggle('review')}
         >
-          <ol className="divide-y divide-[#eceae5]">
-            {card.criteria.flatMap((c, i) => {
-              const row = <CriterionRow key={c.key} criterion={c} onTimestampClick={onTimestampClick} onFlag={onFlag} />
-              if (i !== 2) return [row]
-              return [
-                <li key="commercial-outcome" className="py-5">
-                  <p className="text-sm font-semibold text-gray-900">3. Commercial Outcome — NOT SCORED</p>
+          <PointGroup
+            title="What You Did Well"
+            icon={<CheckCircle2 size={14} />}
+            items={card.strengths}
+            empty="No strengths could be grounded in the transcript evidence."
+            marker="bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+          />
+          <div className={`mt-9 border-t ${HAIRLINE} pt-9`}>
+            <PointGroup
+              title="Main Areas for Improvement"
+              icon={<TrendingUp size={14} />}
+              items={card.improvements}
+              empty="No material controllable improvements were identified."
+              marker="bg-amber-50 text-amber-700 ring-amber-600/25"
+            />
+          </div>
+        </Collapsible>
+      )}
+
+      {/* ── E. Detailed Performance Assessment (collapsed) ────── */}
+      <Collapsible
+        title={title.detail!}
+        hint="Each criterion with the evidence, the assessment and better wording"
+        open={open.detail}
+        onToggle={() => toggle('detail')}
+      >
+        <ol className="divide-y divide-[#efece6]">
+          {card.criteria.flatMap((c, i) => {
+            const row = <CriterionRow key={c.key} criterion={c} onTimestampClick={onTimestampClick} onFlag={onFlag} />
+            if (i !== 2) return [row]
+            return [
+              <li key="commercial-outcome" className={CRITERION_ROW}>
+                <CriterionHeading number="3" chip={<span className={`${CHIP} ${VERDICT.na.chip}`}><MinusCircle size={13} /> Not scored</span>}>
+                  Commercial Outcome<span className="sr-only"> — NOT SCORED</span>
+                </CriterionHeading>
+                <div className={`mt-3 ${MEASURE} sm:pl-9`}>
                   {card.commercial_outcome_summary ? (
-                    <p className="mt-2 text-sm leading-6 text-gray-800">{outcomeLabel(card.declared_outcome)}. {card.commercial_outcome_summary}</p>
+                    <p className="text-[14.5px] leading-[1.7] text-stone-700">{outcomeLabel(card.declared_outcome)}. {card.commercial_outcome_summary}</p>
                   ) : (
-                    <p className="mt-2 text-sm leading-6 text-gray-800">
-                      <span className={`mr-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${outcomeChip}`}>{card.commercial_outcome_label}</span>
+                    <p className="text-[14.5px] leading-[1.7] text-stone-700">
+                      {card.commercial_outcome_label && (
+                        <span className="mr-2 align-[1px]"><OutcomeBadge tone={outcomeTone}>{card.commercial_outcome_label}</OutcomeBadge></span>
+                      )}
                       {card.commercial_outcome_note}
                     </p>
                   )}
                   {onFlag && (
-                    <button
-                      type="button"
-                      onClick={() => onFlag(null, 'Commercial Outcome', card.commercial_outcome_summary || card.commercial_outcome_note)}
-                      className="mt-2.5 inline-flex items-center gap-1 touch:py-2.5 text-[10px] font-medium text-gray-400 transition-colors hover:text-[#a07530]"
-                    >
-                      <Flag size={10} /> Something not right here?
-                    </button>
+                    <FlagButton onClick={() => onFlag(null, 'Commercial Outcome', card.commercial_outcome_summary || card.commercial_outcome_note)}>
+                      Something not right here?
+                    </FlagButton>
                   )}
-                </li>,
-                row,
-              ]
-            })}
-          </ol>
-        </Collapsible>
+                </div>
+              </li>,
+              row,
+            ]
+          })}
+        </ol>
+      </Collapsible>
 
-        {/* ── F. Deeper Coaching (collapsed) ────────────────────── */}
-        <Collapsible
-          title={title.coaching!}
-          hint={`${objectionsHint} · your coaching question${onAskCoach ? ' · ask the coach anything' : ''}`}
-          open={open.coaching}
-          onToggle={() => toggle('coaching')}
-        >
-          <h4 className="text-sm font-semibold text-gray-900">Objections and Handling</h4>
-          {card.objections.length === 0 ? (
-            <p className="mt-2 text-sm text-gray-500">No genuine objections were raised in the transcript.</p>
-          ) : (
-            <div className="mt-3 flex flex-col gap-4">
-              {card.objections.map((o, i) => (
-                <div key={i} className="border-l-2 border-[#e5e3df] pl-3 sm:pl-5">
-                  <div className="flex items-start gap-2.5">
-                    <Quote size={15} className="mt-1 flex-shrink-0 text-[#a07530]" />
-                    <p className="text-sm font-medium leading-6 text-gray-900">{o.objection}</p>
+      {/* ── F. Deeper Coaching (collapsed) ────────────────────── */}
+      <Collapsible
+        title={title.coaching!}
+        hint={`${objectionsHint} · your coaching question${onAskCoach ? ' · ask the coach anything' : ''}`}
+        open={open.coaching}
+        onToggle={() => toggle('coaching')}
+      >
+        <h4 className={`flex items-center gap-2.5 ${SUBHEAD}`}>
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#fbf7ee] text-[#8f6626] ring-1 ring-inset ring-[#c8973f]/20">
+            <Quote size={13} />
+          </span>
+          Objections and Handling
+        </h4>
+        {card.objections.length === 0 ? (
+          <p className="mt-3 text-sm text-stone-500">No genuine objections were raised in the transcript.</p>
+        ) : (
+          <div className="mt-5 flex flex-col gap-4">
+            {card.objections.map((o, i) => (
+              <div key={i} className="rounded-xl bg-white p-4 ring-1 ring-inset ring-[#e9e5de] sm:p-6">
+                <div className="flex items-start gap-3">
+                  <span className="mt-px flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#fbf7ee] text-[#8f6626]">
+                    <Quote size={13} />
+                  </span>
+                  <p className={`${MEASURE} pt-0.5 text-[15px] font-medium leading-6 text-stone-900`}>{o.objection}</p>
+                </div>
+                <div className="mt-5 flex flex-col gap-4 sm:pl-10">
+                  <div>
+                    <p className={KICKER}>How you handled it</p>
+                    <p className={`mt-1.5 ${MEASURE} text-[14.5px] leading-[1.7] text-stone-700`}>{o.handled}</p>
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-gray-800"><span className="font-semibold text-gray-900">How you handled it: </span>{o.handled}</p>
                   {(o.original_wording || o.trc_improved_response) && (
-                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className={`grid grid-cols-1 gap-3 ${o.original_wording && o.trc_improved_response ? 'sm:grid-cols-2' : ''}`}>
                       {o.original_wording && (
-                        <div className="rounded-lg bg-[#faf9f7] p-3.5">
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Original</p>
-                          <p className="mt-1.5 text-sm italic leading-6 text-gray-600">{o.original_wording}</p>
+                        <div className="rounded-lg bg-[#faf8f5] px-4 py-3.5 ring-1 ring-inset ring-[#ebe7e0]">
+                          <p className={KICKER}>Original</p>
+                          <p className="mt-1.5 text-sm italic leading-6 text-stone-600">{o.original_wording}</p>
                         </div>
                       )}
                       {o.trc_improved_response && (
-                        <div className="rounded-lg bg-[#fbf7ed] p-3.5">
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#a07530]">TRC doctrine</p>
-                          <p className="mt-1.5 text-sm leading-6 text-gray-800">{o.trc_improved_response}</p>
+                        <div className={`${GOLD_PANEL} rounded-lg px-4 py-3.5`}>
+                          <p className={KICKER_GOLD}>TRC doctrine</p>
+                          <p className="mt-1.5 text-sm leading-6 text-stone-900">{o.trc_improved_response}</p>
                         </div>
                       )}
                     </div>
                   )}
-                  {o.principle && <p className="mt-2.5 text-xs leading-5 text-gray-500"><span className="font-semibold text-gray-700">Relevant principle: </span>{o.principle}</p>}
+                  {o.principle && (
+                    <p className={`${MEASURE} text-xs leading-5 text-stone-500`}><span className="font-semibold text-stone-700">Relevant principle: </span>{o.principle}</p>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            ))}
+          </div>
+        )}
 
-          {card.deeper_analysis.map((s, i) => (
-            <div key={i} className="mt-7">
-              <h4 className="text-sm font-semibold text-gray-900">{titleCaseHeading(s.heading)}</h4>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-gray-800">{s.body}</p>
-            </div>
-          ))}
+        {card.deeper_analysis.length > 0 && (
+          <div className={`mt-9 flex flex-col gap-8 border-t ${HAIRLINE} pt-9`}>
+            {card.deeper_analysis.map((s, i) => (
+              <div key={i}>
+                <h4 className={SUBHEAD}>{titleCaseHeading(s.heading)}</h4>
+                <p className={`mt-2.5 ${MEASURE} whitespace-pre-wrap text-[15px] leading-[1.75] text-stone-700`}>{s.body}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
-          <div className="mt-8 rounded-xl border border-[#c8973f]/40 bg-[#fffdf8] p-4 sm:p-5">
-            <div className="flex items-center gap-2">
-              <MessageCircleQuestion size={15} className="text-[#a07530]" />
-              <p className="text-sm font-semibold text-gray-900">Final Coaching Question</p>
-            </div>
-            <p className="mt-2.5 text-[15px] leading-7 text-gray-900">{card.coaching_question}</p>
+        <div className="mt-9 flex flex-col gap-4">
+          <div className="rounded-2xl bg-gradient-to-br from-[#fcf9f2] to-[#f7eedb] p-5 ring-1 ring-inset ring-[#c8973f]/30 sm:p-7">
+            <p className={`flex items-center gap-2 ${KICKER_GOLD}`}>
+              <MessageCircleQuestion size={13} /> Final Coaching Question
+            </p>
+            <p className="mt-3.5 max-w-[44rem] text-pretty font-serif text-[19px] font-medium leading-[1.55] text-stone-900 sm:text-[21px]">{card.coaching_question}</p>
             {onDiscussCoachingQuestion && (
-              <button
-                type="button"
-                onClick={onDiscussCoachingQuestion}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 touch:py-3 text-xs font-medium text-gray-800 transition-colors hover:border-gray-400"
-              >
+              <button type="button" onClick={onDiscussCoachingQuestion} className={`mt-6 ${PRIMARY_BUTTON}`}>
                 <MessageSquare size={13} /> Answer this with your coach
               </button>
             )}
@@ -377,13 +456,13 @@ export default function ReportCardView({
 
           {/* Two-track invitation. */}
           {(card.coaching_invitation || onChooseTrack) && (
-            <div className="mt-4 rounded-xl bg-[#faf9f7] p-4 sm:p-5">
-              <p className="text-sm font-semibold text-gray-900">Continue With Your Coach</p>
-              <p className="mt-2 text-sm leading-7 text-gray-800">
+            <div className="rounded-2xl bg-white p-5 ring-1 ring-inset ring-[#e6e2da] sm:p-7">
+              <PanelTitle icon={<Compass size={14} />}>Continue With Your Coach</PanelTitle>
+              <p className={`mt-3 ${MEASURE} text-[14.5px] leading-[1.75] text-stone-700`}>
                 {card.coaching_invitation || 'You can practise the most important improvement from this meeting, or work on the next commercial action for this opportunity. Which would help you most right now?'}
               </p>
               {onChooseTrack && (
-                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <TrackButton icon={<Target size={15} />} track="execution" onClick={onChooseTrack} />
                   {/* The next step itself is in the Follow-Up Assessment, so it isn't repeated here. */}
                   <TrackButton icon={<Compass size={15} />} track="commercial" onClick={onChooseTrack} />
@@ -393,11 +472,10 @@ export default function ReportCardView({
           )}
 
           {onAskCoach && <AskCoachBox onAsk={onAskCoach} />}
-        </Collapsible>
+        </div>
+      </Collapsible>
 
-      </div>
-
-      <footer className="border-t border-[#eceae5] px-4 py-3 text-center text-[11px] text-gray-400 sm:px-12">
+      <footer className="px-2 pb-1 text-center text-[11.5px] leading-5 text-stone-500">
         {meta.generatedAt ? `Generated ${formatDayMonthYearTime(meta.generatedAt)}` : ''}
         {meta.modelUsed ? ` · ${meta.modelUsed}` : ''}
         {' · Evidence quoted verbatim from the transcript'}
@@ -406,17 +484,172 @@ export default function ReportCardView({
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function OutcomeBadge({ tone, large = false, children }: { tone: { chip: string; dot: string }; large?: boolean; children: React.ReactNode }) {
   return (
-    <section className="border-t border-[#eceae5] py-7">
-      <h3 className="mb-4 text-base font-semibold tracking-tight text-gray-900">{title}</h3>
+    <span className={`inline-flex items-center gap-1.5 rounded-full font-semibold tracking-[0.02em] ring-1 ring-inset ${large ? 'px-3 py-1 text-xs' : 'px-2.5 py-1 text-[11px]'} ${tone.chip}`}>
+      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
       {children}
+    </span>
+  )
+}
+
+// "A. Negotiation Result" → the letter for the gold mark and the name beside it.
+function splitTitle(title: string): { letter: string | null; name: string } {
+  const m = /^([A-Z])\.\s+(.+)$/.exec(title)
+  return m ? { letter: m[1], name: m[2] } : { letter: null, name: title }
+}
+
+function LetterMark({ letter }: { letter: string }) {
+  return (
+    <span
+      aria-hidden
+      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[10px] bg-gradient-to-b from-[#fdfaf3] to-[#f4e9d1] font-serif text-[15px] font-semibold text-[#8a6224] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(160,117,48,0.14)] ring-1 ring-inset ring-[#d9bf8a]/70"
+    >
+      {letter}
+    </span>
+  )
+}
+
+function SectionHeading({ title }: { title: string }) {
+  const { letter, name } = splitTitle(title)
+  return (
+    <h3 className="flex items-center gap-3.5 text-[18px] font-semibold tracking-[-0.012em] text-stone-900">
+      {letter && <LetterMark letter={letter} />}
+      <span className="min-w-0">
+        {letter && <span className="sr-only">{letter}. </span>}
+        {name}
+      </span>
+    </h3>
+  )
+}
+
+// One line of the Follow-Up's "Where it stands". A leading verdict the coach
+// wrote in capitals ("NOT SCHEDULED.") is set apart so the lines can be
+// scanned, and a lead-in that only repeats the tile's label ("CEO buy-in: …")
+// is dropped. The verdict stays neutral, never coloured: the only ratings on
+// the card are the scorecard's.
+function StandingTile({ label, text }: { label: string; text: string }) {
+  const { status, rest } = standingParts(label, text)
+  return (
+    <div className="rounded-xl bg-[#faf8f5] px-4 py-3.5 ring-1 ring-inset ring-[#ece8e1] sm:px-5 sm:py-4">
+      <dt className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13px] font-semibold leading-5 text-stone-900">
+        {label}
+        {status && (
+          <span className="rounded-md bg-white px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-stone-700 ring-1 ring-inset ring-stone-900/10">
+            {status}
+          </span>
+        )}
+      </dt>
+      {rest && <dd className="mt-1.5 text-[14px] leading-[1.6] text-stone-600">{rest}</dd>}
+    </div>
+  )
+}
+
+function standingParts(label: string, text: string): { status: string | null; rest: string } {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '')
+  const CAPS = /^([A-Z][A-Z'’ -]*[A-Z])\.\s*/
+  let t = text.trim()
+  const lead = /^([^:.]{2,40}):\s+/.exec(t)
+  if (lead && (norm(lead[1]) === norm(label) || CAPS.test(t.slice(lead[0].length)))) t = t.slice(lead[0].length)
+  const caps = CAPS.exec(t)
+  if (caps) return { status: caps[1], rest: t.slice(caps[0].length) }
+  return { status: null, rest: t.charAt(0).toUpperCase() + t.slice(1) }
+}
+
+// The Follow-Up's call to action, and the one dark panel on the card: the next
+// step and the button to work on it with the coach are what the eye finds
+// after the result, because getting people into that conversation is the point.
+function NextStepPanel({ text, onStart }: { text: string | null; onStart?: () => void }) {
+  return (
+    <div className="relative mt-6 overflow-hidden rounded-2xl bg-[#1c1917] px-5 py-6 text-white sm:px-8 sm:py-7">
+      <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_140%_at_100%_0%,rgba(212,165,74,0.24),transparent_58%)]" />
+      <div className="relative">
+        <p className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-[#e2c17f]">
+          <Compass size={13} /> {text ? 'Recommended next step' : 'Next commercial action'}
+        </p>
+        {text && <p className={`mt-3 ${MEASURE} text-pretty text-[16px] leading-[1.65] text-white/90 sm:text-[17px]`}>{text}</p>}
+        {onStart && (
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <button
+              type="button"
+              onClick={onStart}
+              className="group inline-flex items-center justify-between gap-3 rounded-xl bg-[#d4a54a] px-5 py-3 touch:py-3.5 text-left text-sm font-semibold text-stone-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_24px_-10px_rgba(212,165,74,0.7)] transition hover:bg-[#e0b55c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e2c17f] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1c1917] sm:justify-center sm:gap-2"
+            >
+              {/* On a phone the label wraps; it reads left-aligned with the arrow at the end. */}
+              <MessageSquare size={15} className="hidden flex-shrink-0 sm:block" />
+              <span>Work on the next steps with your coach</span>
+              <ArrowRight size={15} className="flex-shrink-0 transition group-hover:translate-x-0.5" />
+            </button>
+            <span className="text-[12.5px] leading-5 text-white/60">{SALES_COACH_TRACKS.commercial.hint}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Live Coach (13 Nov 2026): the live voice call, offered on the Report Card
+// itself, right after the next step. A white card like the sections around it
+// (the Follow-Up's panel stays the card's one dark panel), lit by a faint wash
+// of the call's own colours and the same animated orb as the Coaching tab, so
+// it reads as a different kind of thing: a conversation, not more report.
+function LiveCoachCard({ onStart, onPrepare }: { onStart: () => void; onPrepare?: () => void }) {
+  return (
+    <section aria-label="Live Coach" className={`${CARD} relative overflow-hidden`}>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(55%_130%_at_0%_50%,rgba(99,102,241,0.11),transparent_62%),radial-gradient(45%_110%_at_100%_0%,rgba(236,72,153,0.08),transparent_60%),radial-gradient(40%_90%_at_70%_120%,rgba(34,211,238,0.08),transparent_60%)]"
+      />
+      <div className="relative flex flex-col gap-6 px-5 py-6 sm:px-10 sm:py-8 md:flex-row md:items-center md:gap-8">
+        <div className="flex items-center gap-4 md:contents">
+          <span aria-hidden className="relative flex h-16 w-16 flex-shrink-0 items-center justify-center sm:h-[76px] sm:w-[76px]">
+            <span className="absolute inset-0 rounded-full bg-[conic-gradient(from_90deg,#22d3ee,#6366f1,#a855f7,#ec4899,#22d3ee)] opacity-30 blur-xl" />
+            <span className="sc-live-orb relative h-full w-full rounded-full" />
+          </span>
+          <p className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-indigo-700 md:hidden">
+            <span className="sc-live-dot" /> Live Coach
+          </p>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="hidden items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-indigo-700 md:flex">
+            <span className="sc-live-dot" /> Live Coach
+          </p>
+          <h3 className="text-balance font-serif text-[20px] font-medium leading-[1.3] tracking-[-0.01em] text-stone-900 sm:text-[23px] md:mt-2">
+            Talk this meeting through, out loud
+          </h3>
+          <p className={`mt-2 ${MEASURE} text-[14px] leading-[1.65] text-stone-600`}>
+            A real-time voice call with your coach, who has read the transcript and this Report Card. Answers come back in about a second, and you can interrupt any time.
+          </p>
+          <ul className="mt-4 flex flex-wrap gap-2">
+            {['Role-play the CEO', 'Rehearse your close', 'Plan the next step'].map((t) => (
+              <li key={t} className="rounded-full bg-white/80 px-3 py-1 text-[12px] font-medium text-stone-700 ring-1 ring-inset ring-indigo-900/10">{t}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="flex flex-col items-stretch gap-2 md:items-end">
+          <button
+            type="button"
+            onClick={onStart}
+            onPointerEnter={onPrepare}
+            onFocus={onPrepare}
+            onTouchStart={onPrepare}
+            className="group inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0b1024] py-2 pl-2 pr-5 touch:py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_-14px_rgba(49,46,129,0.85),inset_0_0_0_1px_rgba(255,255,255,0.08)] transition hover:-translate-y-px hover:bg-[#121a3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
+          >
+            <span className="sc-live-orb h-8 w-8 rounded-full" />
+            Start Live Coach
+            <Phone size={14} className="text-white/70 transition group-hover:text-white" />
+          </button>
+          <span className="text-center text-[11.5px] leading-5 text-stone-500 md:text-right">Connects in seconds · up to 15 minutes</span>
+        </div>
+      </div>
     </section>
   )
 }
 
-// A section that opens on demand. While closed, a one-line hint says what is
-// inside, so nothing is hidden without a clue that it is there.
+// A section that opens on demand: its own card, plainly clickable. While
+// closed, a one-line hint says what is inside, so nothing is hidden without a
+// clue that it is there. Opened, the card holds the content, with a second
+// Hide at the bottom so a long section can be closed where reading ends.
 function Collapsible({ title, hint, open, onToggle, children }: {
   title: string
   hint: string
@@ -424,27 +657,65 @@ function Collapsible({ title, hint, open, onToggle, children }: {
   onToggle: () => void
   children: React.ReactNode
 }) {
+  const ref = useRef<HTMLElement>(null)
+  const { letter, name } = splitTitle(title)
+  function hideFromBottom() {
+    onToggle()
+    // Closing a long section from its end leaves the reader far below it.
+    requestAnimationFrame(() => ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
+  }
   return (
-    <section className="border-t border-[#eceae5]">
+    <section
+      ref={ref}
+      className={`${CARD} scroll-mt-20 transition-shadow duration-200 ${
+        open ? '' : 'hover:ring-[#d8d1c5] hover:shadow-[0_1px_2px_rgba(28,25,23,0.05),0_18px_34px_-22px_rgba(28,25,23,0.32)]'
+      }`}
+    >
       <h3>
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="group flex w-full items-start justify-between gap-4 py-6 text-left"
+          className={`group flex w-full items-center gap-3.5 rounded-2xl px-5 py-5 text-left sm:gap-4 sm:px-10 sm:py-6 ${FOCUS}`}
         >
-          <span className="min-w-0">
-            <span className="block text-base font-semibold tracking-tight text-gray-900">{title}</span>
-            {!open && <span className="mt-1 block text-xs leading-5 text-gray-500">{hint}</span>}
+          {letter && <LetterMark letter={letter} />}
+          <span className="min-w-0 flex-1">
+            <span className="block text-[16px] font-semibold tracking-[-0.01em] text-stone-900 sm:text-[17px]">
+              {letter && <span className="sr-only">{letter}. </span>}
+              {name}
+            </span>
+            {!open && <span className="mt-0.5 block text-[12.5px] leading-5 text-stone-500">{hint}</span>}
           </span>
-          <span className="mt-0.5 inline-flex flex-shrink-0 items-center gap-1 text-xs font-medium text-gray-500 transition-colors group-hover:text-black">
-            {open ? 'Hide' : 'Show'}
-            <ChevronDown size={15} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+          <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-white p-2 text-xs font-medium text-stone-700 shadow-[0_1px_2px_rgba(28,25,23,0.06)] ring-1 ring-inset ring-stone-900/10 transition group-hover:text-stone-950 group-hover:ring-stone-900/20 sm:px-3 sm:py-1.5">
+            <span className="hidden sm:inline">{open ? 'Hide' : 'Show'}</span>
+            <ChevronDown size={15} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
           </span>
         </button>
       </h3>
-      {open && <div className="pb-7">{children}</div>}
+      {open && (
+        <div className={`section-reveal border-t ${HAIRLINE} px-5 pb-6 pt-7 sm:px-10 sm:pb-8 sm:pt-8`}>
+          {children}
+          <div className="mt-8 flex justify-end">
+            <button
+              type="button"
+              onClick={hideFromBottom}
+              className={`inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 touch:py-2.5 text-xs font-medium text-stone-500 ring-1 ring-inset ring-stone-900/10 transition hover:text-stone-900 hover:ring-stone-900/20 ${FOCUS}`}
+            >
+              <ChevronUp size={14} /> Hide {letter ? `section ${letter}` : 'section'}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
+  )
+}
+
+function PanelTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <p className="flex items-center gap-2.5 text-[15px] font-semibold tracking-[-0.01em] text-stone-900">
+      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#fbf7ee] text-[#8f6626] ring-1 ring-inset ring-[#c8973f]/20">{icon}</span>
+      {children}
+    </p>
   )
 }
 
@@ -461,11 +732,9 @@ function AskCoachBox({ onAsk }: { onAsk: (question: string) => void }) {
     setQuestion('')
   }
   return (
-    <div className="mt-4 rounded-xl border border-[#c8973f]/40 bg-white p-4 sm:p-5">
-      <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-        <MessageSquare size={15} className="text-[#a07530]" /> Ask the Coach Anything
-      </p>
-      <p className="mt-1.5 text-xs leading-5 text-gray-500">
+    <div className="rounded-2xl bg-white p-5 ring-1 ring-inset ring-[#e6e2da] sm:p-7">
+      <PanelTitle icon={<MessageSquare size={14} />}>Ask the Coach Anything</PanelTitle>
+      <p className={`mt-3 ${MEASURE} text-[13px] leading-[1.65] text-stone-500`}>
         About this negotiation, or about any part of the TRC method. The coach answers from TRC&apos;s own sales documents: the Overcoming Objections manual, the Sales Coaching Method, the negotiation examples and the follow-up playbook.
       </p>
       <textarea
@@ -475,15 +744,10 @@ function AskCoachBox({ onAsk }: { onAsk: (question: string) => void }) {
         rows={4}
         maxLength={4000}
         placeholder="For example: How do I deal with “It’s not my decision” type of objections?"
-        className="mt-3 w-full resize-y rounded-xl border border-[#e5e3df] bg-white px-3.5 py-2.5 text-sm leading-6 text-gray-900 outline-none placeholder:text-gray-400 focus:border-gray-400"
+        className="mt-5 w-full resize-y rounded-xl border border-[#e3dfd7] bg-[#faf8f5] px-4 py-3.5 text-[14.5px] leading-6 text-stone-900 shadow-[inset_0_1px_2px_rgba(28,25,23,0.04)] outline-none transition placeholder:text-stone-400 focus:border-[#c8973f]/70 focus:bg-white focus:ring-4 focus:ring-[#c8973f]/10"
       />
-      <div className="mt-2 flex justify-end">
-        <button
-          type="button"
-          onClick={submit}
-          disabled={!question.trim()}
-          className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 touch:py-3 text-xs font-medium text-white transition-colors hover:bg-gray-900 disabled:opacity-40"
-        >
+      <div className="mt-3 flex justify-end">
+        <button type="button" onClick={submit} disabled={!question.trim()} className={PRIMARY_BUTTON}>
           <Send size={13} /> Ask the coach
         </button>
       </div>
@@ -495,20 +759,29 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`
 }
 
-function PointList({ items, empty, marker }: { items?: SalesCoachCardPoint[]; empty: string; marker: string }) {
-  if (!items || items.length === 0) return <p className="text-sm text-gray-500">{empty}</p>
+function PointGroup({ title, icon, items, empty, marker }: { title: string; icon: React.ReactNode; items?: SalesCoachCardPoint[]; empty: string; marker: string }) {
   return (
-    <ol className="flex flex-col gap-3">
-      {items.map((p, i) => (
-        <li key={i} className="flex gap-3">
-          <span className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${marker}`}>{i + 1}</span>
-          <p className="text-sm leading-6 text-gray-800">
-            <span className="font-semibold text-gray-900">{p.title.replace(/\.$/, '')}. </span>
-            {p.detail}
-          </p>
-        </li>
-      ))}
-    </ol>
+    <div>
+      <h4 className={`flex items-center gap-2.5 ${SUBHEAD}`}>
+        <span className={`flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-inset ${marker}`}>{icon}</span>
+        {title}
+      </h4>
+      {!items || items.length === 0 ? (
+        <p className="mt-3 text-sm text-stone-500">{empty}</p>
+      ) : (
+        <ol className="mt-5 flex flex-col gap-6">
+          {items.map((p, i) => (
+            <li key={i} className="flex gap-3.5">
+              <span className={`mt-px flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums ring-1 ring-inset ${marker}`}>{i + 1}</span>
+              <div className="min-w-0">
+                <p className={`${MEASURE} text-[15px] font-semibold leading-6 tracking-[-0.005em] text-stone-900`}>{p.title.replace(/\.$/, '')}</p>
+                <p className={`mt-1.5 ${MEASURE} text-[14.5px] leading-[1.7] text-stone-700`}>{p.detail}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   )
 }
 
@@ -518,23 +791,27 @@ function TrackButton({ icon, track, onClick, sub }: { icon: React.ReactNode; tra
     <button
       type="button"
       onClick={() => onClick(track)}
-      className="flex items-start gap-3 rounded-lg border border-[#e5e3df] bg-white px-4 py-3 text-left transition-colors hover:border-[#c8973f]/60 hover:bg-[#fffdf8]"
+      className={`group flex items-center gap-3.5 rounded-xl bg-white px-4 py-4 text-left shadow-[0_1px_2px_rgba(28,25,23,0.05)] ring-1 ring-inset ring-stone-900/10 transition hover:bg-[#fffdf9] hover:shadow-[0_8px_20px_-12px_rgba(160,117,48,0.35)] hover:ring-[#c8973f]/50 ${FOCUS}`}
     >
-      <span className="mt-0.5 text-[#a07530]">{icon}</span>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold text-gray-900">{t.label}</span>
-        <span className="mt-0.5 block text-xs leading-5 text-gray-500">{sub || t.hint}</span>
+      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#fdfaf3] to-[#f4e9d1] text-[#8f6626] ring-1 ring-inset ring-[#d9bf8a]/60">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-stone-900">{t.label}</span>
+        <span className="mt-0.5 block text-xs leading-5 text-stone-500">{sub || t.hint}</span>
       </span>
+      <ChevronRight size={15} className="flex-shrink-0 text-stone-300 transition group-hover:translate-x-0.5 group-hover:text-[#a07530]" />
     </button>
   )
 }
 
-function Line({ label, children }: { label: string; children: React.ReactNode }) {
+function FlagButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <p className="text-sm leading-6 text-gray-800">
-      <span className="font-semibold text-gray-900">{label}: </span>
-      {children}
-    </p>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`mt-4 inline-flex items-center gap-1.5 rounded touch:py-2.5 text-[11.5px] font-medium text-stone-500 transition-colors hover:text-[#8f6626] ${FOCUS}`}
+    >
+      <Flag size={11} /> {children}
+    </button>
   )
 }
 
@@ -544,7 +821,7 @@ function TimestampButton({ ms, onClick }: { ms: number; onClick: (ms: number) =>
       type="button"
       onClick={() => onClick(ms)}
       title="Play from here"
-      className="mr-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 touch:px-3 touch:py-1.5 align-[1px] font-mono text-[10px] font-medium not-italic tabular-nums text-gray-500 ring-1 ring-[#e5e3df] transition-colors hover:bg-black hover:text-white hover:ring-black"
+      className={`mr-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 touch:px-3 touch:py-1.5 align-[1px] font-mono text-[10px] font-medium not-italic tabular-nums text-stone-600 shadow-[0_1px_1px_rgba(28,25,23,0.04)] ring-1 ring-inset ring-stone-900/10 transition-colors hover:bg-stone-900 hover:text-white hover:ring-stone-900 ${FOCUS}`}
     >
       <Play size={8} className="fill-current" />{formatTimestamp(ms)}
     </button>
@@ -556,30 +833,47 @@ function EvidenceItem({ e, onTimestampClick }: { e: SalesCoachEvidence; onTimest
   return (
     <>
       {e.time_ms !== undefined && onTimestampClick && <TimestampButton ms={e.time_ms} onClick={onTimestampClick} />}
-      {label && <span className="text-gray-500">{label}: </span>}
-      <span className="italic text-gray-700">{e.text}</span>
+      {label && <span className="font-medium not-italic text-stone-500">{label}: </span>}
+      <span className="italic text-stone-700">{e.text}</span>
     </>
   )
 }
 
+// One quote or several, always in the same gold-ruled block.
 function EvidenceLines({ evidence, onTimestampClick }: { evidence?: SalesCoachEvidence[]; onTimestampClick?: (ms: number) => void }) {
   if (!evidence || evidence.length === 0) return null
-  if (evidence.length === 1) {
-    return (
-      <p className="text-sm leading-6 text-gray-800">
-        <span className="font-semibold text-gray-900">Evidence: </span>
-        <EvidenceItem e={evidence[0]} onTimestampClick={onTimestampClick} />
-      </p>
-    )
-  }
   return (
-    <div className="text-sm leading-6 text-gray-800">
-      <p className="font-semibold text-gray-900">Evidence:</p>
-      <ul className="mt-1 flex flex-col gap-1 border-l-2 border-[#c8973f]/60 pl-3.5">
+    <div>
+      <p className={KICKER}>Evidence</p>
+      <ul className="mt-2 flex flex-col gap-2 rounded-r-lg border-l-2 border-[#d4b06a] bg-[#faf8f5] py-3.5 pl-4 pr-4 text-[14px] leading-[1.7] text-stone-800">
         {evidence.map((e, i) => (
           <li key={i}><EvidenceItem e={e} onTimestampClick={onTimestampClick} /></li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className={KICKER}>{label}</p>
+      <p className="mt-1.5 text-[14.5px] leading-[1.7] text-stone-700">{children}</p>
+    </div>
+  )
+}
+
+// "4  CEO Buy-In  [Partial (0.5)]": the rating sits right after the name, as
+// the sample card writes it ("4. CEO Buy-In — ⚠️ Partial (0.5)"), so it reads
+// with the criterion instead of floating at the far edge of a wide row.
+function CriterionHeading({ number, chip, children }: { number: string | number; chip: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-start gap-3">
+      <span className={NUMBER}>{number}</span>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+        <p className="min-w-0 text-[15.5px] font-semibold leading-6 tracking-[-0.01em] text-stone-900">{children}</p>
+        {chip}
+      </div>
     </div>
   )
 }
@@ -590,33 +884,29 @@ function CriterionRow({ criterion: c, onTimestampClick, onFlag }: { criterion: S
   const label = meta?.label || c.label
   const aiSaid = c.evidence?.[0]?.text || c.reason || c.note || ''
   return (
-    <li id={`criterion-${c.key}`} className="scroll-mt-24 py-5 first:pt-0">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <p className="text-sm font-semibold text-gray-900">{meta?.number ?? ''}. {label}</p>
-        <span className={`inline-flex flex-shrink-0 items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${style.chip}`}>
-          {style.icon}{VERDICT_RATING[c.verdict]}
-        </span>
-      </div>
-      {c.note && <p className="mt-1 text-xs text-gray-500">{c.verdict === 'na' ? `Not applicable: ${c.note}` : c.note}</p>}
-      <div className="mt-3 flex flex-col gap-2">
-        <EvidenceLines evidence={c.evidence} onTimestampClick={onTimestampClick} />
-        {c.reason && <Line label="Assessment">{c.reason}</Line>}
-        {c.commercial_reality && <Line label="Commercial reality">{c.commercial_reality}</Line>}
-        {c.better_approach && (
-          <div className="rounded-lg bg-[#fbf7ed] px-3.5 py-2.5">
-            <Line label="Better approach">{c.better_approach}</Line>
-          </div>
+    <li id={`criterion-${c.key}`} className={`${CRITERION_ROW} scroll-mt-24 transition-colors duration-500 first:pt-1 last:pb-1`}>
+      <CriterionHeading number={meta?.number ?? ''} chip={<span className={`${CHIP} ${style.chip}`}>{style.icon}{VERDICT_RATING[c.verdict]}</span>}>
+        {label}
+      </CriterionHeading>
+      <div className={`${MEASURE} sm:pl-9`}>
+        {c.note && <p className="mt-1.5 text-xs leading-5 text-stone-500">{c.verdict === 'na' ? `Not applicable: ${c.note}` : c.note}</p>}
+        <div className="mt-5 flex flex-col gap-5">
+          <EvidenceLines evidence={c.evidence} onTimestampClick={onTimestampClick} />
+          {c.reason && <Field label="Assessment">{c.reason}</Field>}
+          {c.commercial_reality && <Field label="Commercial reality">{c.commercial_reality}</Field>}
+          {c.better_approach && (
+            <div className={`${GOLD_PANEL} px-4 py-4`}>
+              <p className={KICKER_GOLD}>Better approach</p>
+              <p className="mt-1.5 text-[14.5px] font-medium leading-[1.65] text-stone-900">{c.better_approach}</p>
+            </div>
+          )}
+        </div>
+        {onFlag && (c.scored || c.verdict === 'uv') && (
+          <FlagButton onClick={() => onFlag(c.key, label, aiSaid)}>
+            {c.verdict === 'uv' ? 'Tell the coach what happened' : 'Something not right here?'}
+          </FlagButton>
         )}
       </div>
-      {onFlag && (c.scored || c.verdict === 'uv') && (
-        <button
-          type="button"
-          onClick={() => onFlag(c.key, label, aiSaid)}
-          className="mt-2.5 inline-flex items-center gap-1 touch:py-2.5 text-[10px] font-medium text-gray-400 transition-colors hover:text-[#a07530]"
-        >
-          <Flag size={10} /> {c.verdict === 'uv' ? 'Tell the coach what happened' : 'Something not right here?'}
-        </button>
-      )}
     </li>
   )
 }
@@ -640,6 +930,6 @@ function scrollToCriterion(key: string) {
   const el = document.getElementById(`criterion-${key}`)
   if (!el) return
   el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  el.classList.add('bg-[#fffdf8]')
-  setTimeout(() => el.classList.remove('bg-[#fffdf8]'), 1600)
+  el.classList.add('bg-[#fbf7ed]')
+  setTimeout(() => el.classList.remove('bg-[#fbf7ed]'), 1600)
 }

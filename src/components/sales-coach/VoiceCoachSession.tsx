@@ -519,7 +519,7 @@ export default function VoiceCoachSession({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Live coaching call"
+      aria-label="Live Coach call"
       // Safari only lets audio analysis run after a tap on the page itself.
       onPointerDown={() => { void ctxRef.current?.resume().catch(() => {}) }}
       className="vc-root fixed inset-0 z-[70] flex flex-col overflow-hidden text-white"
@@ -538,7 +538,7 @@ export default function VoiceCoachSession({
         <div className="min-w-0">
           <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.3em] text-white/60">
             <span className={`h-1.5 w-1.5 rounded-full transition-colors duration-700 ${live ? 'vc-live-dot' : 'bg-white/30'}`} style={live ? { backgroundColor: glowB } : undefined} />
-            Live coaching
+            Live Coach
           </p>
           <p className="mt-1.5 truncate text-sm font-medium text-white/90">{title}</p>
           {subtitle && <p className="truncate text-xs text-white/45">{subtitle}</p>}

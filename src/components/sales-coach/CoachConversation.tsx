@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines, Phone } from 'lucide-react'
 import { isTouchDevice } from '@/lib/use-mobile'
 import VoiceCoachSession from '@/components/sales-coach/VoiceCoachSession'
@@ -57,6 +58,8 @@ export default function CoachConversation({
   trackSwitches,
   callTitle,
   callSubtitle,
+  callRequest = 0,
+  keepCallReady = false,
 }: {
   negotiationId: string
   initialMessages: SalesCoachMessage[]
@@ -91,6 +94,13 @@ export default function CoachConversation({
   // Shown at the top of a live call: the company, then the meeting.
   callTitle?: string
   callSubtitle?: string
+  // Opens a Live Coach call whenever it changes to a new number above 0 (the
+  // Report Card's "Start Live Coach"). The call screen is portalled to the
+  // page body, so it shows even while this tab is hidden.
+  callRequest?: number
+  // Keep a call prepared even while this tab is hidden (the Report Card tab
+  // offers Live Coach too), so a tap there connects as fast as one here.
+  keepCallReady?: boolean
 }) {
   const [messages, setMessages] = useState<Msg[]>(
     initialMessages.map((m) => ({ role: m.role, content: m.content })),
@@ -148,7 +158,7 @@ export default function CoachConversation({
   // tap: while this tab is open, keep one ready (sales-coach-voice-client.ts),
   // and prepare a new one whenever the chat changes, since the call's prompt
   // carries the chat so far. Preparing has no AI cost.
-  const voiceReady = !LEGACY_VOICE_MODE && canCoach && active && !callOpen
+  const voiceReady = !LEGACY_VOICE_MODE && canCoach && (active || keepCallReady) && !callOpen
   useEffect(() => {
     if (!voiceReady) return
     forgetVoiceSecret(negotiationId)
@@ -163,6 +173,11 @@ export default function CoachConversation({
     }
   }, [voiceReady, negotiationId, messages.length])
   const prepareCall = () => { if (voiceReady) prefetchVoiceSecret(negotiationId) }
+
+  // A Live Coach call asked for from outside the chat (the Report Card).
+  useEffect(() => {
+    if (callRequest > 0 && canCoach && !LEGACY_VOICE_MODE) setCallOpen(true)
+  }, [callRequest, canCoach])
 
   // Detect Web Speech support once on mount.
   useEffect(() => {
@@ -424,7 +439,10 @@ export default function CoachConversation({
           &#x27;&#x27;), which no longer matches on hydration now that this is
           rendered with the page rather than on opening the Coaching tab. */}
       <style dangerouslySetInnerHTML={{ __html: orbStyles }} />
-      {callOpen && (
+      {/* Portalled: this chat may sit in a hidden tab when the call is
+          started from the Report Card, and a fixed overlay inside a hidden
+          element is hidden with it. */}
+      {callOpen && typeof document !== 'undefined' && createPortal(
         <VoiceCoachSession
           negotiationId={negotiationId}
           title={callTitle || 'Your coach'}
@@ -432,7 +450,8 @@ export default function CoachConversation({
           trackSwitches={trackSwitches}
           onClose={() => setCallOpen(false)}
           onTurnsSaved={(turns) => setMessages((m) => [...m, ...turns])}
-        />
+        />,
+        document.body,
       )}
 
       {/* Header */}
@@ -453,11 +472,11 @@ export default function CoachConversation({
               onFocus={prepareCall}
               onTouchStart={prepareCall}
               disabled={!canCoach || phase === 'thinking'}
-              title="Talk to your coach live"
-              className="group inline-flex items-center gap-2 rounded-full bg-black py-1.5 pl-1.5 pr-3.5 touch:py-2 text-xs font-medium text-white shadow-sm transition-transform hover:scale-[1.02] disabled:opacity-40"
+              title="Start a live voice call with your coach"
+              className="group inline-flex items-center gap-2 rounded-full bg-[#0b1024] py-1.5 pl-1.5 pr-3.5 touch:py-2 text-xs font-medium text-white shadow-sm transition-transform hover:scale-[1.02] disabled:opacity-40"
             >
               <span className="sc-live-orb h-6 w-6 rounded-full" />
-              Talk live
+              Live Coach
             </button>
           )}
           {LEGACY_VOICE_MODE && mode === 'voice' && (
@@ -516,8 +535,8 @@ export default function CoachConversation({
               >
                 <span className="sc-live-orb h-12 w-12 flex-shrink-0 rounded-full" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold">Talk it through live</span>
-                  <span className="mt-0.5 block text-xs leading-5 text-white/60">A real-time call with your coach: role-play the CEO, rehearse the close, plan the next step. Interrupt any time.</span>
+                  <span className="block text-sm font-semibold">Live Coach</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-white/60">A real-time voice call with your coach: role-play the CEO, rehearse the close, plan the next step. Interrupt any time.</span>
                 </span>
                 <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white text-black transition-transform group-hover:scale-105"><Phone size={16} /></span>
               </button>
@@ -690,15 +709,9 @@ function ToggleChip({ active, onClick, title, disabled, children }: { active: bo
   )
 }
 
-// Scoped animations for the voice orb + streaming caret, and the small gold
-// orb on the "Talk live" entry points.
+// Scoped animations for the legacy voice orb + streaming caret. The Live Coach
+// orb (.sc-live-orb) and card are in globals.css, shared with the Report Card.
 const orbStyles = `
-.sc-live-orb { position: relative; overflow: hidden; isolation: isolate; background: #1e1b4b; box-shadow: 0 0 14px -2px rgba(139,92,246,.65); animation: sc-live-pulse 2.6s ease-in-out infinite; }
-.sc-live-orb::before { content: ''; position: absolute; inset: -35%; background: conic-gradient(from 0deg, #22d3ee, #6366f1, #a855f7, #ec4899, #f97316, #22d3ee); filter: blur(3px); animation: sc-live-spin 5s linear infinite; }
-.sc-live-orb::after { content: ''; position: absolute; inset: 0; border-radius: 9999px; background: radial-gradient(circle at 32% 26%, rgba(255,255,255,.75), rgba(255,255,255,0) 38%), radial-gradient(circle at 70% 80%, rgba(0,0,0,.35), transparent 60%); }
-.sc-live-card { background: radial-gradient(120% 150% at 0% 0%, #1e1b4b 0%, #0b1024 50%, #04050b 100%); box-shadow: 0 14px 34px -16px rgba(49,46,129,.7), inset 0 0 0 1px rgba(255,255,255,.06); }
-@keyframes sc-live-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-@keyframes sc-live-spin { to { transform: rotate(360deg); } }
 .sc-orb { background: radial-gradient(circle at 30% 25%, #3a3a3a, #000 70%); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 .sc-orb::before, .sc-orb::after { content: ''; position: absolute; inset: 0; border-radius: 9999px; }
 .sc-orb-idle { animation: sc-breathe 3.6s ease-in-out infinite; }
@@ -713,5 +726,5 @@ const orbStyles = `
 @keyframes sc-ping { 0% { box-shadow: 0 0 0 0 rgba(30,30,30,.35); } 70% { box-shadow: 0 0 0 22px rgba(30,30,30,0); } 100% { box-shadow: 0 0 0 22px rgba(30,30,30,0); } }
 .sc-caret { display:inline-block; width:7px; height:14px; margin-left:2px; vertical-align:-2px; background:#9ca3af; border-radius:1px; animation: sc-blink 1s steps(2) infinite; }
 @keyframes sc-blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
-@media (prefers-reduced-motion: reduce) { .sc-orb, .sc-orb::before, .sc-orb::after, .sc-caret, .sc-live-orb, .sc-live-orb::before { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .sc-orb, .sc-orb::before, .sc-orb::after, .sc-caret { animation: none !important; } }
 `

@@ -5,15 +5,16 @@ import { useRouter } from 'next/navigation'
 import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import PromptVersionHistory from '@/components/admin/PromptVersionHistory'
-import type { SalesCoachKnowledgeKey } from '@/types'
+import type { SalesCoachAdminDocKey } from '@/types'
 
 interface Props {
-  docKey: SalesCoachKnowledgeKey
+  docKey: SalesCoachAdminDocKey
   label: string
   initialContent: string
 }
 
-// Editor for one of the four Sales Coach knowledge documents (US-046). Mirrors
+// Editor for one of the Sales Coach admin documents: the five knowledge
+// documents (US-046) or the Live Coach Instructions. Mirrors
 // the interview-letter research prompt form: save snapshots the previous
 // version first, and the shared history panel offers full rollback (US-048).
 export default function SalesCoachKnowledgeForm({ docKey, label, initialContent }: Props) {
@@ -60,7 +61,9 @@ export default function SalesCoachKnowledgeForm({ docKey, label, initialContent 
       )}
       {success && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
-          Saved. New coaching conversations and Report Cards will use this version of the {label}.
+          {docKey === 'live_coach'
+            ? <>Saved. The next Live Coach call will use this version of the {label}.</>
+            : <>Saved. New coaching conversations and Report Cards will use this version of the {label}.</>}
         </div>
       )}
 

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { requireSalesCoachAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
-import { SALES_COACH_KNOWLEDGE_DOCS } from '@/lib/sales-coach'
+import { SALES_COACH_KNOWLEDGE_DOCS, SALES_COACH_LIVE_COACH_DOC } from '@/lib/sales-coach'
 
 export default async function SalesCoachAdminPage() {
   requireSalesCoachAdminHeader()
@@ -35,7 +35,8 @@ export default async function SalesCoachAdminPage() {
         <div className="mb-8">
           <h1 className="text-lg font-semibold text-gray-900">Sales Coach — Admin</h1>
           <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">
-            Manage the five TRC knowledge documents the coach reasons from.
+            Manage the five TRC knowledge documents the coach reasons from and how the Live Coach talks, and read each Sales
+            Executive&apos;s Report Cards together for patterns.
           </p>
         </div>
 
@@ -68,6 +69,43 @@ export default async function SalesCoachAdminPage() {
                 </Link>
               ))}
             </div>
+          </section>
+
+          <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
+            <h2 className="text-sm font-semibold text-gray-900">Live Coach</h2>
+            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+              How the coach sounds and behaves on a live voice call: its energy, how long each answer is, how it opens the call
+              and how it role-plays. Used only on live calls, never for Report Cards, so editing it can&apos;t change a score.
+              Versioned with full rollback.
+            </p>
+            <Link
+              href={`/commercial/admin/sales-coach/knowledge/${SALES_COACH_LIVE_COACH_DOC.key}`}
+              className="flex items-center justify-between gap-4 px-4 py-3 mt-4 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
+            >
+              <span className="flex items-center gap-3 min-w-0">
+                <span className="sc-live-orb flex-shrink-0 w-5 h-5 rounded-full" />
+                <span className="min-w-0">
+                  <span className="block font-medium">{SALES_COACH_LIVE_COACH_DOC.label}</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">Delivery on live voice calls only</span>
+                </span>
+              </span>
+              <span aria-hidden className="flex-shrink-0">→</span>
+            </Link>
+          </section>
+
+          <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
+            <h2 className="text-sm font-semibold text-gray-900">Pattern Analysis</h2>
+            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+              Pick a Sales Executive and their last 5, 10, 20 or all Report Cards: see an instant snapshot, then let the AI read
+              them together for recurring strengths, gaps, trend, objections and a coaching plan. Every analysis is kept.
+            </p>
+            <Link
+              href="/commercial/admin/sales-coach/patterns"
+              className="flex items-center justify-between px-4 py-3 mt-4 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
+            >
+              <span>Open Pattern Analysis</span>
+              <span aria-hidden>→</span>
+            </Link>
           </section>
 
           <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">

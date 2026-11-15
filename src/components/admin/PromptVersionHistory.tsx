@@ -9,7 +9,7 @@ import type {
   MeetingPrepPromptKey,
   InterviewLetterCompany,
   InterviewLetterVariant,
-  SalesCoachKnowledgeKey,
+  SalesCoachAdminDocKey,
   CopywritingPromptKey,
 } from "@/types";
 import { formatDayMonthYearTime } from "@/lib/date-format";
@@ -41,7 +41,7 @@ interface Props {
   // Required when type === 'interview_letter_template' — which letter version.
   letterVariant?: InterviewLetterVariant;
   // Required when type === 'sales_coach_knowledge'.
-  docKey?: SalesCoachKnowledgeKey;
+  docKey?: SalesCoachAdminDocKey;
   // Required when type === 'copywriting_prompt'.
   copywritingPromptKey?: CopywritingPromptKey;
   currentPromptText?: string;

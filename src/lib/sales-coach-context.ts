@@ -5,6 +5,7 @@ import {
   outcomeLabel,
   pickTranscript,
 } from '@/lib/sales-coach'
+import { LIVE_COACH_DEFAULT_INSTRUCTIONS } from '@/lib/sales-coach-voice'
 import type { SalesCoachKnowledgeDoc, SalesCoachKnowledgeKey, SalesCoachNegotiation } from '@/types'
 
 // Server-only prompt assembly for the Sales Coach module, shared by the
@@ -26,6 +27,24 @@ export interface KnowledgeBundle {
 function isPlaceholder(content: string): boolean {
   const t = content.trim()
   return t.length === 0 || t.toUpperCase().startsWith('PLACEHOLDER')
+}
+
+// The Live Coach Instructions (doc_key 'live_coach', migration 045): how the
+// coach delivers on a live voice call. Empty, a placeholder, missing (before
+// 045 runs) or unreadable all mean the built-in text, so a call never waits on
+// or fails because of this document.
+export async function loadLiveCoachInstructions(): Promise<string> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('sales_coach_knowledge')
+      .select('content')
+      .eq('doc_key', 'live_coach')
+      .maybeSingle()
+    const content = (data?.content || '').trim()
+    return isPlaceholder(content) ? LIVE_COACH_DEFAULT_INSTRUCTIONS : content
+  } catch {
+    return LIVE_COACH_DEFAULT_INSTRUCTIONS
+  }
 }
 
 export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {

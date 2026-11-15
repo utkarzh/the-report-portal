@@ -425,6 +425,7 @@ export type UsageWorkflow =
   | "sales_coach_coach"
   | "sales_coach_voice"
   | "sales_coach_report_card"
+  | "sales_coach_pattern_analysis"
   | "copywriting_analyze"
   | "copywriting_research"
   | "copywriting_plan"
@@ -926,6 +927,10 @@ export type SalesCoachKnowledgeKey =
   | "method"
   | "examples"
   | "followup_playbook";
+// Every document Sales Coach admins edit: the five knowledge documents above
+// (doctrine, used by the Report Card and both coaches) plus the Live Coach
+// Instructions, which only govern how the coach delivers on a live voice call.
+export type SalesCoachAdminDocKey = SalesCoachKnowledgeKey | "live_coach";
 export type SalesCoachOutcome = "signed" | "retorno" | "lost" | "uncertain";
 export type SalesCoachStage =
   | "draft"
@@ -943,7 +948,7 @@ export interface SalesCoachParticipant {
 
 export interface SalesCoachKnowledgeDoc {
   id: string;
-  doc_key: SalesCoachKnowledgeKey;
+  doc_key: SalesCoachAdminDocKey;
   content: string;
   updated_by: string | null;
   updated_at: string;
