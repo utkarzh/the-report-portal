@@ -2,12 +2,13 @@ export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Download, ExternalLink, FileText, MessageCircleQuestion } from 'lucide-react'
+import { Download, ExternalLink, FileText, Link2, MessageCircleQuestion, PlayCircle } from 'lucide-react'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getKbPageContext } from '@/lib/knowledge/page-context'
 import { displayName } from '@/lib/knowledge/access'
 import { ITEM_TYPE_LABELS, formatBytes } from '@/lib/knowledge/constants'
 import { renderKbMarkdownWithToc } from '@/lib/knowledge/markdown'
+import { documentLinks, linkHost, linkifyPlainText } from '@/lib/knowledge/links'
 import { approxWords, hostOf, timeAgo } from '@/lib/knowledge/format'
 import { formatDayMonthYear } from '@/lib/date-format'
 import KnowledgeHeader from '@/components/knowledge/KnowledgeHeader'
@@ -17,6 +18,7 @@ import { Avatar, ExampleBadge, TypeTile } from '@/components/knowledge/kb-ui'
 import type { KnowledgeItem, KnowledgeItemVersion } from '@/types'
 
 const PREVIEW_CHARS = 20_000
+const LINKS_SHOWN = 8
 
 // One published item, as users see it (US-110, US-114). Only the current
 // published version of a live item in one of the user's departments.
@@ -40,6 +42,11 @@ export default async function KnowledgeItemPage({ params }: { params: { itemId: 
   const host = hostOf(v.url)
   const article = item.type === 'text' ? renderKbMarkdownWithToc(v.content) : null
   const askHref = `/knowledge?q=${encodeURIComponent(`About “${v.title}”: `)}`
+  // Links written in an uploaded manual (e.g. training videos), all of them,
+  // not just those in the preview. Documents read before links were kept
+  // have none until the file is uploaded again.
+  const links = item.type === 'document' ? documentLinks(v.extracted_text) : []
+  const hasVideo = links.some((l) => l.video)
 
   const facts: { label: string; value: React.ReactNode }[] = [
     { label: 'Department', value: <Link href={`/knowledge/browse/${dept.id}`} className="hover:underline">{dept.name}</Link> },
@@ -146,16 +153,38 @@ export default async function KnowledgeItemPage({ params }: { params: { itemId: 
                       <Download size={14} /> Download
                     </a>
                   </div>
+                  {links.length > 0 && (
+                    <div className="mt-6">
+                      <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                        {hasVideo ? <PlayCircle size={11} /> : <Link2 size={11} />} {hasVideo ? 'Videos and links in this document' : 'Links in this document'}
+                        <span className="font-medium normal-case tracking-normal text-gray-400">· {links.length}</span>
+                      </p>
+                      <LinkList links={links.slice(0, LINKS_SHOWN)} />
+                      {links.length > LINKS_SHOWN && (
+                        <details className="group mt-1">
+                          <summary className="cursor-pointer list-none rounded-md px-1 py-1.5 touch:py-2.5 text-xs font-medium text-gray-500 hover:text-gray-900 [&::-webkit-details-marker]:hidden">
+                            <span className="group-open:hidden">Show all {links.length}</span>
+                            <span className="hidden group-open:inline">Show fewer</span>
+                          </summary>
+                          <LinkList links={links.slice(LINKS_SHOWN)} />
+                        </details>
+                      )}
+                    </div>
+                  )}
                   {v.extracted_text && (
                     <div className="mt-6">
                       <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
                         <FileText size={11} /> Text preview
                         {v.extracted_text.length > PREVIEW_CHARS && <span className="font-medium normal-case tracking-normal text-gray-400">· first {PREVIEW_CHARS.toLocaleString('en-US')} characters</span>}
                       </p>
-                      <pre className="max-h-[60dvh] overflow-y-auto whitespace-pre-wrap rounded-xl border border-[#eceae5] bg-[#fcfbf9] p-5 font-sans text-[13px] leading-relaxed text-gray-700">
-                        {v.extracted_text.slice(0, PREVIEW_CHARS)}
-                        {v.extracted_text.length > PREVIEW_CHARS ? '\n\n… Download the file for the full document.' : ''}
-                      </pre>
+                      <pre
+                        className="max-h-[60dvh] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-[#eceae5] bg-[#fcfbf9] p-5 font-sans text-[13px] leading-relaxed text-gray-700 [&_a]:text-blue-700 [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:text-blue-900"
+                        dangerouslySetInnerHTML={{
+                          __html:
+                            linkifyPlainText(v.extracted_text.slice(0, PREVIEW_CHARS)) +
+                            (v.extracted_text.length > PREVIEW_CHARS ? '\n\n… Download the file for the full document.' : ''),
+                        }}
+                      />
                     </div>
                   )}
                 </>
@@ -214,5 +243,31 @@ export default async function KnowledgeItemPage({ params }: { params: { itemId: 
         </div>
       </div>
     </div>
+  )
+}
+
+function LinkList({ links }: { links: ReturnType<typeof documentLinks> }) {
+  return (
+    <ul className="flex flex-col divide-y divide-[#eceae5] overflow-hidden rounded-xl border border-[#eceae5]">
+      {links.map((l) => (
+        <li key={l.url}>
+          <a
+            href={l.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-4 py-2.5 touch:py-3 transition-colors hover:bg-[#faf9f7]"
+          >
+            <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${l.video ? 'bg-black text-white' : 'bg-[#f7f6f3] text-gray-500'}`}>
+              {l.video ? <PlayCircle size={14} /> : <Link2 size={14} />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium text-gray-900">{l.label ?? linkHost(l.url)}</span>
+              <span className="block truncate text-[11px] text-gray-500">{l.video ? `Video · ${linkHost(l.url)}` : linkHost(l.url)}</span>
+            </span>
+            <ExternalLink size={13} className="flex-shrink-0 text-gray-400" />
+          </a>
+        </li>
+      ))}
+    </ul>
   )
 }

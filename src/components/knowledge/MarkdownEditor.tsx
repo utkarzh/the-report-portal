@@ -59,9 +59,9 @@ export default function MarkdownEditor({
     { icon: ListOrdered, label: 'Numbered list', run: () => apply(prefixLines((i) => `${i + 1}. `), true) },
     {
       icon: Link2,
-      label: 'Link',
+      label: 'Link or video',
       run: () => {
-        const url = window.prompt('Link address (https://…)')
+        const url = window.prompt('Link address (https://…), e.g. a Loom or YouTube video')
         if (!url) return
         apply((s) => ({ text: `[${s || 'link text'}](${url})`, selectFrom: 1, selectTo: 1 + (s || 'link text').length }))
       },
