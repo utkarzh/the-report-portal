@@ -90,7 +90,10 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
-      <div className="mx-auto max-w-5xl">
+      {/* max-w-6xl (16 Nov 2026, "increase the card bigger"): the Report Card
+          and the rest of the workspace get more room; running text keeps its
+          own ~80-character measure inside. */}
+      <div className="mx-auto max-w-6xl">
         <div className="flex items-center justify-between gap-3">
           <Breadcrumbs items={[{ label: 'Sales Coach', href: '/commercial/sales-coach' }, { label: n.company || 'Negotiation' }]} />
           {profile.role === 'admin' && (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { RotateCcw } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
@@ -12,13 +12,25 @@ import { postWithRetry } from '@/lib/post-with-retry'
 // the current coach. Nothing to refill, no transcription to wait for; this
 // negotiation and its card stay as they are. See
 // POST /api/sales-coach/[id]/reevaluate.
-export default function ReevaluateButton({ negotiationId }: { negotiationId: string }) {
+//
+// `open`/`onOpenChange` + `hideTrigger` let the confirmation be opened from
+// elsewhere (the Report Card's "More" menu), with this component staying
+// mounted so the modal survives the menu closing.
+export default function ReevaluateButton({ negotiationId, open: controlledOpen, onOpenChange, hideTrigger = false }: {
+  negotiationId: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean
+}) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [innerOpen, setInnerOpen] = useState(false)
+  const open = controlledOpen ?? innerOpen
+  const setOpen = (v: boolean) => (onOpenChange ? onOpenChange(v) : setInnerOpen(v))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // A second click can land before React re-renders the disabled button.
   const inFlight = useRef(false)
+  useEffect(() => { if (controlledOpen) setError(null) }, [controlledOpen])
 
   async function handleReevaluate() {
     if (inFlight.current) return
@@ -39,13 +51,15 @@ export default function ReevaluateButton({ negotiationId }: { negotiationId: str
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => { setError(null); setOpen(true) }}
-        className="inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400"
-      >
-        <RotateCcw size={13} /> Re-evaluate
-      </button>
+      {!hideTrigger && (
+        <button
+          type="button"
+          onClick={() => { setError(null); setOpen(true) }}
+          className="inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400"
+        >
+          <RotateCcw size={13} /> Re-evaluate
+        </button>
+      )}
 
       {error && (
         <div className="fixed bottom-4 left-4 right-4 z-50 sm:left-auto max-w-xs border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 shadow-lg">

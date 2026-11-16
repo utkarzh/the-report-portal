@@ -26,8 +26,8 @@ import type {
 // C. Follow-Up Assessment & Recommended Actions open; D. What You Did Well /
 // Main Areas for Improvement, E. Detailed Performance Assessment and F. Deeper
 // Coaching collapsed until opened. The score is a percentage only, for
-// everyone (SHOW_SCORE_POINTS). After C, a Live Coach card starts a live voice
-// call with the coach. The content of every section is unchanged from the Oct
+// everyone (SHOW_SCORE_POINTS). The scorecard's card ends with a Live Coach
+// band that starts a live voice call with the coach. The content of every section is unchanged from the Oct
 // 2026 sample-card layout. renderReportCardMarkdown() is the text twin of this
 // view; both read the same object. Cards generated before Oct 2026 have no
 // strengths/improvements/commercial reality; those sections are simply left
@@ -184,15 +184,14 @@ export default function ReportCardView({
           </p>
           <OutcomeBadge tone={outcomeTone}>{outcomeType}</OutcomeBadge>
         </header>
-        {/* Compact (16 Nov 2026: "a bit less so the next section is better
-            visible"): the same two-column panel, about a third shorter —
-            smaller ring, tighter padding, criteria in two columns where there
-            is room, the score beside its ring on phones, a one-line key. */}
-        <div className="px-5 py-5 sm:px-10 sm:py-6">
+        {/* The hero card (16 Nov 2026): the scorecard — criteria in two
+            columns where there is room, the score beside its ring on phones,
+            a one-line key — and, along its foot, the Live Coach band. */}
+        <div className="px-5 py-6 sm:px-10 sm:py-7">
           <SectionHeading title={title.scorecard!} />
-          <div className="mt-4 overflow-hidden rounded-2xl ring-1 ring-inset ring-[#e6e2da] md:grid md:grid-cols-[13.5rem,minmax(0,1fr)]">
-            <div className="flex items-center gap-4 bg-gradient-to-b from-[#fbf8f2] to-[#f6f0e4] px-4 py-4 md:flex-col md:justify-center md:gap-0 md:border-r md:border-[#ebe7e0] md:px-5 md:py-5 md:text-center">
-              <ScoreRing pct={pct} size={96} caption={null} />
+          <div className="mt-5 overflow-hidden rounded-2xl ring-1 ring-inset ring-[#e6e2da] md:grid md:grid-cols-[15rem,minmax(0,1fr)]">
+            <div className="flex items-center gap-4 bg-gradient-to-b from-[#fbf8f2] to-[#f6f0e4] px-4 py-4 md:flex-col md:justify-center md:gap-0 md:border-r md:border-[#ebe7e0] md:px-6 md:py-6 md:text-center">
+              <ScoreRing pct={pct} size={112} caption={null} />
               <div className="min-w-0 md:flex md:flex-col md:items-center">
                 <p className={`${KICKER} md:mt-3`}>Overall Execution Score</p>
                 <p className="mt-1 text-[15px] font-semibold tabular-nums tracking-[-0.01em] text-stone-900">{formatOverallScore(card, { showPoints })}</p>
@@ -224,7 +223,7 @@ export default function ReportCardView({
                     <button
                       type="button"
                       onClick={() => openCriterion(c.key)}
-                      className={`group flex h-full w-full items-center gap-2.5 px-4 py-2.5 touch:py-3.5 text-left transition-colors hover:bg-[#fcf9f3] focus-visible:bg-[#fcf9f3] focus-visible:outline-none`}
+                      className={`group flex h-full w-full items-center gap-2.5 px-4 py-3 touch:py-3.5 text-left transition-colors hover:bg-[#fcf9f3] focus-visible:bg-[#fcf9f3] focus-visible:outline-none sm:px-5`}
                     >
                       {number ? <span className={NUMBER}>{number.replace(/\.$/, '')}</span> : <span className="w-6 flex-shrink-0" />}
                       <span className="min-w-0 flex-1 text-[13.5px] font-medium leading-5 text-stone-800 transition-colors group-hover:text-stone-950">{criterionLabel(c)}</span>
@@ -248,6 +247,7 @@ export default function ReportCardView({
             </div>
           </div>
         </div>
+        {onStartLiveCoach && <LiveCoachBand onStart={onStartLiveCoach} onPrepare={onPrepareLiveCoach} />}
       </section>
 
       {/* ── B. Negotiation Result (open) ──────────────────────── */}
@@ -310,9 +310,6 @@ export default function ReportCardView({
           </div>
         </section>
       )}
-
-      {/* ── Live Coach: talk it through out loud ──────────────── */}
-      {onStartLiveCoach && <LiveCoachCard onStart={onStartLiveCoach} onPrepare={onPrepareLiveCoach} />}
 
       {/* ── D, E, F: collapsed until opened ───────────────────── */}
       {/* ── D. What You Did Well / Main Areas for Improvement ── */}
@@ -595,61 +592,53 @@ function NextStepPanel({ text, onStart }: { text: string | null; onStart?: () =>
   )
 }
 
-// Live Coach: the live voice call, offered on the Report Card itself, right
-// after the next step. Since 16 Nov 2026 it's presented as TRC's own product:
-// the call screen's deep blue-black (.sc-live-card) with its soft coloured
-// lights, The Report Company wordmark beside "Live Coach" (LiveCoachLockup —
-// the logo is white on dark, so it sits here naturally, with no box), the
-// animated orb, and a white call button. Its indigo night reads as a different
-// thing from the Follow-Up's warm, gold next-step panel above it.
-function LiveCoachCard({ onStart, onPrepare }: { onStart: () => void; onPrepare?: () => void }) {
+// Live Coach, merged into the foot of the scorecard's card (16 Nov 2026:
+// "merge with score card… make it look brilliant"), presented as TRC's own
+// product: the call screen's deep blue-black (.sc-live-card) with soft
+// coloured lights, The Report Company wordmark beside "Live Coach"
+// (LiveCoachLockup — the logo is white on dark, so it sits here with no box),
+// the animated orb and a white call button. Its indigo night reads as a
+// different thing from the Follow-Up's warm, gold next-step panel.
+function LiveCoachBand({ onStart, onPrepare }: { onStart: () => void; onPrepare?: () => void }) {
   return (
-    <section aria-label="Live Coach by The Report Company" className="sc-live-card relative isolate overflow-hidden rounded-2xl text-white">
+    <div className="sc-live-card relative isolate overflow-hidden text-white">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -left-24 -top-28 h-72 w-72 rounded-full bg-indigo-500/25 blur-3xl" />
-        <div className="absolute -right-16 -top-20 h-60 w-60 rounded-full bg-fuchsia-500/[0.14] blur-3xl" />
-        <div className="absolute -bottom-28 right-1/4 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+        <div className="absolute -left-20 -top-32 h-72 w-72 rounded-full bg-indigo-500/25 blur-3xl" />
+        <div className="absolute -right-10 -top-24 h-56 w-56 rounded-full bg-fuchsia-500/[0.14] blur-3xl" />
+        <div className="absolute -bottom-32 left-1/2 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
       </div>
-      <div className="px-5 py-6 sm:px-10 sm:py-8">
-        <LiveCoachLockup size="sm" className="sm:hidden" />
-        <LiveCoachLockup className="hidden sm:inline-flex" />
-        <div className="mt-6 flex flex-col gap-6 md:flex-row md:items-center md:gap-8">
-          <span aria-hidden className="relative hidden h-[84px] w-[84px] flex-shrink-0 items-center justify-center md:flex">
-            <span className="absolute -inset-3 rounded-full bg-[conic-gradient(from_90deg,#22d3ee,#6366f1,#a855f7,#ec4899,#22d3ee)] opacity-40 blur-2xl" />
-            <span className="sc-live-orb relative h-full w-full rounded-full" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h3 className="text-balance font-serif text-[21px] font-medium leading-[1.3] tracking-[-0.01em] text-white sm:text-[25px]">
-              Talk this meeting through, out loud
-            </h3>
-            <p className={`mt-2 ${MEASURE} text-[14px] leading-[1.65] text-white/65`}>
-              A real-time voice call with your coach, who has read the transcript and this Report Card. It answers in about a second, and you can interrupt any time.
-            </p>
-            <ul className="mt-4 flex flex-wrap gap-2">
-              {['Role-play the CEO', 'Rehearse your close', 'Plan the next step'].map((t) => (
-                <li key={t} className="rounded-full bg-white/[0.07] px-3 py-1 text-[12px] font-medium text-white/80 ring-1 ring-inset ring-white/10">{t}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="flex flex-col items-stretch gap-2 md:items-center">
-            <button
-              type="button"
-              onClick={onStart}
-              onPointerEnter={onPrepare}
-              onFocus={onPrepare}
-              onTouchStart={onPrepare}
-              className="group inline-flex items-center justify-center gap-2.5 rounded-full bg-white py-2 pl-2 pr-5 touch:py-2.5 text-sm font-semibold text-[#0b1024] shadow-[0_14px_32px_-14px_rgba(129,140,248,0.9)] transition hover:-translate-y-px hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1024]"
-            >
-              <span className="sc-live-orb h-8 w-8 rounded-full" />
-              Start Live Coach
-              <Phone size={14} className="text-[#0b1024]/60 transition group-hover:text-[#0b1024]" />
-            </button>
-            <span className="text-center text-[11.5px] leading-5 text-white/45">Connects in seconds · up to 15 minutes</span>
-          </div>
+      <div className="flex flex-col gap-5 px-5 py-6 sm:px-10 sm:py-7 md:flex-row md:items-center md:gap-7">
+        <span aria-hidden className="relative hidden h-[68px] w-[68px] flex-shrink-0 md:block">
+          <span className="absolute -inset-3 rounded-full bg-[conic-gradient(from_90deg,#22d3ee,#6366f1,#a855f7,#ec4899,#22d3ee)] opacity-40 blur-2xl" />
+          <span className="sc-live-orb relative block h-full w-full rounded-full" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <LiveCoachLockup size="sm" />
+          <p className="mt-3 text-balance font-serif text-[19px] font-medium leading-[1.3] tracking-[-0.01em] text-white sm:text-[22px]">
+            Talk this meeting through, out loud
+          </p>
+          <p className={`mt-1.5 ${MEASURE} text-[13.5px] leading-[1.6] text-white/60`}>
+            Your coach has read the transcript and this Report Card. Role-play the CEO, rehearse your close or plan the next step, in a real-time voice call you can interrupt any time.
+          </p>
+        </div>
+        <div className="flex flex-col items-stretch gap-1.5 md:items-center">
+          <button
+            type="button"
+            onClick={onStart}
+            onPointerEnter={onPrepare}
+            onFocus={onPrepare}
+            onTouchStart={onPrepare}
+            className="group inline-flex items-center justify-center gap-2.5 rounded-full bg-white py-2 pl-2 pr-5 touch:py-2.5 text-sm font-semibold text-[#0b1024] shadow-[0_14px_32px_-14px_rgba(129,140,248,0.9)] transition hover:-translate-y-px hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1024]"
+          >
+            <span className="sc-live-orb h-8 w-8 rounded-full" />
+            Start Live Coach
+            <Phone size={14} className="text-[#0b1024]/60 transition group-hover:text-[#0b1024]" />
+          </button>
+          <span className="text-center text-[11px] leading-5 text-white/40">Connects in seconds · up to 15 minutes</span>
         </div>
       </div>
-    </section>
+    </div>
   )
 }
 

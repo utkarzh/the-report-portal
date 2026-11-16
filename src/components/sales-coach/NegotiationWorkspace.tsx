@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import {
   Building2, Globe2, Newspaper, UserRound, Users, Mic, Copy, Check,
   Sparkles, RefreshCw, AlertCircle, CalendarDays, Download, Loader2, ClipboardList, MessageSquare, FileText, Flag,
-  RotateCcw, ArrowRight,
+  RotateCcw, ArrowRight, MoreHorizontal,
 } from 'lucide-react'
 import AudioPlayer, { type AudioPlayerHandle } from '@/components/transcriptions/AudioPlayer'
 import MeetingPrepLoader from '@/components/meeting-prep/MeetingPrepLoader'
@@ -78,6 +78,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   // Bumped by the Report Card's Live Coach buttons; CoachConversation opens
   // the call (it owns the call and saves its turns into the chat).
   const [liveCoachRequest, setLiveCoachRequest] = useState(0)
+  const [reevaluateOpen, setReevaluateOpen] = useState(false)
   const startLiveCoach = useCallback(() => setLiveCoachRequest((r) => r + 1), [])
   const prepareLiveCoach = useCallback(() => prefetchVoiceSecret(initial.id), [initial.id])
   const [busy, setBusy] = useState<Busy>(() =>
@@ -455,43 +456,28 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               <TabButton active={tab === 'coach'} onClick={() => setTab('coach')} icon={<MessageSquare size={13} />} label="Coaching" badge={!hasCoachingHistory} />
               <TabButton active={tab === 'submission'} onClick={() => setTab('submission')} icon={<ClipboardList size={13} />} label="Submission" />
             </div>
+            {/* Decluttered (16 Nov 2026): Live Coach lives in the scorecard's
+                card now; the occasional actions sit in one "More" menu; the
+                Word download stays in view. Tabs and actions share one row. */}
             {tab === 'card' && (
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={startLiveCoach}
-                  onPointerEnter={prepareLiveCoach}
-                  onFocus={prepareLiveCoach}
-                  onTouchStart={prepareLiveCoach}
-                  title="Start a live voice call with your coach"
-                  className="inline-flex items-center gap-2 rounded-full bg-[#0b1024] py-1 pl-1 pr-3.5 touch:py-1.5 text-xs font-medium text-white shadow-sm transition-transform hover:scale-[1.02]"
-                >
-                  <span className="sc-live-orb h-6 w-6 rounded-full" />
-                  Live Coach
-                </button>
-                <ReevaluateButton negotiationId={n.id} />
-                <button
-                  type="button"
-                  onClick={() => setFlagTarget({ criterionKey: null, fieldLabel: 'General feedback', aiSaid: '', general: true })}
-                  className="inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400"
-                >
-                  <Flag size={13} /> Give feedback
-                </button>
-                {/* Rendered fresh (like the .docx), so older cards copy in the current section order too.
-                    Points in the score for admins only, as on screen. */}
-                <CopyTextButton
-                  text={n.report_card
+              <div className="flex items-center gap-2">
+                <CardActionsMenu
+                  onReevaluate={() => setReevaluateOpen(true)}
+                  onFeedback={() => setFlagTarget({ criterionKey: null, fieldLabel: 'General feedback', aiSaid: '', general: true })}
+                  copyText={n.report_card
                     ? scoreTextAsPercent(renderReportCardMarkdown(n.report_card, { showPoints: isAdmin }), { showPoints: isAdmin })
                     : null}
                 />
                 <a
                   href={`/api/sales-coach/${n.id}/download`}
-                  className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-900"
+                  className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-2 touch:py-2.5 text-xs font-medium text-white transition-colors hover:bg-gray-900"
                 >
                   <Download size={13} /> Download .docx
                 </a>
               </div>
             )}
+            {/* Mounted outside the menu, so its confirmation survives the menu closing. */}
+            <ReevaluateButton negotiationId={n.id} hideTrigger open={reevaluateOpen} onOpenChange={setReevaluateOpen} />
           </div>
 
           {/* Kept mounted while another tab is shown, so the sections someone
@@ -617,17 +603,66 @@ function TabButton({ active, onClick, icon, label, badge }: { active: boolean; o
   )
 }
 
-function CopyTextButton({ text }: { text: string | null }) {
+// The Report Card's occasional actions in one menu (16 Nov 2026 declutter):
+// Re-evaluate (opens its confirmation), Give feedback (the correction modal)
+// and Copy as text. Closes on an outside click or Escape.
+function CardActionsMenu({ onReevaluate, onFeedback, copyText }: { onReevaluate: () => void; onFeedback: () => void; copyText: string | null }) {
+  const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
-  if (!text) return null
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent | TouchEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const item = 'flex w-full items-start gap-3 rounded-lg px-3 py-2.5 touch:py-3 text-left transition-colors hover:bg-[#f7f6f3] focus-visible:bg-[#f7f6f3] focus-visible:outline-none'
   return (
-    <button
-      type="button"
-      onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch {} }}
-      className="inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400"
-    >
-      {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy as text'}
-    </button>
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex items-center gap-1.5 rounded-lg border bg-white px-3.5 py-2 touch:py-2.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400 ${open ? 'border-gray-400' : 'border-[#e5e3df]'}`}
+      >
+        <MoreHorizontal size={14} /> More
+      </button>
+      {open && (
+        <div role="menu" className="dropdown-in absolute right-0 z-30 mt-2 w-64 rounded-xl border border-[#e5e3df] bg-white p-1.5 shadow-[0_12px_32px_-12px_rgba(28,25,23,0.25)]">
+          <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); onReevaluate() }}>
+            <RotateCcw size={14} className="mt-0.5 flex-shrink-0 text-gray-500" />
+            <span><span className="block text-[13px] font-medium text-gray-900">Re-evaluate</span><span className="block text-[11.5px] leading-4 text-gray-500">A fresh Report Card with the latest coach</span></span>
+          </button>
+          <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); onFeedback() }}>
+            <Flag size={14} className="mt-0.5 flex-shrink-0 text-gray-500" />
+            <span><span className="block text-[13px] font-medium text-gray-900">Give feedback</span><span className="block text-[11.5px] leading-4 text-gray-500">Tell the coach what it got wrong or missed</span></span>
+          </button>
+          {copyText && (
+            <button
+              type="button"
+              role="menuitem"
+              className={item}
+              onClick={async () => {
+                try { await navigator.clipboard.writeText(copyText); setCopied(true) } catch {}
+                setTimeout(() => { setCopied(false); setOpen(false) }, 900)
+              }}
+            >
+              {copied ? <Check size={14} className="mt-0.5 flex-shrink-0 text-emerald-600" /> : <Copy size={14} className="mt-0.5 flex-shrink-0 text-gray-500" />}
+              <span><span className="block text-[13px] font-medium text-gray-900">{copied ? 'Copied' : 'Copy as text'}</span><span className="block text-[11.5px] leading-4 text-gray-500">The whole card, ready to paste</span></span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
