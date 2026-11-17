@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
-import { requireSalesCoachAdminHeader } from '@/lib/auth/session'
+import { getProfileFromHeaders, requireSalesCoachAdminHeader } from '@/lib/auth/session'
+import { canDownloadPatternPdf } from '@/lib/sales-coach-admins'
 import { loadPatternExecutives } from '@/lib/sales-coach-patterns-server'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import SalesCoachPatterns from '@/components/admin/SalesCoachPatterns'
@@ -15,6 +16,8 @@ export default async function SalesCoachPatternsPage({ searchParams }: Props) {
   requireSalesCoachAdminHeader()
   const executives = await loadPatternExecutives()
   const initialUserId = executives.some((e) => e.id === searchParams.user) ? searchParams.user! : null
+  // The PDF report is narrower than the page: two accounts only.
+  const canDownloadPdf = canDownloadPatternPdf(getProfileFromHeaders()?.email)
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
@@ -26,7 +29,7 @@ export default async function SalesCoachPatternsPage({ searchParams }: Props) {
             { label: 'Pattern Analysis' },
           ]}
         />
-        <SalesCoachPatterns executives={executives} initialUserId={initialUserId} />
+        <SalesCoachPatterns executives={executives} initialUserId={initialUserId} canDownloadPdf={canDownloadPdf} />
       </div>
     </div>
   )

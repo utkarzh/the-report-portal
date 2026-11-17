@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { marked } from 'marked'
 import {
   Sparkles, Loader2, Copy, Check, History, ChevronDown, AlertCircle, ArrowUpRight, ArrowDownRight, Minus,
-  CheckCircle2, AlertTriangle, XCircle, HelpCircle, MinusCircle, UsersRound, ExternalLink,
+  CheckCircle2, AlertTriangle, XCircle, HelpCircle, MinusCircle, UsersRound, ExternalLink, FileDown,
 } from 'lucide-react'
 import {
   PATTERN_MAX_CARDS, PATTERN_SCOPES, cardsForScope, computePatternStats, scopeAvailable,
@@ -63,10 +63,10 @@ interface SavedAnalysis {
 type Run =
   | { status: 'idle' }
   | { status: 'running'; text: string; count: number; startedAt: number }
-  | { status: 'done'; text: string; count: number; scope: PatternScope; periodStart: string | null; periodEnd: string | null; saved: boolean; createdAt: string | null }
+  | { status: 'done'; text: string; count: number; scope: PatternScope; periodStart: string | null; periodEnd: string | null; saved: boolean; createdAt: string | null; analysisId: string | null }
   | { status: 'error'; message: string }
 
-export default function SalesCoachPatterns({ executives, initialUserId }: { executives: PatternExecutiveOption[]; initialUserId: string | null }) {
+export default function SalesCoachPatterns({ executives, initialUserId, canDownloadPdf = false }: { executives: PatternExecutiveOption[]; initialUserId: string | null; canDownloadPdf?: boolean }) {
   const [userId, setUserId] = useState<string | null>(initialUserId)
   const [scope, setScope] = useState<PatternScope>('10')
   const [cards, setCards] = useState<PatternCardSummary[] | null>(null)
@@ -158,7 +158,7 @@ export default function SalesCoachPatterns({ executives, initialUserId }: { exec
           }
           if (j.error) failure = j.error
           if (j.done) {
-            finished = { status: 'done', text, count: meta.count, scope, periodStart: meta.periodStart, periodEnd: meta.periodEnd, saved: Boolean(j.saved), createdAt: j.createdAt ?? null }
+            finished = { status: 'done', text, count: meta.count, scope, periodStart: meta.periodStart, periodEnd: meta.periodEnd, saved: Boolean(j.saved), createdAt: j.createdAt ?? null, analysisId: j.saved ? j.analysisId ?? null : null }
             if (j.analysisId && j.createdAt) {
               setAnalyses((prev) => [{ id: j.analysisId!, scope, card_count: meta.count, period_start: meta.periodStart, period_end: meta.periodEnd, created_by_name: null, created_at: j.createdAt! }, ...prev])
             }
@@ -308,6 +308,7 @@ export default function SalesCoachPatterns({ executives, initialUserId }: { exec
               firstName={firstName}
               selectedCount={selected.length}
               historyAvailable={historyAvailable}
+              canDownloadPdf={canDownloadPdf}
               onAnalyse={analyse}
               onCloseSaved={() => setViewing(null)}
             />
@@ -540,13 +541,14 @@ function CriteriaBreakdown({ stats }: { stats: PatternStats }) {
 
 // ── The analysis ──────────────────────────────────────────────────────────
 
-function AnalysisPanel({ run, viewing, name, firstName, selectedCount, historyAvailable, onAnalyse, onCloseSaved }: {
+function AnalysisPanel({ run, viewing, name, firstName, selectedCount, historyAvailable, canDownloadPdf, onAnalyse, onCloseSaved }: {
   run: Run
   viewing: SavedAnalysis | null
   name: string
   firstName: string
   selectedCount: number
   historyAvailable: boolean
+  canDownloadPdf: boolean
   onAnalyse: () => void
   onCloseSaved: () => void
 }) {
@@ -568,6 +570,7 @@ function AnalysisPanel({ run, viewing, name, firstName, selectedCount, historyAv
         title={`${name} · ${PATTERN_SCOPES.find((s) => s.id === viewing.scope)?.label.toLowerCase() ?? viewing.scope} ${viewing.card_count} Report Card${viewing.card_count === 1 ? '' : 's'}`}
         meta={`${period(viewing.period_start, viewing.period_end)} · ${formatDayMonthYearTime(viewing.created_at)}${viewing.created_by_name ? ` · by ${viewing.created_by_name}` : ''}`}
         text={viewing.output}
+        pdfHref={canDownloadPdf ? `/api/sales-coach/patterns/${viewing.id}/pdf` : undefined}
         onClose={onCloseSaved}
       />
     )
@@ -599,6 +602,7 @@ function AnalysisPanel({ run, viewing, name, firstName, selectedCount, historyAv
         title={`${name} · ${run.scope === 'all' ? 'all' : `last ${run.count}`} Report Card${run.count === 1 ? '' : 's'}`}
         meta={`${period(run.periodStart, run.periodEnd)}${run.createdAt ? ` · ${formatDayMonthYearTime(run.createdAt)}` : ''}${run.saved ? ' · saved' : historyAvailable ? '' : ' · not kept (migration 045 not run)'}`}
         text={run.text}
+        pdfHref={canDownloadPdf && run.analysisId ? `/api/sales-coach/patterns/${run.analysisId}/pdf` : undefined}
       />
     )
   }
@@ -633,7 +637,7 @@ function AnalysisPanel({ run, viewing, name, firstName, selectedCount, historyAv
   )
 }
 
-function AnalysisDocument({ kicker, title, meta, text, onClose }: { kicker: string; title: string; meta: string; text: string; onClose?: () => void }) {
+function AnalysisDocument({ kicker, title, meta, text, pdfHref, onClose }: { kicker: string; title: string; meta: string; text: string; pdfHref?: string; onClose?: () => void }) {
   const [copied, setCopied] = useState(false)
   return (
     <section className={`${CARD} overflow-hidden`}>
@@ -652,6 +656,15 @@ function AnalysisDocument({ kicker, title, meta, text, onClose }: { kicker: stri
           >
             {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy as text'}
           </button>
+          {pdfHref && (
+            <a
+              href={pdfHref}
+              download
+              className={`inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3.5 py-2 touch:py-2.5 text-xs font-medium text-white shadow-[0_1px_2px_rgba(28,25,23,0.25)] transition hover:bg-black ${FOCUS}`}
+            >
+              <FileDown size={13} className="text-[#e2c17f]" /> Download PDF
+            </a>
+          )}
           {onClose && (
             <button type="button" onClick={onClose} className={`rounded-lg px-3 py-2 touch:py-2.5 text-xs font-medium text-stone-500 transition hover:text-stone-900 ${FOCUS}`}>
               Close

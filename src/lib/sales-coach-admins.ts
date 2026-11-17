@@ -14,3 +14,16 @@ export function isSalesCoachAdminEmail(email: string | null | undefined): boolea
   if (!email) return false
   return SALES_COACH_ADMIN_EMAILS.includes(email.trim().toLowerCase())
 }
+
+// The Pattern Analysis PDF report: only these two accounts may download it
+// (17 Nov 2026, client request), a narrower list than the admins above, who
+// can still run and read analyses on screen.
+export const SALES_COACH_PATTERN_PDF_EMAILS = [
+  'rafael@the-report.com',
+  'utkarsh.parihar.435@gmail.com',
+]
+
+export function canDownloadPatternPdf(email: string | null | undefined): boolean {
+  if (!email) return false
+  return SALES_COACH_PATTERN_PDF_EMAILS.includes(email.trim().toLowerCase())
+}
