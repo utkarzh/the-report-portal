@@ -16,7 +16,7 @@
 // the band bytes, and only the server-side builders (docx.ts, pdf.tsx, through
 // bands.ts) resolve it to actual image data.
 //
-// All nine templates are `kind: 'image'`: their header and footer are the real
+// All ten templates are `kind: 'image'`: their header and footer are the real
 // full-width bands from the client's own artwork (see assets.ts for provenance),
 // so every download is pixel-faithful — real logos, real fonts, real rules.
 //
@@ -49,6 +49,7 @@ export type BandKey =
   | 'GFDI_DIE_WELT'
   | 'GFDI_GULF_NEWS'
   | 'GFDI_USA_TODAY'
+  | 'GFDI_THE_TIMES'
 
 export interface DownloadTemplate {
   id: string
@@ -64,7 +65,7 @@ export interface DownloadTemplate {
 }
 
 // Brand wordmark address block, used by composed footers and nothing else while
-// all nine templates are image-based. Both blocks are transcribed from the
+// all ten templates are image-based. Both blocks are transcribed from the
 // client's real footers.
 export const BRAND_INFO: Record<BrandFamily, { name: string; address: string[]; site: string }> = {
   TRC: {
@@ -163,6 +164,17 @@ export const TEMPLATES: DownloadTemplate[] = [
     kind: 'image',
     partnerSite: 'usatoday.com',
     bandKey: 'GFDI_USA_TODAY',
+  },
+  {
+    // partner must stay spelled exactly as the Media Library entry ("The Times"),
+    // so guessTemplateId() pre-selects this letterhead for those letters.
+    id: 'gfdi-the-times',
+    label: 'GFDI – The Times',
+    brand: 'GFDI',
+    partner: 'The Times',
+    kind: 'image',
+    partnerSite: 'thetimes.com',
+    bandKey: 'GFDI_THE_TIMES',
   },
 ]
 
