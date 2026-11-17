@@ -122,7 +122,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
         </div>
         <Link
           href="/commercial/sales-coach/new"
-          className="group inline-flex items-center gap-2.5 rounded-xl bg-black py-2.5 pl-3 pr-4 text-sm font-medium tracking-wide text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
+          className="group inline-flex flex-shrink-0 items-center gap-2.5 self-start whitespace-nowrap rounded-xl bg-black py-2.5 pl-3 pr-4 text-sm font-medium tracking-wide text-white shadow-sm transition-all sm:self-auto hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
         >
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/15 transition-colors group-hover:bg-white/25">
             <Handshake size={14} />
@@ -134,15 +134,15 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
 
       {isSalesCoachAdminEmail(profile.email) && (
         <div className="mb-6 rounded-xl border border-[#c8973f]/25 bg-[#fbf7ed] p-4 shadow-sm">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
               <div className="flex-shrink-0 rounded-lg bg-[#c8973f]/10 p-2 text-[#a07530]"><ShieldCheck size={18} /></div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">Admin tools</p>
                 <p className="mt-0.5 text-sm text-gray-600">Knowledge documents, Live Coach instructions and a sales performance report per Sales Executive.</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 xl:flex-shrink-0 xl:flex-nowrap">
               <AdminLink href="/commercial/admin/sales-coach" icon={<BookOpenText size={14} className="text-[#a07530]" />} label="Knowledge documents" />
               <AdminLink href="/commercial/admin/sales-coach/patterns" icon={<ChartLine size={14} className="text-[#a07530]" />} label="Sales performance reports" />
             </div>
@@ -219,7 +219,7 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
 
 function AdminLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
   return (
-    <Link href={href} className="group inline-flex items-center gap-2 rounded-lg border border-[#c8973f]/25 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c8973f]/50 hover:text-[#a07530] hover:shadow">
+    <Link href={href} className="group inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-[#c8973f]/25 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c8973f]/50 hover:text-[#a07530] hover:shadow">
       {icon}<span>{label}</span>
     </Link>
   )
