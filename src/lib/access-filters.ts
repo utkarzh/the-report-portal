@@ -13,6 +13,7 @@ export type AccessKey =
   | "sales_coach"
   | "copywriting_tool"
   | "knowledge_base"
+  | "commercial_presentations"
   | "finance_field";
 
 export const ACCESS_LABELS: Record<AccessKey, string> = {
@@ -25,6 +26,7 @@ export const ACCESS_LABELS: Record<AccessKey, string> = {
   sales_coach: "Sales Coach",
   copywriting_tool: "Copywriting Tool",
   knowledge_base: "Knowledge Base",
+  commercial_presentations: "Commercial Presentations",
   finance_field: "Cash Box (Field)",
 };
 
@@ -41,6 +43,7 @@ export const EDITORIAL_ACCESS_KEYS: AccessKey[] = [
   "sales_coach",
   "copywriting_tool",
   "knowledge_base",
+  "commercial_presentations",
 ];
 export const FINANCE_ACCESS_KEYS: AccessKey[] = ["finance_field"];
 

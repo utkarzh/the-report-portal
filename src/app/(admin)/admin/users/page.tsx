@@ -30,6 +30,7 @@ const EDITORIAL_ACCESS_COLUMN_MAP: Partial<Record<AccessKey, keyof Profile>> = {
   sales_coach: "can_access_sales_negotiation_coach",
   copywriting_tool: "can_access_copywriting_tool",
   knowledge_base: "can_access_knowledge_base",
+  commercial_presentations: "can_access_commercial_presentations",
 };
 
 interface SearchParams {
@@ -65,6 +66,7 @@ const EDITORIAL_MODULES: { key: keyof Profile; label: string }[] = [
   { key: "can_access_sales_negotiation_coach", label: "Sales Coach" },
   { key: "can_access_copywriting_tool", label: "Copywriting Tool" },
   { key: "can_access_knowledge_base", label: "Knowledge Base" },
+  { key: "can_access_commercial_presentations", label: "Presentations" },
 ];
 
 export default async function UsersPage({

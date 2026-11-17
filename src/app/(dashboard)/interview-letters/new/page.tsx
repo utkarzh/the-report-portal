@@ -5,6 +5,7 @@ import { Sparkles, ClipboardList, MessageSquare, Info } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import ProjectSetupForm from '@/components/interview-letters/ProjectSetupForm'
+import { agencyOptions } from '@/lib/agencies-server'
 import { toMediaOption } from '@/lib/media-library'
 import type { InterviewLetterBriefOption } from '@/types'
 
@@ -20,7 +21,7 @@ export default async function NewInterviewLetterPage() {
   // publication's verbatim letter description),
   // every complete Editorial Brief (matched to the typed country in the
   // browser; only titles are sent) and the sectors sample letters are tagged with.
-  const [{ data: media }, { data: briefs }, { data: sampleSectors }] = await Promise.all([
+  const [{ data: media }, { data: briefs }, { data: sampleSectors }, agencies] = await Promise.all([
     supabaseAdmin.from('media_library').select('id, name, country, letter_description').order('name'),
     supabaseAdmin
       .from('document_sessions')
@@ -31,6 +32,8 @@ export default async function NewInterviewLetterPage() {
       .order('created_at', { ascending: false })
       .limit(300),
     supabaseAdmin.from('interview_letter_samples').select('sector'),
+    // The central agency list (Admin → Agencies); active agencies only.
+    agencyOptions(),
   ])
   const sectorSuggestions = [...new Set([
     ...DEFAULT_SECTORS,
@@ -61,6 +64,7 @@ export default async function NewInterviewLetterPage() {
               media={(media || []).map((m) => ({ ...toMediaOption(m), letter_description: m.letter_description || '' }))}
               briefs={(briefs || []) as InterviewLetterBriefOption[]}
               sectorSuggestions={sectorSuggestions}
+              agencies={agencies}
             />
           )}
         </div>

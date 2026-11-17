@@ -118,6 +118,13 @@ export const COPYWRITING_REVISION_RESERVE = 60_000;
 // (~15k tokens) plus a short history and a ≤2k-token answer.
 export const KNOWLEDGE_BASE_QUERY_RESERVE = 30_000;
 
+// Commercial Presentation Generator — one "Why [Country] Now" generation:
+// the Editorial Brief excerpt (≤40k chars ≈ 10k tokens), the letter, approved
+// research and a few style examples, plus ~300 words out. With "Check for
+// recent developments" the web results are injected back into context, and
+// one corrective re-prompt may run when the length/cliché check fails.
+export const COMMERCIAL_PRESENTATION_WHY_NOW_RESERVE = 60_000;
+
 export interface UsageBreakdown {
   inputTokens: number; // uncached input (billed at full input price)
   outputTokens: number;
@@ -154,6 +161,18 @@ export function parseUsage(
     cacheCreation1hTokens,
     cacheReadTokens: (u.cache_read_input_tokens as number | undefined) ?? 0,
     webSearches,
+  };
+}
+
+// Two calls' usage combined (e.g. a first pass plus its corrective re-prompt).
+export function addUsage(a: UsageBreakdown, b: UsageBreakdown): UsageBreakdown {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheCreation5mTokens: (a.cacheCreation5mTokens ?? 0) + (b.cacheCreation5mTokens ?? 0),
+    cacheCreation1hTokens: (a.cacheCreation1hTokens ?? 0) + (b.cacheCreation1hTokens ?? 0),
+    cacheReadTokens: (a.cacheReadTokens ?? 0) + (b.cacheReadTokens ?? 0),
+    webSearches: (a.webSearches ?? 0) + (b.webSearches ?? 0),
   };
 }
 

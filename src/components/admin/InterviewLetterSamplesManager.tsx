@@ -8,7 +8,6 @@ import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
-  INTERVIEW_LETTER_COMPANIES,
   INTERVIEW_LETTER_SAMPLES_BUCKET,
   INTERVIEW_LETTER_VARIANTS,
   SAMPLE_LETTER_ACCEPT,
@@ -16,10 +15,13 @@ import {
   variantLabel,
 } from '@/lib/interview-letters'
 import type { InterviewLetterSample } from '@/types'
+import type { AgencyOption } from '@/lib/agencies'
 
 interface Props {
   userId: string
   initialSamples: InterviewLetterSample[]
+  // The central agency list (Admin → Agencies).
+  agencies: AgencyOption[]
 }
 
 interface Tags {
@@ -31,14 +33,15 @@ interface Tags {
 
 const MAX_SAMPLE_BYTES = 20 * 1024 * 1024
 
-const COMPANY_OPTIONS = [{ value: 'any', label: 'Both companies' }, ...INTERVIEW_LETTER_COMPANIES.map((c) => ({ value: c.value, label: c.value }))]
+// 'any' = a style sample for every agency (the central agency list).
+const companyOptions = (agencies: AgencyOption[]) => [{ value: 'any', label: 'Any agency' }, ...agencies]
 const VARIANT_OPTIONS = [{ value: 'any', label: 'Either version' }, ...INTERVIEW_LETTER_VARIANTS.map((v) => ({ value: v.value, label: v.label }))]
 
-function TagFields({ tags, onChange }: { tags: Tags; onChange: (t: Tags) => void }) {
+function TagFields({ tags, onChange, agencies }: { tags: Tags; onChange: (t: Tags) => void; agencies: AgencyOption[] }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Select label="Company" options={COMPANY_OPTIONS} value={tags.company} onChange={(e) => onChange({ ...tags, company: e.target.value })} placeholder="" />
+        <Select label="Agency" options={companyOptions(agencies)} value={tags.company} onChange={(e) => onChange({ ...tags, company: e.target.value })} placeholder="" />
         <Select label="Letter version" options={VARIANT_OPTIONS} value={tags.variant} onChange={(e) => onChange({ ...tags, variant: e.target.value })} placeholder="" />
         <Input label="Sector / report type" placeholder="e.g. Tourism, Security" value={tags.sector} onChange={(e) => onChange({ ...tags, sector: e.target.value })} />
       </div>
@@ -59,7 +62,7 @@ function fmtBytes(n: number | null): string {
   return `${Math.max(1, Math.round(n / 1024))} KB`
 }
 
-export default function InterviewLetterSamplesManager({ userId, initialSamples }: Props) {
+export default function InterviewLetterSamplesManager({ userId, initialSamples, agencies }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [samples, setSamples] = useState(initialSamples)
   const [tags, setTags] = useState<Tags>({ company: 'any', variant: 'any', sector: '', notes: '' })
@@ -159,7 +162,7 @@ export default function InterviewLetterSamplesManager({ userId, initialSamples }
           Tag the sector (e.g. Tourism, Security) so the AI picks the right samples for new kinds of reports.
         </p>
         <div className="mt-5">
-          <TagFields tags={tags} onChange={setTags} />
+          <TagFields tags={tags} onChange={setTags} agencies={agencies} />
         </div>
         <div className="mt-5 flex items-center gap-3">
           <input
@@ -198,7 +201,7 @@ export default function InterviewLetterSamplesManager({ userId, initialSamples }
                 {editingId === s.id ? (
                   <div className="flex flex-col gap-4">
                     <Input label="Title" value={editDraft.title} onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })} />
-                    <TagFields tags={editDraft} onChange={(t) => setEditDraft({ ...editDraft, ...t })} />
+                    <TagFields tags={editDraft} onChange={(t) => setEditDraft({ ...editDraft, ...t })} agencies={agencies} />
                     <div className="flex items-center gap-2">
                       <Button type="button" size="sm" loading={savingEdit} onClick={() => saveEdit(s.id)}>Save</Button>
                       <Button type="button" size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
@@ -210,7 +213,7 @@ export default function InterviewLetterSamplesManager({ userId, initialSamples }
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-gray-900">{s.title}</p>
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        <span className="bg-[#f0efec] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-600">{s.company === 'any' ? 'Both companies' : s.company}</span>
+                        <span className="bg-[#f0efec] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-600">{s.company === 'any' ? 'Any agency' : s.company}</span>
                         <span className="bg-[#f0efec] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-600">{variantLabel(s.variant)}</span>
                         {s.sector && <span className="bg-[#fbf7ed] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#a07530]">{s.sector}</span>}
                       </div>

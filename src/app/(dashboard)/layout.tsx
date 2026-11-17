@@ -30,6 +30,9 @@ export default function DashboardLayout({
       }
       canAccessCopywritingTool={profile.can_access_copywriting_tool}
       canAccessKnowledgeBase={profile.can_access_knowledge_base}
+      canAccessCommercialPresentations={
+        profile.can_access_commercial_presentations
+      }
       canAccessFinance={canAccessFinance(profile)}
       financeHref={isFinanceAdmin(profile) ? "/finance/admin" : "/finance"}
     >

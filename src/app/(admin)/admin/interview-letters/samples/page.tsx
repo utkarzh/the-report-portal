@@ -5,6 +5,7 @@ import { requireAdminHeader, getProfileFromHeaders } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import InterviewLetterSamplesManager from '@/components/admin/InterviewLetterSamplesManager'
+import { agencyOptions } from '@/lib/agencies-server'
 import { SAMPLE_LIST_COLUMNS } from '@/lib/interview-letter-samples'
 import type { InterviewLetterSample } from '@/types'
 
@@ -39,7 +40,7 @@ export default async function InterviewLetterSamplesPage() {
           </p>
         </div>
 
-        <InterviewLetterSamplesManager userId={profile.id} initialSamples={(data || []) as unknown as InterviewLetterSample[]} />
+        <InterviewLetterSamplesManager userId={profile.id} initialSamples={(data || []) as unknown as InterviewLetterSample[]} agencies={await agencyOptions({})} />
       </div>
     </div>
   )

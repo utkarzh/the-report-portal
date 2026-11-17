@@ -13,6 +13,8 @@ import {
   Wallet,
   PenLine,
   BookOpen,
+  Presentation,
+  ShieldCheck,
 } from "lucide-react";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
@@ -69,6 +71,11 @@ const EDITORIAL_MODULE_FIELDS = [
     label: "Knowledge Base",
     icon: BookOpen,
   },
+  {
+    key: "canAccessCommercialPresentations" as const,
+    label: "Commercial Presentations",
+    icon: Presentation,
+  },
 ];
 
 interface Props {
@@ -94,6 +101,10 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
     canAccessSalesNegotiationCoach: user.can_access_sales_negotiation_coach,
     canAccessCopywritingTool: user.can_access_copywriting_tool,
     canAccessKnowledgeBase: user.can_access_knowledge_base ?? false,
+    canAccessCommercialPresentations:
+      user.can_access_commercial_presentations ?? false,
+    canApproveCommercialPresentations:
+      user.can_approve_commercial_presentations ?? false,
     financeRole: (user.finance_role || "") as "" | "finance_admin" | "field",
   });
   const [loading, setLoading] = useState(false);
@@ -127,6 +138,10 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
           canAccessSalesNegotiationCoach: form.canAccessSalesNegotiationCoach,
           canAccessCopywritingTool: form.canAccessCopywritingTool,
           canAccessKnowledgeBase: form.canAccessKnowledgeBase,
+          canAccessCommercialPresentations: form.canAccessCommercialPresentations,
+          canApproveCommercialPresentations:
+            form.canAccessCommercialPresentations &&
+            form.canApproveCommercialPresentations,
           financeRole: form.financeRole || null,
         }),
       }),
@@ -242,6 +257,17 @@ export default function EditUserForm({ user, isSelf, onSuccess }: Props) {
               />
             ))}
           </div>
+
+          {form.canAccessCommercialPresentations && (
+            <ModuleCheckbox
+              label="Can approve Commercial Presentations (Manager)"
+              icon={ShieldCheck}
+              checked={form.canApproveCommercialPresentations}
+              onChange={(v) =>
+                setForm((p) => ({ ...p, canApproveCommercialPresentations: v }))
+              }
+            />
+          )}
 
           {form.canAccessKnowledgeBase && (
             <UserKnowledgeDepartments userId={user.id} />

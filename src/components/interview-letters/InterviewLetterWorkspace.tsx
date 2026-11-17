@@ -14,6 +14,7 @@ import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import { formatDayMonthYear } from '@/lib/date-format'
 import { letterDownloadName, wordCount, splitEmailSubject, splitMarkdownLinks, variantLabel } from '@/lib/interview-letters'
 import { guessTemplateId } from '@/lib/download-templates/registry'
+import { brandFamilyFor } from '@/lib/agencies'
 import type { InterviewLetterProject, InterviewLetterPersonalization, InterviewLetterStage } from '@/types'
 import { useKeepScreenOn } from '@/lib/use-mobile'
 
@@ -1070,7 +1071,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
           })}
           variantLabel={download.personalization.recipient_name || 'Personalized'}
           variantTone="final"
-          defaultTemplateId={guessTemplateId(project.company, project.media_partner)}
+          defaultTemplateId={guessTemplateId(brandFamilyFor(project.company), project.media_partner)}
         />
       ) : (
         <DownloadTemplateModal
@@ -1084,7 +1085,7 @@ export default function InterviewLetterWorkspace({ project: initialProject, isGe
           ]}
           fieldsHint="Optional. Fill these in to address the letter: they go into the header, the “Dear …,” line and the file name. Leave them blank to get the letter with highlighted placeholders."
           filenameBase={(v) => letterDownloadName(project.project_country, { name: v.recipientName, title: v.recipientTitle, organisation: v.recipientOrganisation })}
-          defaultTemplateId={guessTemplateId(project.company, project.media_partner)}
+          defaultTemplateId={guessTemplateId(brandFamilyFor(project.company), project.media_partner)}
         />
       )}
     </div>

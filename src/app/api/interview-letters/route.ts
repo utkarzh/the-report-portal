@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { cleanBriefText, isInterviewLetterCompany, isInterviewLetterVariant, matchBriefs } from '@/lib/interview-letters'
 import { findMediaEntry } from '@/lib/media-library-server'
+import { agencyByCode } from '@/lib/agencies-server'
 import type { InterviewLetterBriefOption } from '@/types'
 
 // POST — US-050. Validates project setup, halts with zero API cost if no
@@ -44,8 +45,10 @@ export async function POST(request: NextRequest) {
     letterVariant, anchor, publicationTiming, reportSector, editorialBriefId,
   } = body
 
-  if (!isInterviewLetterCompany(company)) {
-    return NextResponse.json({ error: 'A valid company (TRC or GFDI) is required' }, { status: 400 })
+  // The company is an agency from the central list (Admin → Agencies).
+  const agency = isInterviewLetterCompany(company) ? await agencyByCode(company) : null
+  if (!agency || !agency.active) {
+    return NextResponse.json({ error: 'Choose an active agency' }, { status: 400 })
   }
   if (!isInterviewLetterVariant(letterVariant)) {
     return NextResponse.json({ error: 'Choose whether the report has an anchor' }, { status: 400 })

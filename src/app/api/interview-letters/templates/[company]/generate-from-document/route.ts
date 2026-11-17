@@ -5,7 +5,8 @@ import { getAnthropicClient } from '@/lib/claude/client'
 import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
 import { logUsageEvent } from '@/lib/claude/usage'
 import { extractSampleText } from '@/lib/sample-extract'
-import { isInterviewLetterCompany, INTERVIEW_LETTER_COMPANIES } from '@/lib/interview-letters'
+import { isInterviewLetterCompany } from '@/lib/interview-letters'
+import { agencyByCode } from '@/lib/agencies-server'
 import type { InterviewLetterParagraphSlot } from '@/types'
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -70,8 +71,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  if (!isInterviewLetterCompany(params.company)) {
-    return NextResponse.json({ error: 'Invalid company' }, { status: 400 })
+  const agency = isInterviewLetterCompany(params.company) ? await agencyByCode(params.company) : null
+  if (!agency) {
+    return NextResponse.json({ error: 'Unknown agency' }, { status: 400 })
   }
 
   const formData = await request.formData().catch(() => null)
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to read that document.' }, { status: 422 })
   }
 
-  const companyLabel = INTERVIEW_LETTER_COMPANIES.find((c) => c.value === params.company)?.label || params.company
+  const companyLabel = `${agency.name} (${agency.code})`
 
   const systemPrompt = `You help configure an Interview Request Letter template for ${companyLabel}. You are given the text of a reference document — an existing interview request letter, or a template/outline — and must decompose it into an ordered list of paragraph "slots" for a template-driven letter generator that will produce future letters from this structure.
 

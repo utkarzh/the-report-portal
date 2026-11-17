@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { isInterviewLetterCompany, INTERVIEW_LETTER_COMPANIES } from '@/lib/interview-letters'
+import { isInterviewLetterCompany } from '@/lib/interview-letters'
+import { agencyByCode } from '@/lib/agencies-server'
 import InterviewLetterEmailPromptForm from '@/components/admin/InterviewLetterEmailPromptForm'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 
@@ -16,7 +17,9 @@ export default async function InterviewLetterEmailPromptPage({ params }: Props) 
 
   if (!isInterviewLetterCompany(params.company)) notFound()
   const company = params.company
-  const label = INTERVIEW_LETTER_COMPANIES.find((c) => c.value === company)?.label ?? company
+  const agency = await agencyByCode(company)
+  if (!agency) notFound()
+  const label = `${agency.name} (${agency.code})`
 
   const { data: row } = await supabaseAdmin
     .from('interview_letter_email_prompts')
