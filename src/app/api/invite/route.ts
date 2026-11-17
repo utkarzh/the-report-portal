@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getApiUser } from "@/lib/auth/api-user";
 import { getBaseUrl } from "@/lib/url";
-import { isMissingKbColumn, withoutKbFlag } from "@/lib/knowledge/schema-compat";
+import {
+  OPTIONAL_PROFILE_FLAG_COLUMNS,
+  omitKeys,
+  withOptionalColumns,
+} from "@/lib/schema-compat";
 
 // GET /api/invite?token=xxx — public, used by invite page
 export async function GET(request: NextRequest) {
@@ -71,6 +75,8 @@ export async function POST(request: NextRequest) {
     canAccessSalesNegotiationCoach,
     canAccessCopywritingTool,
     canAccessKnowledgeBase,
+    canAccessCommercialPresentations,
+    canApproveCommercialPresentations,
     financeRole,
   } = body;
 
@@ -122,6 +128,14 @@ export async function POST(request: NextRequest) {
       role === "admin" ? true : canAccessCopywritingTool === true,
     can_access_knowledge_base:
       role === "admin" ? true : canAccessKnowledgeBase === true,
+    can_access_commercial_presentations:
+      role === "admin" ? true : canAccessCommercialPresentations === true,
+    // Approving needs module access too (see canApproveCommercialPresentations).
+    can_approve_commercial_presentations:
+      role === "admin"
+        ? true
+        : canAccessCommercialPresentations === true &&
+          canApproveCommercialPresentations === true,
     // Platform admins reach finance through role === 'admin' — never store a
     // finance_role for them (see canAccessFinance/isFinanceAdmin). Finance
     // Admin is only ever granted to Admin accounts, so a normal-user invite
@@ -130,19 +144,17 @@ export async function POST(request: NextRequest) {
       role === "admin" ? null : financeRole === "field" ? "field" : null,
     invited_by: user.id,
   };
-  let { data: invite, error: insertError } = await supabaseAdmin
-    .from("invitations")
-    .insert(invitation)
-    .select("id, token")
-    .single();
-  // Pre-034 database: no Knowledge Base column yet — invite without it.
-  if (isMissingKbColumn(insertError)) {
-    ({ data: invite, error: insertError } = await supabaseAdmin
+  // A database that hasn't run a later migration (034, 046) lacks that
+  // flag's column — invite without it; the module stays off until it runs.
+  const {
+    result: { data: invite, error: insertError },
+  } = await withOptionalColumns(OPTIONAL_PROFILE_FLAG_COLUMNS, (omit) =>
+    supabaseAdmin
       .from("invitations")
-      .insert(withoutKbFlag(invitation))
+      .insert(omitKeys(invitation, omit))
       .select("id, token")
-      .single());
-  }
+      .single(),
+  );
 
   if (insertError || !invite) {
     return NextResponse.json(

@@ -33,6 +33,9 @@ export interface CachedProfile {
   can_access_sales_negotiation_coach: boolean;
   can_access_copywriting_tool: boolean;
   can_access_knowledge_base: boolean;
+  // Optional: a cookie signed by a pre-046 deploy doesn't carry them.
+  can_access_commercial_presentations?: boolean;
+  can_approve_commercial_presentations?: boolean;
   finance_role: string | null;
   iat: number;
 }

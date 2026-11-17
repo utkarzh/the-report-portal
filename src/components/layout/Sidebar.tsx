@@ -27,6 +27,8 @@ import {
   Mail,
   PenLine,
   BookOpen,
+  Presentation,
+  Building2,
 } from "lucide-react";
 import type { UserRole } from "@/types";
 
@@ -44,6 +46,7 @@ interface SidebarProps {
   canAccessSalesNegotiationCoach: boolean;
   canAccessCopywritingTool: boolean;
   canAccessKnowledgeBase: boolean;
+  canAccessCommercialPresentations?: boolean;
   canAccessFinance?: boolean;
   financeHref?: string;
   mobileOpen?: boolean;
@@ -113,6 +116,7 @@ export default function Sidebar({
   canAccessSalesNegotiationCoach,
   canAccessCopywritingTool,
   canAccessKnowledgeBase,
+  canAccessCommercialPresentations = false,
   canAccessFinance = false,
   financeHref = "/finance",
   mobileOpen = false,
@@ -265,7 +269,8 @@ export default function Sidebar({
 
         {(canAccessBusinessCases ||
           canAccessMeetingPreparation ||
-          canAccessSalesNegotiationCoach) && (
+          canAccessSalesNegotiationCoach ||
+          canAccessCommercialPresentations) && (
           <>
             <div className="mt-4 pt-4 border-t border-gray-800 mb-2">
               <p
@@ -291,6 +296,13 @@ export default function Sidebar({
             {canAccessSalesNegotiationCoach && (
               <NavLink
                 item={{ label: "Sales Coach", href: "/commercial/sales-coach", icon: Handshake }}
+                collapsed={collapsed}
+                pathname={pathname}
+              />
+            )}
+            {canAccessCommercialPresentations && (
+              <NavLink
+                item={{ label: "Presentations", href: "/commercial/presentations", icon: Presentation, beta: true }}
                 collapsed={collapsed}
                 pathname={pathname}
               />
@@ -339,6 +351,7 @@ export default function Sidebar({
             <NavLink item={{ label: 'Users', href: '/admin/users', icon: Users }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Analytics', href: '/admin/analytics', icon: BarChart3 }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Media Library', href: '/admin/media-library', icon: Newspaper }} collapsed={collapsed} pathname={pathname} />
+            <NavLink item={{ label: 'Agencies', href: '/admin/agencies', icon: Building2 }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Feedback', href: '/admin/feedback', icon: Inbox }} collapsed={collapsed} pathname={pathname} />
           </>

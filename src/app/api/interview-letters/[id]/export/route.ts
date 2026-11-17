@@ -7,6 +7,7 @@ import { attachmentDisposition, buildLetterLayout } from '@/lib/interview-letter
 import { letterDownloadName, type LetterRecipient } from '@/lib/interview-letters'
 import { getTemplate, resolveTemplateForPartner } from '@/lib/download-templates/registry'
 import { getApiUser } from '@/lib/auth/api-user'
+import { brandFamilyFor } from '@/lib/agencies'
 
 // GET /api/interview-letters/[id]/export — US-059. Serves an approved letter
 // as a real Word (.docx) or PDF file in the selected branded template (logo
@@ -80,7 +81,10 @@ export async function GET(
   // falling back to a media_partner match keeps direct/bookmarked links
   // (no query params) branded correctly instead of defaulting blindly.
   const templateId = sp.get('template')
-  const template = templateId ? getTemplate(templateId) : resolveTemplateForPartner(project.company, project.media_partner)
+  // Artwork is chosen by agency code (TRC / GFDI), exactly as before.
+  const template = templateId
+    ? getTemplate(templateId)
+    : resolveTemplateForPartner(brandFamilyFor(project.company), project.media_partner)
   const format = sp.get('format') === 'pdf' ? 'pdf' : 'docx'
 
   const layout = buildLetterLayout({

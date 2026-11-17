@@ -9,7 +9,8 @@ import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import { formatDayMonthYear } from '@/lib/date-format'
 import MediaSelect from '@/components/ui/MediaSelect'
-import { INTERVIEW_LETTER_COMPANIES, INTERVIEW_LETTER_VARIANTS, matchBriefs } from '@/lib/interview-letters'
+import { INTERVIEW_LETTER_VARIANTS, matchBriefs } from '@/lib/interview-letters'
+import type { AgencyOption } from '@/lib/agencies'
 import { findMedia } from '@/lib/media-library'
 import type { InterviewLetterBriefOption, InterviewLetterVariant, MediaOption } from '@/types'
 
@@ -19,13 +20,15 @@ interface Props {
   media: (MediaOption & { letter_description: string })[]
   briefs: InterviewLetterBriefOption[]
   sectorSuggestions: string[]
+  // Active agencies from the central list (Admin → Agencies).
+  agencies: AgencyOption[]
 }
 
 // 'auto' follows the best match for the typed country; 'none' opts out.
 type BriefChoice = 'auto' | 'none' | string
 
 
-export default function ProjectSetupForm({ isAtLimit, media, briefs, sectorSuggestions }: Props) {
+export default function ProjectSetupForm({ isAtLimit, media, briefs, sectorSuggestions, agencies }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,7 +101,7 @@ export default function ProjectSetupForm({ isAtLimit, media, briefs, sectorSugge
 
       <Select
         label="Company *"
-        options={INTERVIEW_LETTER_COMPANIES.map((c) => ({ value: c.value, label: c.label }))}
+        options={agencies}
         value={form.company}
         onChange={(e) => handleChange('company', e.target.value)}
         placeholder="Select a company"

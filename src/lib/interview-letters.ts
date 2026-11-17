@@ -4,14 +4,15 @@ import type {
   InterviewLetterParagraphSlot,
   InterviewLetterVariant,
 } from '@/types'
+import { isAgencyCode } from '@/lib/agencies'
 
-export const INTERVIEW_LETTER_COMPANIES: { value: InterviewLetterCompany; label: string }[] = [
-  { value: 'TRC', label: 'The Report Company (TRC)' },
-  { value: 'GFDI', label: 'Global Foreign Direct Investment (GFDI)' },
-]
-
+// The "company" of a letter is an agency CODE from the central agency list
+// (Admin → Agencies, migration 047) — TRC, GFDI or any agency an admin adds.
+// This is the shape check; routes confirm the agency exists with
+// agencyByCode() (agencies-server.ts), and the database enforces it with a
+// foreign key to agencies(code).
 export function isInterviewLetterCompany(v: unknown): v is InterviewLetterCompany {
-  return v === 'TRC' || v === 'GFDI'
+  return isAgencyCode(v)
 }
 
 export const INTERVIEW_LETTER_VARIANTS: { value: InterviewLetterVariant; label: string; description: string }[] = [

@@ -17,6 +17,8 @@ import {
   Wallet,
   PenLine,
   BookOpen,
+  Presentation,
+  ShieldCheck,
 } from "lucide-react";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
@@ -77,6 +79,11 @@ const EDITORIAL_MODULE_FIELDS = [
     label: "Knowledge Base",
     icon: BookOpen,
   },
+  {
+    key: "canAccessCommercialPresentations" as const,
+    label: "Commercial Presentations",
+    icon: Presentation,
+  },
 ];
 
 const defaultForm = {
@@ -93,6 +100,8 @@ const defaultForm = {
   canAccessSalesNegotiationCoach: false,
   canAccessCopywritingTool: false,
   canAccessKnowledgeBase: false,
+  canAccessCommercialPresentations: false,
+  canApproveCommercialPresentations: false,
   financeRole: "" as "" | "finance_admin" | "field",
 };
 
@@ -159,6 +168,10 @@ export default function InviteUserModal({ open, onClose }: Props) {
           canAccessSalesNegotiationCoach: form.canAccessSalesNegotiationCoach,
           canAccessCopywritingTool: form.canAccessCopywritingTool,
           canAccessKnowledgeBase: form.canAccessKnowledgeBase,
+          canAccessCommercialPresentations: form.canAccessCommercialPresentations,
+          canApproveCommercialPresentations:
+            form.canAccessCommercialPresentations &&
+            form.canApproveCommercialPresentations,
           financeRole: form.financeRole || null,
         }),
       }),
@@ -417,6 +430,17 @@ export default function InviteUserModal({ open, onClose }: Props) {
                       />
                     ))}
                   </div>
+
+                  {form.canAccessCommercialPresentations && (
+                    <ModuleCheckbox
+                      label="Can approve Commercial Presentations (Manager)"
+                      icon={ShieldCheck}
+                      checked={form.canApproveCommercialPresentations}
+                      onChange={(v) =>
+                        setForm((p) => ({ ...p, canApproveCommercialPresentations: v }))
+                      }
+                    />
+                  )}
 
                   <p className="text-[10px] text-gray-400 -mb-1">Finance</p>
                   <ModuleCheckbox

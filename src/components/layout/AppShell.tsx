@@ -22,6 +22,7 @@ interface Props {
   canAccessSalesNegotiationCoach: boolean;
   canAccessCopywritingTool: boolean;
   canAccessKnowledgeBase: boolean;
+  canAccessCommercialPresentations?: boolean;
   canAccessFinance?: boolean;
   financeHref?: string;
 }
@@ -41,6 +42,7 @@ export default function AppShell({
   canAccessSalesNegotiationCoach,
   canAccessCopywritingTool,
   canAccessKnowledgeBase,
+  canAccessCommercialPresentations = false,
   canAccessFinance,
   financeHref,
 }: Props) {
@@ -75,6 +77,7 @@ export default function AppShell({
         canAccessSalesNegotiationCoach={canAccessSalesNegotiationCoach}
         canAccessCopywritingTool={canAccessCopywritingTool}
         canAccessKnowledgeBase={canAccessKnowledgeBase}
+        canAccessCommercialPresentations={canAccessCommercialPresentations}
         canAccessFinance={canAccessFinance}
         financeHref={financeHref}
         mobileOpen={drawer.open}

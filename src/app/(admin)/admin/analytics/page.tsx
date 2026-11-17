@@ -74,6 +74,7 @@ const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
   country_intel_discovery: "Country Intelligence — discovery",
   country_intel_profiles: "Country Intelligence — profiles",
   country_intel_contacts: "Country Intelligence — contacts",
+  commercial_presentation_why_now: "Commercial Presentation — Why Now",
 };
 const WORKFLOW_ORDER: UsageWorkflow[] = [
   "research",
@@ -110,6 +111,7 @@ const WORKFLOW_ORDER: UsageWorkflow[] = [
   "country_intel_discovery",
   "country_intel_profiles",
   "country_intel_contacts",
+  "commercial_presentation_why_now",
   "finance_receipt_extraction",
   "finance_receipt_verification",
   "finance_audit_report",

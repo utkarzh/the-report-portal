@@ -27,6 +27,8 @@ export interface Profile {
   can_access_sales_negotiation_coach: boolean;
   can_access_copywriting_tool: boolean;
   can_access_knowledge_base: boolean;
+  can_access_commercial_presentations: boolean;
+  can_approve_commercial_presentations: boolean;
   finance_role: FinanceRole;
   created_at: string;
   updated_at: string;
@@ -46,6 +48,8 @@ export interface Invitation {
   can_access_sales_negotiation_coach: boolean;
   can_access_copywriting_tool: boolean;
   can_access_knowledge_base: boolean;
+  can_access_commercial_presentations: boolean;
+  can_approve_commercial_presentations: boolean;
   finance_role: FinanceRole;
   token: string;
   status: InviteStatus;
@@ -438,7 +442,8 @@ export type UsageWorkflow =
   | "country_intel_context"
   | "country_intel_discovery"
   | "country_intel_profiles"
-  | "country_intel_contacts";
+  | "country_intel_contacts"
+  | "commercial_presentation_why_now";
 
 export interface UsageEvent {
   id: string;
@@ -758,7 +763,9 @@ export interface MeetingPrepPrompt {
 }
 
 // ── Interview Request Letter & Email Generator (Module 5) ─────────────────
-export type InterviewLetterCompany = "TRC" | "GFDI";
+// An agency CODE from the central agency list (migration 047) — "TRC",
+// "GFDI", or any agency an admin adds. Was the fixed union "TRC" | "GFDI".
+export type InterviewLetterCompany = string;
 
 export type InterviewLetterStage =
   | "input"
@@ -1578,6 +1585,271 @@ export interface KnowledgeFeedback {
   guardian_note: string | null;
   resolved_by: string | null;
   resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ------------------------------------------------------------
+// Commercial Presentation Generator (migration 046)
+// ------------------------------------------------------------
+// The presentation is structured data, never one text blob: blocks of SAY /
+// ACTION / NOTE segments. Master blocks are rendered by code from admin
+// templates; only the "why_now" block's text comes from Claude.
+export type PresentationSegmentKind = "say" | "action" | "note";
+
+export interface PresentationSegment {
+  id: string;
+  kind: PresentationSegmentKind;
+  text: string;
+  /** Optional sub-heading shown above the segment ("Seating", "Distribution"). */
+  heading?: string;
+  /** Show only when this variable has a value (e.g. "ANCHOR EVENT"). */
+  showIf?: string;
+  /** Show only when this variable is empty. */
+  hideIf?: string;
+}
+
+// template — segments from the structure itself (locked methodology / master)
+// agency   — the agency's own override if it has one, else the structure's
+// media    — the selected publication's Media Master Content
+// why_now  — the structure's segments, with [WHY NOW] = the selected AI text
+export type PresentationBlockType = "template" | "agency" | "media" | "why_now";
+
+export interface PresentationBlockConfig {
+  key: string;
+  title: string;
+  type: PresentationBlockType;
+  /** Shown as the block's content-type badge, e.g. "Locked methodology". */
+  typeLabel: string;
+  segments: PresentationSegment[];
+}
+
+export interface PresentationManualField {
+  /** The template variable it fills, e.g. "MAIN INTERVIEW" → [MAIN INTERVIEW]. */
+  key: string;
+  label: string;
+  placeholder: string;
+  required: boolean;
+  multiline: boolean;
+}
+
+export interface PresentationStructure {
+  blocks: PresentationBlockConfig[];
+  manualFields: PresentationManualField[];
+}
+
+/** A titled group of SAY / ACTION / NOTE lines in agency or media master
+ *  content. The title is shown as a sub-heading inside its block; may be empty. */
+export interface MasterContentSection {
+  id: string;
+  title: string;
+  segments: PresentationSegment[];
+}
+
+/** @deprecated name kept for existing imports; same as MasterContentSection. */
+export type AgencyProfileSection = MasterContentSection;
+
+export interface AgencyMasterContent {
+  /** The agency's approved master content, in titled sections (fills the
+   *  structure's agency block). No sections = that block's own segments. */
+  sections: MasterContentSection[];
+}
+
+export interface MediaMasterContent {
+  /** Written as it should be spoken: "the US", "Germany", "the UK". Empty =
+   *  the publication's country in the central Media Library is used
+   *  (mediaMarketFromCountry()), and blank when that isn't set either. */
+  mediaMarket: string;
+  /** The publication's approved script, in titled sections (replaces the
+   *  structure's media block). Old `{segments}` rows load as one section. */
+  sections: MasterContentSection[];
+}
+
+export interface WhyNowConfig {
+  prompt: string;
+  minWords: number;
+  maxWords: number;
+  wordsPerMinute: number;
+  bannedPhrases: string[];
+  maxWebSearches: number;
+  referenceExamplesLimit: number;
+  briefChars: number;
+  letterChars: number;
+}
+
+export type PresentationMasterKind = "structure" | "agency" | "media" | "why_now_prompt";
+
+export interface PresentationMasterContentRow {
+  id: string;
+  kind: PresentationMasterKind;
+  ref_id: string | null;
+  language: string;
+  content: unknown;
+  version_label: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface PresentationMasterVersion {
+  id: string;
+  content_id: string;
+  content: unknown;
+  version_label: string;
+  saved_by: string | null;
+  saved_by_name?: string | null;
+  created_at: string;
+}
+
+export interface Agency {
+  id: string;
+  name: string;
+  /** Short, stable code every module stores (TRC, GFDI, …). */
+  code: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ProjectAssetSource = "attached" | "generated";
+
+export interface Project {
+  id: string;
+  name: string;
+  agency_id: string | null;
+  agency_name: string;
+  country: string;
+  media_id: string | null;
+  media_name: string;
+  edition: string;
+  anchor_event: string;
+  anchor_date: string;
+  approved_research: string;
+  editorial_brief_id: string | null;
+  editorial_brief_source: ProjectAssetSource | null;
+  interview_letter_id: string | null;
+  interview_letter_source: ProjectAssetSource | null;
+  status: "active" | "closed";
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CommercialPresentationStatus = "draft" | "submitted" | "approved";
+
+export interface PresentationWhyNowInputs {
+  relevantDate?: string;
+  additionalContext?: string;
+  checkRecent?: boolean;
+}
+
+export interface CommercialPresentation {
+  id: string;
+  project_id: string;
+  language: string;
+  status: CommercialPresentationStatus;
+  manual_inputs: Record<string, string>;
+  why_now_inputs: PresentationWhyNowInputs;
+  selected_why_now_id: string | null;
+  approved_snapshot_id: string | null;
+  review_comment: string | null;
+  submitted_by: string | null;
+  submitted_at: string | null;
+  tokens_total: number;
+  web_searches: number;
+  cost_usd: number;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PresentationExternalFact {
+  fact: string;
+  source: string;
+}
+
+export interface PresentationWhyNowVersion {
+  id: string;
+  presentation_id: string;
+  kind: "generate" | "alternative" | "edit";
+  spoken_text: string;
+  new_external_facts: PresentationExternalFact[];
+  sources: Record<string, unknown>;
+  research_used: boolean;
+  web_searches: number;
+  model: string | null;
+  tokens_total: number;
+  cost_usd: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface RenderedSegment {
+  kind: PresentationSegmentKind;
+  heading?: string;
+  text: string;
+  source: "structure" | "agency" | "media" | "ai";
+  /** Title of the agency/media section this segment opens, if any. */
+  section?: string;
+  /** Known variables this segment still needs a value for. */
+  missing: string[];
+}
+
+export interface RenderedBlock {
+  key: string;
+  number: number;
+  title: string;
+  type: PresentationBlockType;
+  typeLabel: string;
+  segments: RenderedSegment[];
+}
+
+export interface PresentationMasterRef {
+  kind: PresentationMasterKind;
+  id: string;
+  refId: string | null;
+  versionLabel: string;
+}
+
+export interface PresentationIssue {
+  level: "error" | "warning";
+  message: string;
+}
+
+export interface PresentationSnapshot {
+  id: string;
+  presentation_id: string;
+  version_number: number;
+  blocks: RenderedBlock[];
+  master_refs: PresentationMasterRef[];
+  manual_inputs: Record<string, string>;
+  project_snapshot: Record<string, string>;
+  why_now_version_id: string | null;
+  why_now_text: string | null;
+  new_external_facts: PresentationExternalFact[];
+  approved_by: string | null;
+  approved_at: string;
+  edited_on_approval: boolean;
+}
+
+export interface PresentationEvent {
+  id: string;
+  presentation_id: string;
+  event_type: string;
+  actor_id: string | null;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface PresentationReferenceExample {
+  id: string;
+  title: string;
+  project_type: string;
+  body: string;
+  active: boolean;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }

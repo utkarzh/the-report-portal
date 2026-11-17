@@ -12,6 +12,8 @@ export interface ModuleAccess {
   can_access_sales_negotiation_coach: boolean;
   can_access_copywriting_tool: boolean;
   can_access_knowledge_base: boolean;
+  can_access_commercial_presentations: boolean;
+  can_approve_commercial_presentations: boolean;
   finance_role: FinanceRole;
 }
 
@@ -61,6 +63,27 @@ export function canAccessKnowledgeBase(
   return p.role === "admin" || p.can_access_knowledge_base;
 }
 
+export function canAccessCommercialPresentations(
+  p: Pick<ModuleAccess, "role" | "can_access_commercial_presentations">,
+): boolean {
+  return p.role === "admin" || p.can_access_commercial_presentations;
+}
+
+// Manager/Admin approval of Commercial Presentations (brief §20). A per-user
+// flag rather than a new role: the whole app branches on admin/user, so a
+// Manager is a normal user with this flag. Approving needs module access too.
+export function canApproveCommercialPresentations(
+  p: Pick<
+    ModuleAccess,
+    "role" | "can_access_commercial_presentations" | "can_approve_commercial_presentations"
+  >,
+): boolean {
+  return (
+    p.role === "admin" ||
+    (p.can_access_commercial_presentations && p.can_approve_commercial_presentations)
+  );
+}
+
 // Cash Box (finance) module. Deliberately NOT folded into the editorial
 // can_access_* flags above — see docs/cashbox-requirements.md Epic A and the
 // note in migration 017. Platform admins ('admin') keep full, unrestricted
@@ -93,6 +116,7 @@ export function landingPathFor(p: ModuleAccess): string {
   if (canAccessSalesNegotiationCoach(p)) return "/commercial/sales-coach";
   if (canAccessCopywritingTool(p)) return "/copywriting";
   if (canAccessKnowledgeBase(p)) return "/knowledge";
+  if (canAccessCommercialPresentations(p)) return "/commercial/presentations";
   if (canAccessFinance(p))
     return isFinanceAdmin(p) ? "/finance/admin" : "/finance";
   return "/no-access";

@@ -7,11 +7,11 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import InterviewLetterTemplateForm from '@/components/admin/InterviewLetterTemplateForm'
 import {
-  INTERVIEW_LETTER_COMPANIES,
   INTERVIEW_LETTER_VARIANTS,
   isInterviewLetterCompany,
   isInterviewLetterVariant,
 } from '@/lib/interview-letters'
+import { agencyByCode } from '@/lib/agencies-server'
 import type { InterviewLetterParagraphSlot } from '@/types'
 
 interface Props {
@@ -26,7 +26,9 @@ export default async function InterviewLetterTemplatePage({ params, searchParams
   const variant = isInterviewLetterVariant(searchParams.variant) ? searchParams.variant : 'anchor'
   const variantMeta = INTERVIEW_LETTER_VARIANTS.find((v) => v.value === variant)!
 
-  const label = INTERVIEW_LETTER_COMPANIES.find((c) => c.value === params.company)?.label || params.company
+  const agency = await agencyByCode(params.company)
+  if (!agency) notFound()
+  const label = `${agency.name} (${agency.code})`
 
   const { data } = await supabaseAdmin
     .from('interview_letter_templates')

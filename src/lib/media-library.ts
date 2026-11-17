@@ -23,6 +23,10 @@ export const MEDIA_LIBRARY_ORIGINS = {
     { label: 'Interview Letters', href: '/interview-letters' },
     { label: 'Admin', href: '/admin/interview-letters' },
   ],
+  'commercial-presentations': [
+    { label: 'Commercial Presentations', href: '/commercial/presentations' },
+    { label: 'Admin', href: '/commercial/admin/presentations' },
+  ],
 } satisfies Record<string, { label: string; href: string }[]>
 
 export type MediaLibraryOrigin = keyof typeof MEDIA_LIBRARY_ORIGINS

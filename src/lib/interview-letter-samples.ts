@@ -1,3 +1,4 @@
+import { isAgencyCode } from '@/lib/agencies'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { rankSamples, type RankableSample } from '@/lib/interview-letters'
 
@@ -5,7 +6,8 @@ export const SAMPLE_LIST_COLUMNS = 'id, title, company, variant, sector, notes, 
 
 // Normalises the editable tags of a sample letter from a request body.
 export function cleanSampleMeta(body: Record<string, unknown>) {
-  const company = ['TRC', 'GFDI', 'any'].includes(body.company as string) ? (body.company as string) : 'any'
+  // 'any' = a style sample for every agency; otherwise an agency code.
+  const company = body.company === 'any' || isAgencyCode(body.company) ? (body.company as string) : 'any'
   const variant = ['anchor', 'no_anchor', 'any'].includes(body.variant as string) ? (body.variant as string) : 'any'
   return {
     company,

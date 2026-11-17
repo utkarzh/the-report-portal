@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { getAnthropicClient } from '@/lib/claude/client'
-import { calculateCost, parseUsage, totalPromptTokens } from '@/lib/claude/tokens'
+import { calculateCost, totalPromptTokens } from '@/lib/claude/tokens'
+import { StreamUsageTracker } from '@/lib/claude/stream-usage'
 import { composeFinalDocument, finalSectionsOf, type AdvertiserRecord } from '@/lib/meeting-prep-document'
 import { advertiserRecordFrom, type TrackerEntry } from '@/lib/meeting-prep-tracker'
 import {
@@ -269,29 +270,9 @@ export async function streamWithDeadline(opts: {
     try { stream.abort() } catch {}
   }, opts.deadlineMs)
 
-  let text = ''
-  let startUsage: Record<string, unknown> = {}
-  let outputTokens = 0
-  let sawFinal = false
-  let searches = 0
-  let reportedSearches: number | undefined
+  const tracker = new StreamUsageTracker()
   try {
-    for await (const event of stream) {
-      if (event.type === 'message_start') {
-        startUsage = (event.message.usage ?? {}) as unknown as Record<string, unknown>
-      } else if (event.type === 'content_block_start' && event.content_block.type === 'server_tool_use') {
-        searches += 1
-      } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        text += event.delta.text
-      } else if (event.type === 'message_delta') {
-        const du = event.usage as { output_tokens?: number; server_tool_use?: { web_search_requests?: number } } | undefined
-        if (typeof du?.output_tokens === 'number') {
-          outputTokens = du.output_tokens
-          sawFinal = true
-        }
-        if (typeof du?.server_tool_use?.web_search_requests === 'number') reportedSearches = du.server_tool_use.web_search_requests
-      }
-    }
+    for await (const event of stream) tracker.observe(event)
   } catch (e) {
     if (!aborted) {
       clearTimeout(timer)
@@ -301,18 +282,9 @@ export async function streamWithDeadline(opts: {
     clearTimeout(timer)
   }
 
-  if (!sawFinal && text.trim()) {
-    try {
-      const counted = await anthropic.messages.countTokens({ model: opts.model, messages: [{ role: 'user', content: text }] })
-      outputTokens = counted.input_tokens
-    } catch (err) {
-      console.error('Meeting prep output-token recount failed:', err)
-    }
-  }
-
-  const usage = parseUsage({ ...startUsage, output_tokens: outputTokens }, reportedSearches ?? searches)
+  const usage = await tracker.usage(anthropic, opts.model)
   return {
-    text,
+    text: tracker.text,
     promptTokens: totalPromptTokens(usage),
     outputTokens: usage.outputTokens,
     webSearches: usage.webSearches ?? 0,

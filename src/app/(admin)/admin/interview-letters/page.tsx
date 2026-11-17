@@ -5,7 +5,9 @@ import { requireAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import InterviewLetterResearchEngine from '@/components/admin/InterviewLetterResearchEngine'
-import { INTERVIEW_LETTER_COMPANIES, INTERVIEW_LETTER_VARIANTS } from '@/lib/interview-letters'
+import { INTERVIEW_LETTER_VARIANTS } from '@/lib/interview-letters'
+import { agenciesHref } from '@/lib/agencies'
+import { listAgencies } from '@/lib/agencies-server'
 import { geminiConfigured, getResearchProvider } from '@/lib/interview-letter-research'
 
 const RESEARCH_PLACEHOLDERS = ['COMPANY', 'PROJECT_COUNTRY', 'MEDIA_PARTNER', 'TARGET_MARKET', 'USER_CONTEXT', 'CURRENT_DATE', 'ANCHOR', 'PUBLICATION_TIMING', 'REPORT_SECTOR']
@@ -13,11 +15,23 @@ const RESEARCH_PLACEHOLDERS = ['COMPANY', 'PROJECT_COUNTRY', 'MEDIA_PARTNER', 'T
 export default async function InterviewLettersAdminPage() {
   requireAdminHeader()
 
-  const [provider, mediaCount, sampleCount] = await Promise.all([
+  const [provider, mediaCount, sampleCount, agencies, templates, researchPrompts, emailPrompts] = await Promise.all([
     getResearchProvider(),
     supabaseAdmin.from('media_library').select('id', { count: 'exact', head: true }).neq('letter_description', '').then((r) => r.count ?? 0),
     supabaseAdmin.from('interview_letter_samples').select('id', { count: 'exact', head: true }).then((r) => r.count ?? 0),
+    // The central agency list (Admin → Agencies) — every agency gets its own
+    // templates and prompts here.
+    listAgencies(),
+    supabaseAdmin.from('interview_letter_templates').select('company, variant, structure').then((r) => r.data || []),
+    supabaseAdmin.from('interview_letter_research_prompts').select('company, prompt_text').then((r) => r.data || []),
+    supabaseAdmin.from('interview_letter_email_prompts').select('company, prompt_text').then((r) => r.data || []),
   ])
+  const companies = agencies.map((a) => ({ value: a.code, label: `${a.name} (${a.code})${a.active ? '' : ' — inactive'}` }))
+  const hasTemplate = (code: string, variant: string) =>
+    templates.some((t) => t.company === code && t.variant === variant && Array.isArray(t.structure) && t.structure.length > 0)
+  const hasPrompt = (rows: { company: string; prompt_text: string | null }[], code: string) =>
+    rows.some((r) => r.company === code && (r.prompt_text || '').trim().length > 0)
+  const notSetUp = <span className="text-amber-700"> · not set up yet</span>
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
@@ -33,13 +47,31 @@ export default async function InterviewLettersAdminPage() {
           <h1 className="text-lg font-semibold text-gray-900">Interview Letters — Admin</h1>
           <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">
             Manage everything the Interview Request Letter &amp; Email Generator depends on: the research engine and
-            prompt, the two letter versions per company, the media descriptions, sample letters and the email
+            prompt, the two letter versions per agency, the media descriptions, sample letters and the email
             prompt. Research builds on the country&apos;s Editorial Brief when one exists. Every write-up is done by
             Claude.
           </p>
         </div>
 
         <div className="flex flex-col gap-6">
+          <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
+            <h2 className="text-sm font-semibold text-gray-900">Agencies</h2>
+            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+              The companies letters are written for come from the central agency list, shared with every tool. A new
+              agency needs its own research prompt, letter templates and email prompt below before letters can be
+              generated for it. Existing letters keep the agency they were created with.
+            </p>
+            <Link
+              href={agenciesHref('interview-letters')}
+              className="mt-4 flex items-center justify-between px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
+            >
+              <span>
+                Agencies <span className="text-gray-400">· {agencies.filter((a) => a.active).length} active</span>
+              </span>
+              <span aria-hidden>→</span>
+            </Link>
+          </section>
+
           <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
             <h2 className="text-sm font-semibold text-gray-900">Research Engine</h2>
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
@@ -67,13 +99,16 @@ export default async function InterviewLettersAdminPage() {
               .
             </p>
             <div className="flex flex-col gap-2 mt-4">
-              {INTERVIEW_LETTER_COMPANIES.map(({ value, label }) => (
+              {companies.map(({ value, label }) => (
                 <Link
                   key={value}
                   href={`/admin/interview-letters/research-prompt/${value}`}
                   className="flex items-center justify-between px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
                 >
-                  {label}
+                  <span>
+                    {label}
+                    {!hasPrompt(researchPrompts, value) && notSetUp}
+                  </span>
                   <span aria-hidden>→</span>
                 </Link>
               ))}
@@ -90,7 +125,7 @@ export default async function InterviewLettersAdminPage() {
               budgets. Every update is versioned with full rollback.
             </p>
             <div className="flex flex-col gap-2 mt-4">
-              {INTERVIEW_LETTER_COMPANIES.flatMap(({ value, label }) =>
+              {companies.flatMap(({ value, label }) =>
                 INTERVIEW_LETTER_VARIANTS.map((v) => (
                   <Link
                     key={`${value}-${v.value}`}
@@ -99,6 +134,7 @@ export default async function InterviewLettersAdminPage() {
                   >
                     <span>
                       {label} <span className="text-gray-400">· {v.label.toLowerCase()}</span>
+                      {!hasTemplate(value, v.value) && notSetUp}
                     </span>
                     <span aria-hidden>→</span>
                   </Link>
@@ -149,13 +185,16 @@ export default async function InterviewLettersAdminPage() {
               per company. Every update is versioned with full rollback.
             </p>
             <div className="flex flex-col gap-2 mt-4">
-              {INTERVIEW_LETTER_COMPANIES.map(({ value, label }) => (
+              {companies.map(({ value, label }) => (
                 <Link
                   key={value}
                   href={`/admin/interview-letters/email-prompt/${value}`}
                   className="flex items-center justify-between px-4 py-3 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
                 >
-                  {label}
+                  <span>
+                    {label}
+                    {!hasPrompt(emailPrompts, value) && notSetUp}
+                  </span>
                   <span aria-hidden>→</span>
                 </Link>
               ))}

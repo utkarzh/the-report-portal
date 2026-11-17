@@ -10,6 +10,8 @@ import {
   canAccessSalesNegotiationCoach,
   canAccessCopywritingTool,
   canAccessKnowledgeBase,
+  canAccessCommercialPresentations,
+  canApproveCommercialPresentations,
   canAccessFinance,
   isFinanceAdmin,
   landingPathFor,
@@ -21,13 +23,16 @@ import {
   verifyProfileCache,
   type CachedProfile,
 } from "@/lib/auth/profile-cache";
-import { isMissingKbColumn } from "@/lib/knowledge/schema-compat";
+import {
+  OPTIONAL_PROFILE_FLAG_COLUMNS,
+  withOptionalColumns,
+} from "@/lib/schema-compat";
 import type { UserRole, FinanceRole } from "@/types";
 import { isSalesCoachAdminEmail } from "@/lib/sales-coach-admins";
 
-// Profile columns read on every navigation. The Knowledge Base flag is added
-// separately so a database that hasn't run migration 034 yet can still sign
-// users in (see the fallback below).
+// Profile columns read on every navigation. Flags added by later migrations
+// (OPTIONAL_PROFILE_FLAG_COLUMNS) are added separately so a database that
+// hasn't run those migrations yet can still sign users in (see below).
 const PROFILE_COLUMNS =
   "role, status, full_name, tokens_used, token_limit, active_session_id, can_access_interview, can_access_transcriptions, can_access_business_cases, can_access_editorial_briefs, can_access_meeting_preparation, can_access_interview_letter_generator, can_access_sales_negotiation_coach, can_access_copywriting_tool, finance_role";
 
@@ -237,6 +242,8 @@ export async function middleware(request: NextRequest) {
     "x-user-can-sales-coach",
     "x-user-can-copywriting",
     "x-user-can-knowledge-base",
+    "x-user-can-commercial-presentations",
+    "x-user-can-approve-presentations",
     "x-user-finance-role",
     "x-user-email",
   ]) {
@@ -253,26 +260,34 @@ export async function middleware(request: NextRequest) {
       : null;
 
     if (!profile) {
-      const withKb = await supabase
-        .from("profiles")
-        .select(`${PROFILE_COLUMNS}, can_access_knowledge_base`)
-        .eq("id", user.id)
-        .single();
-      let freshProfile: Omit<CachedProfile, "user_id" | "iat"> | null =
-        withKb.data;
-      // Before migration 034 the column doesn't exist and the whole select
-      // fails — which the check below would read as "no profile" and bounce
-      // every user back to /login. Re-read without it; the module reads as off.
-      if (isMissingKbColumn(withKb.error)) {
-        const legacy = await supabase
-          .from("profiles")
-          .select(PROFILE_COLUMNS)
-          .eq("id", user.id)
-          .single();
-        freshProfile = legacy.data
-          ? { ...legacy.data, can_access_knowledge_base: false }
+      // Before a later migration runs, its flag column doesn't exist and the
+      // whole select fails — which the check below would read as "no profile"
+      // and bounce every user back to /login. Re-read without the missing
+      // column(s); those modules read as off.
+      const { result: fresh, omitted } = await withOptionalColumns(
+        OPTIONAL_PROFILE_FLAG_COLUMNS,
+        (omit) =>
+          supabase
+            .from("profiles")
+            .select(
+              [
+                PROFILE_COLUMNS,
+                ...OPTIONAL_PROFILE_FLAG_COLUMNS.filter((c) => !omit.has(c)),
+              ].join(", "),
+            )
+            .eq("id", user.id)
+            .single(),
+      );
+      const freshData = fresh.data as unknown as Record<string, unknown> | null;
+      const freshProfile: Omit<CachedProfile, "user_id" | "iat"> | null =
+        freshData
+          ? ({
+              ...Object.fromEntries(
+                Array.from(omitted).map((c) => [c, false]),
+              ),
+              ...freshData,
+            } as Omit<CachedProfile, "user_id" | "iat">)
           : null;
-      }
 
       if (freshProfile) {
         profile = { ...freshProfile, user_id: user.id, iat: Date.now() };
@@ -359,6 +374,11 @@ export async function middleware(request: NextRequest) {
       can_access_copywriting_tool: profile.can_access_copywriting_tool,
       // `?? false` so a profile cached by a pre-034 deploy still parses.
       can_access_knowledge_base: profile.can_access_knowledge_base ?? false,
+      // Same for a profile cached by a pre-046 deploy.
+      can_access_commercial_presentations:
+        profile.can_access_commercial_presentations ?? false,
+      can_approve_commercial_presentations:
+        profile.can_approve_commercial_presentations ?? false,
       finance_role: profile.finance_role as FinanceRole,
     };
     const blockedFromInterview =
@@ -402,6 +422,11 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/copywriting") && !canAccessCopywritingTool(access);
     const blockedFromKnowledgeBase =
       pathname.startsWith("/knowledge") && !canAccessKnowledgeBase(access);
+    // Its admin area (/commercial/admin/presentations) is covered by the
+    // /commercial/admin rule above.
+    const blockedFromCommercialPresentations =
+      pathname.startsWith("/commercial/presentations") &&
+      !canAccessCommercialPresentations(access);
     // /finance/admin needs finance-admin (or platform admin); plain /finance
     // needs any finance access at all.
     const blockedFromFinanceAdmin =
@@ -422,6 +447,7 @@ export async function middleware(request: NextRequest) {
       blockedFromCountryIntel ||
       blockedFromCopywriting ||
       blockedFromKnowledgeBase ||
+      blockedFromCommercialPresentations ||
       blockedFromFinanceAdmin ||
       blockedFromFinance
     ) {
@@ -473,6 +499,14 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set(
       "x-user-can-knowledge-base",
       String(canAccessKnowledgeBase(access)),
+    );
+    requestHeaders.set(
+      "x-user-can-commercial-presentations",
+      String(canAccessCommercialPresentations(access)),
+    );
+    requestHeaders.set(
+      "x-user-can-approve-presentations",
+      String(canApproveCommercialPresentations(access)),
     );
     requestHeaders.set("x-user-finance-role", profile.finance_role ?? "");
   }
