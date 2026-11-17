@@ -94,16 +94,16 @@ export default async function SalesCoachAdminPage() {
           </section>
 
           <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
-            <h2 className="text-sm font-semibold text-gray-900">Pattern Analysis</h2>
+            <h2 className="text-sm font-semibold text-gray-900">Sales Performance Reports</h2>
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
               Pick a Sales Executive and their last 5, 10, 20 or all Report Cards: see an instant snapshot, then let the AI read
-              them together for recurring strengths, gaps, trend, objections and a coaching plan. Every analysis is kept.
+              them together for recurring strengths, gaps, trend, objections and a coaching plan. Every report is kept.
             </p>
             <Link
               href="/commercial/admin/sales-coach/patterns"
               className="flex items-center justify-between px-4 py-3 mt-4 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
             >
-              <span>Open Pattern Analysis</span>
+              <span>Open Sales Performance Reports</span>
               <span aria-hidden>→</span>
             </Link>
           </section>

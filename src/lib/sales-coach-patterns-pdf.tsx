@@ -90,7 +90,7 @@ function Cover({ d }: { d: PatternPdfInput }) {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image has no alt */}
           <Image src={`data:image/png;base64,${TRC_WORDMARK_PNG_BASE64}`} style={{ width: 150, height: 21 }} />
-          <Text style={{ fontFamily: SANS_B, fontSize: 7.5, letterSpacing: 1.5, color: C.goldLight, textTransform: 'uppercase' }}>Sales Coach · Pattern Analysis</Text>
+          <Text style={{ fontFamily: SANS_B, fontSize: 7.5, letterSpacing: 1.5, color: C.goldLight, textTransform: 'uppercase' }}>Sales Performance Report</Text>
         </View>
         <Text style={{ marginTop: 22, fontFamily: BODY_FONT, fontWeight: 700, fontSize: 26, color: '#ffffff' }}>{d.subjectName}</Text>
         <Text style={{ marginTop: 5, fontFamily: BODY_FONT, fontSize: 13, color: '#d6d3d1' }}>What keeps happening across {first}&apos;s negotiations</Text>
@@ -324,7 +324,7 @@ function Analysis({ d }: { d: PatternPdfInput }) {
   return (
     <View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-        <Text style={s.kickerGold}>AI pattern analysis</Text>
+        <Text style={s.kickerGold}>AI analysis</Text>
         <Text style={{ fontFamily: SANS, fontSize: 7.5, color: C.muted }}>
           Written by the TRC Sales Coach from these {d.cardCount} Report Card{d.cardCount === 1 ? '' : 's'}, against the TRC documents
         </Text>
@@ -384,7 +384,7 @@ function CardsTable({ d }: { d: PatternPdfInput }) {
 function Footer({ name }: { name: string }) {
   return (
     <View style={s.footer} fixed>
-      <Text>TRC Sales Coach · Pattern Analysis · {name} · Confidential</Text>
+      <Text>TRC Sales Coach · Sales Performance Report · {name} · Confidential</Text>
       <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
     </View>
   )
@@ -392,7 +392,7 @@ function Footer({ name }: { name: string }) {
 
 function PatternDoc({ d }: { d: PatternPdfInput }) {
   return (
-    <Document title={`Pattern Analysis – ${d.subjectName}`} author="The Report Company" subject="TRC Sales Coach pattern analysis">
+    <Document title={`Sales Performance Report – ${d.subjectName}`} author="The Report Company" subject="TRC Sales Coach sales performance report">
       <Page size="A4" style={s.page}>
         <Cover d={d} />
         <Snapshot d={d} />
@@ -416,7 +416,7 @@ export async function buildPatternPdf(d: PatternPdfInput): Promise<Buffer> {
   return renderToBuffer(<PatternDoc d={d} />)
 }
 
-// "Pattern Analysis – Daniel Yustas – 17 Nov 2026"
+// "Sales Performance Report – Daniel Yustas – 17 Nov 2026"
 export function patternPdfName(subjectName: string, analysedAt: string): string {
-  return `Pattern Analysis – ${subjectName} – ${longDate(analysedAt)}`.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+  return `Sales Performance Report – ${subjectName} – ${longDate(analysedAt)}`.replace(/[\\/:*?"<>|]+/g, ' ').trim()
 }

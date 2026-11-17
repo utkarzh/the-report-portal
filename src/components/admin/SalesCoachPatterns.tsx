@@ -194,7 +194,7 @@ export default function SalesCoachPatterns({ executives, initialUserId, canDownl
     <div className="flex flex-col gap-5 text-stone-900">
       <header className="flex flex-col gap-1.5">
         <p className={KICKER_GOLD}>Sales Coach · Admin</p>
-        <h1 className="text-balance font-serif text-[26px] font-semibold leading-tight tracking-[-0.015em] text-stone-900 sm:text-[30px]">Pattern Analysis</h1>
+        <h1 className="text-balance font-serif text-[26px] font-semibold leading-tight tracking-[-0.015em] text-stone-900 sm:text-[30px]">Sales Performance Reports</h1>
         <p className="max-w-2xl text-sm leading-6 text-stone-500">
           Read one Sales Executive&apos;s Report Cards together to see what keeps happening across their negotiations: the habits
           that win, the gaps that keep costing deals, whether they&apos;re improving, and what to coach next.
@@ -566,7 +566,7 @@ function AnalysisPanel({ run, viewing, name, firstName, selectedCount, historyAv
   if (viewing) {
     return (
       <AnalysisDocument
-        kicker="Saved pattern analysis"
+        kicker="Saved sales performance report"
         title={`${name} · ${PATTERN_SCOPES.find((s) => s.id === viewing.scope)?.label.toLowerCase() ?? viewing.scope} ${viewing.card_count} Report Card${viewing.card_count === 1 ? '' : 's'}`}
         meta={`${period(viewing.period_start, viewing.period_end)} · ${formatDayMonthYearTime(viewing.created_at)}${viewing.created_by_name ? ` · by ${viewing.created_by_name}` : ''}`}
         text={viewing.output}
@@ -598,7 +598,7 @@ function AnalysisPanel({ run, viewing, name, firstName, selectedCount, historyAv
   if (run.status === 'done') {
     return (
       <AnalysisDocument
-        kicker="Pattern analysis"
+        kicker="Sales performance report"
         title={`${name} · ${run.scope === 'all' ? 'all' : `last ${run.count}`} Report Card${run.count === 1 ? '' : 's'}`}
         meta={`${period(run.periodStart, run.periodEnd)}${run.createdAt ? ` · ${formatDayMonthYearTime(run.createdAt)}` : ''}${run.saved ? ' · saved' : historyAvailable ? '' : ' · not kept (migration 045 not run)'}`}
         text={run.text}
@@ -612,7 +612,7 @@ function AnalysisPanel({ run, viewing, name, firstName, selectedCount, historyAv
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_120%_at_100%_0%,rgba(200,151,63,0.10),transparent_60%)]" />
       <div className="relative flex flex-col gap-5 px-5 py-6 sm:px-10 sm:py-8 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
-          <p className={`flex items-center gap-2 ${KICKER_GOLD}`}><Sparkles size={13} /> AI pattern analysis</p>
+          <p className={`flex items-center gap-2 ${KICKER_GOLD}`}><Sparkles size={13} /> AI sales performance report</p>
           <h2 className="mt-2 font-serif text-[20px] font-medium leading-snug text-stone-900 sm:text-[22px]">
             What keeps happening across {firstName ? `${firstName}'s` : 'these'} negotiations
           </h2>

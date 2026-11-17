@@ -26,7 +26,7 @@ export default async function SalesCoachPatternsPage({ searchParams }: Props) {
           items={[
             { label: 'Sales Coach', href: '/commercial/sales-coach' },
             { label: 'Admin', href: '/commercial/admin/sales-coach' },
-            { label: 'Pattern Analysis' },
+            { label: 'Sales Performance Reports' },
           ]}
         />
         <SalesCoachPatterns executives={executives} initialUserId={initialUserId} canDownloadPdf={canDownloadPdf} />

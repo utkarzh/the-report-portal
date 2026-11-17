@@ -60,7 +60,7 @@ const WORKFLOW_LABELS: Record<UsageWorkflow, string> = {
   sales_coach_coach: "Sales coach — coaching",
   sales_coach_voice: "Sales coach — live voice",
   sales_coach_report_card: "Sales coach — report card",
-  sales_coach_pattern_analysis: "Sales coach — pattern analysis",
+  sales_coach_pattern_analysis: "Sales coach — sales performance report",
   copywriting_analyze: "Copywriting — analyze sources",
   copywriting_research: "Copywriting — research",
   copywriting_plan: "Copywriting — plan",

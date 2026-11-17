@@ -139,12 +139,12 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
               <div className="flex-shrink-0 rounded-lg bg-[#c8973f]/10 p-2 text-[#a07530]"><ShieldCheck size={18} /></div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#a07530]">Admin tools</p>
-                <p className="mt-0.5 text-sm text-gray-600">Knowledge documents, Live Coach instructions and pattern analysis per Sales Executive.</p>
+                <p className="mt-0.5 text-sm text-gray-600">Knowledge documents, Live Coach instructions and a sales performance report per Sales Executive.</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <AdminLink href="/commercial/admin/sales-coach" icon={<BookOpenText size={14} className="text-[#a07530]" />} label="Knowledge documents" />
-              <AdminLink href="/commercial/admin/sales-coach/patterns" icon={<ChartLine size={14} className="text-[#a07530]" />} label="Pattern analysis" />
+              <AdminLink href="/commercial/admin/sales-coach/patterns" icon={<ChartLine size={14} className="text-[#a07530]" />} label="Sales performance reports" />
             </div>
           </div>
         </div>
