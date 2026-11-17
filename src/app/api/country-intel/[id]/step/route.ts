@@ -14,12 +14,23 @@ export const dynamic = 'force-dynamic'
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireCiAdmin()
   if (!auth.userId) return auth.response
+  // Heartbeat at both ends of the step, so the project list can tell a run a
+  // page is driving from one whose page was closed (isWaitingForPage()).
+  await markPageActive(params.id)
+  let failure: string | null = null
   try {
     await runStep(params.id)
   } catch (e) {
     console.error('[country-intel] step failed', e)
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Step failed', retryable: true }, { status: 500 })
+    failure = e instanceof Error ? e.message : 'Step failed'
   }
+  await markPageActive(params.id)
+  if (failure) return NextResponse.json({ error: failure, retryable: true }, { status: 500 })
   const { data: project } = await supabaseAdmin.from('ci_projects').select('*').eq('id', params.id).maybeSingle()
   return NextResponse.json({ project, summary: await summarize(params.id) })
+}
+
+// Best-effort: a failed stamp only means the list may say "Paused" a little early.
+async function markPageActive(id: string) {
+  await supabaseAdmin.from('ci_projects').update({ updated_at: new Date().toISOString() }).eq('id', id).eq('status', 'running')
 }

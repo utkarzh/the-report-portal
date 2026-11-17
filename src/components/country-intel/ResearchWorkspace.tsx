@@ -8,6 +8,7 @@ import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import { DEPTHS } from '@/lib/country-intel/depth'
 import type { CiCompany, CiContactEntry, CiProject } from '@/lib/country-intel/types'
 import { useKeepScreenOn } from '@/lib/use-mobile'
+import { isPlainLeftClick, navigatesInApp } from '@/components/layout/NavigationProgress'
 
 type Summary = {
   tasks: Record<string, { total: number; done: number; failed: number; running: number }>
@@ -25,6 +26,7 @@ const PHASES = [
 ]
 const KIND_LABEL: Record<string, string> = { context: 'Country context', collect: 'Discovery search', select: 'Selection', profile: 'Company profiles', contacts: 'Contact search', verify: 'Verification' }
 const ok = (v?: string) => v === 'source' || v === 'website'
+const LEAVE_WARNING = 'The research pauses while this page is closed. Progress is saved, and it carries on when the page is opened again.\n\nLeave this page?'
 
 function Mark({ v }: { v?: string }) {
   if (ok(v)) return <span className="font-semibold text-emerald-700" title="Found on the company's own pages">✓</span>
@@ -105,6 +107,30 @@ export default function ResearchWorkspace({ initialProject, initialSummary, auto
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Leaving pauses the run (only this page drives the queue), so ask first: the
+  // browser's own prompt when the tab is closed or reloaded, and a confirm for
+  // links inside the app. The click guard listens on window in the capture
+  // phase, ahead of NavigationProgress (document) and Next's <Link> (React
+  // root), so a cancelled click neither navigates nor starts the progress bar.
+  useEffect(() => {
+    if (!looping) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    const onClick = (e: MouseEvent) => {
+      if (!isPlainLeftClick(e)) return
+      const a = (e.target as Element | null)?.closest?.('a')
+      if (!(a instanceof HTMLAnchorElement) || !navigatesInApp(a)) return
+      if (window.confirm(LEAVE_WARNING)) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    window.addEventListener('click', onClick, true)
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      window.removeEventListener('click', onClick, true)
+    }
+  }, [looping])
+
   async function act(action: 'start' | 'pause' | 'resume', extra: Record<string, unknown> = {}) {
     setNote(null)
     const r = await fetch(`/api/country-intel/${project.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...extra }) })
@@ -156,8 +182,9 @@ export default function ResearchWorkspace({ initialProject, initialSummary, auto
           {project.status === 'running' && <button onClick={() => act('pause')} className="inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-sm hover:border-gray-900"><Pause size={14} /> Pause</button>}
           {(project.status === 'paused' || project.status === 'failed') && !budgetReached && <button onClick={() => act('resume')} className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-2 text-sm text-white hover:bg-gray-900"><Play size={14} /> Resume</button>}
           {project.status === 'running' && !looping && <button onClick={() => loop()} className="inline-flex items-center gap-2 rounded-lg bg-black px-3.5 py-2 text-sm text-white"><Play size={14} /> Continue here</button>}
-          <a href={`/api/country-intel/${project.id}/export?format=pdf`} className={`inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-sm hover:border-gray-900 ${summary.companies.passing ? '' : 'pointer-events-none opacity-40'}`}><Download size={14} /> PDF report</a>
-          <a href={`/api/country-intel/${project.id}/export?format=xlsx`} className={`inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-sm hover:border-gray-900 ${summary.companies.passing ? '' : 'pointer-events-none opacity-40'}`}><FileSpreadsheet size={14} /> Excel</a>
+          {/* `download`: without it the browser treats the export as leaving the page and shows the leave prompt mid-run. */}
+          <a href={`/api/country-intel/${project.id}/export?format=pdf`} download className={`inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-sm hover:border-gray-900 ${summary.companies.passing ? '' : 'pointer-events-none opacity-40'}`}><Download size={14} /> PDF report</a>
+          <a href={`/api/country-intel/${project.id}/export?format=xlsx`} download className={`inline-flex items-center gap-2 rounded-lg border border-[#e5e3df] bg-white px-3.5 py-2 text-sm hover:border-gray-900 ${summary.companies.passing ? '' : 'pointer-events-none opacity-40'}`}><FileSpreadsheet size={14} /> Excel</a>
           <button onClick={remove} className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-gray-400 hover:text-red-600" aria-label="Delete research"><Trash2 size={15} /></button>
         </div>
       </div>

@@ -7,6 +7,7 @@ import EntityCard from '@/components/ui/EntityCard'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import { isMissingCiTable, CI_NOT_INSTALLED } from '@/lib/country-intel/auth'
 import { DEPTHS } from '@/lib/country-intel/depth'
+import { isWaitingForPage } from '@/lib/country-intel/activity'
 import type { CiProject } from '@/lib/country-intel/types'
 
 const STATUS: Record<string, { label: string; tone: PillTone }> = {
@@ -16,6 +17,8 @@ const STATUS: Record<string, { label: string; tone: PillTone }> = {
   complete: { label: 'Complete', tone: 'emerald' },
   failed: { label: 'Failed', tone: 'red' },
 }
+// "Running", but no page has driven it for a while: the tab was closed.
+const WAITING_FOR_PAGE = { label: 'Paused · open to continue', tone: 'sky' as PillTone }
 
 export default async function CountryIntelligencePage() {
   const { data, error } = await supabaseAdmin.from('ci_projects').select('*').order('created_at', { ascending: false }).limit(60)
@@ -66,7 +69,8 @@ export default async function CountryIntelligencePage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects.map((p, i) => {
-            const st = STATUS[p.status] || STATUS.draft
+            const idle = isWaitingForPage(p)
+            const st = idle ? WAITING_FOR_PAGE : STATUS[p.status] || STATUS.draft
             return (
               <EntityCard
                 key={p.id}
@@ -76,7 +80,7 @@ export default async function CountryIntelligencePage() {
                 title={p.title}
                 subtitle={`${p.country} · ${DEPTHS[p.depth].label} · ${counts.get(p.id) || 0} of ${p.target_count} companies · $${Number(p.spent_usd).toFixed(2)} spent`}
                 date={new Date(p.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                badge={<StatusPill label={st.label} tone={st.tone} pulse={p.status === 'running'} />}
+                badge={<StatusPill label={st.label} tone={st.tone} pulse={p.status === 'running' && !idle} />}
                 footerLabel="Open research"
               />
             )

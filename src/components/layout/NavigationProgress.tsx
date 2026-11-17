@@ -20,11 +20,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const SAFETY_MS = 15_000;
 
-function isPlainLeftClick(e: MouseEvent) {
+export function isPlainLeftClick(e: MouseEvent) {
   return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 }
 
-function navigatesInApp(anchor: HTMLAnchorElement) {
+export function navigatesInApp(anchor: HTMLAnchorElement) {
   if (anchor.target && anchor.target !== "_self") return false;
   if (anchor.hasAttribute("download")) return false;
   const href = anchor.getAttribute("href");
