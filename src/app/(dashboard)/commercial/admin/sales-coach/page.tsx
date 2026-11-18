@@ -74,8 +74,8 @@ export default async function SalesCoachAdminPage() {
           <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
             <h2 className="text-sm font-semibold text-gray-900">Live Coach</h2>
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
-              How the coach sounds and behaves on a live voice call: its energy, how long each answer is, how it opens the call
-              and how it role-plays. Used only on live calls, never for Report Cards, so editing it can&apos;t change a score.
+              The Master Behaviour Prompt: how the coach behaves on a live voice call, from answering questions to playing the CEO
+              and reviewing a role play. Used only on live calls, never for Report Cards, so editing it can&apos;t change a score.
               Versioned with full rollback.
             </p>
             <Link
@@ -86,7 +86,7 @@ export default async function SalesCoachAdminPage() {
                 <span className="sc-live-orb flex-shrink-0 w-5 h-5 rounded-full" />
                 <span className="min-w-0">
                   <span className="block font-medium">{SALES_COACH_LIVE_COACH_DOC.label}</span>
-                  <span className="block text-xs text-gray-500 mt-0.5">Delivery on live voice calls only</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">Master Behaviour Prompt · live voice calls only</span>
                 </span>
               </span>
               <span aria-hidden className="flex-shrink-0">→</span>

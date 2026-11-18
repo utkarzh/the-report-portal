@@ -5,7 +5,7 @@ import {
   outcomeLabel,
   pickTranscript,
 } from '@/lib/sales-coach'
-import { LIVE_COACH_DEFAULT_INSTRUCTIONS } from '@/lib/sales-coach-voice'
+import { LIVE_COACH_MASTER_BEHAVIOUR_PROMPT_V1 } from '@/lib/sales-coach-live-coach-prompt'
 import type { SalesCoachKnowledgeDoc, SalesCoachKnowledgeKey, SalesCoachNegotiation } from '@/types'
 
 // Server-only prompt assembly for the Sales Coach module, shared by the
@@ -29,10 +29,11 @@ function isPlaceholder(content: string): boolean {
   return t.length === 0 || t.toUpperCase().startsWith('PLACEHOLDER')
 }
 
-// The Live Coach Instructions (doc_key 'live_coach', migration 045): how the
-// coach delivers on a live voice call. Empty, a placeholder, missing (before
-// 045 runs) or unreadable all mean the built-in text, so a call never waits on
-// or fails because of this document.
+// The Live Coach document (doc_key 'live_coach', migration 045): Rafa's Master
+// Behaviour Prompt, which governs the live voice call. Empty, a placeholder,
+// missing (before 045 runs) or unreadable all mean his v1.0 text, word for word
+// (sales-coach-live-coach-prompt.ts), so a call never waits on or fails because
+// of this document, and is never governed by anything but his text.
 export async function loadLiveCoachInstructions(): Promise<string> {
   try {
     const { data } = await supabaseAdmin
@@ -41,9 +42,9 @@ export async function loadLiveCoachInstructions(): Promise<string> {
       .eq('doc_key', 'live_coach')
       .maybeSingle()
     const content = (data?.content || '').trim()
-    return isPlaceholder(content) ? LIVE_COACH_DEFAULT_INSTRUCTIONS : content
+    return isPlaceholder(content) ? LIVE_COACH_MASTER_BEHAVIOUR_PROMPT_V1 : content
   } catch {
-    return LIVE_COACH_DEFAULT_INSTRUCTIONS
+    return LIVE_COACH_MASTER_BEHAVIOUR_PROMPT_V1
   }
 }
 

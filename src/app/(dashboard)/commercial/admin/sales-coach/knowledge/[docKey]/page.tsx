@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { requireSalesCoachAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isSalesCoachAdminDocKey, SALES_COACH_ADMIN_DOCS, SALES_COACH_KNOWLEDGE_DOCS } from '@/lib/sales-coach'
-import { LIVE_COACH_DEFAULT_INSTRUCTIONS } from '@/lib/sales-coach-voice'
+import { LIVE_COACH_MASTER_BEHAVIOUR_PROMPT_V1 } from '@/lib/sales-coach-live-coach-prompt'
 import SalesCoachKnowledgeForm from '@/components/admin/SalesCoachKnowledgeForm'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 
@@ -27,12 +27,12 @@ export default async function SalesCoachKnowledgePage({ params }: Props) {
     .eq('doc_key', docKey)
     .maybeSingle()
 
-  // The Live Coach Instructions have built-in text the live call uses until
-  // the document is saved (or while it is empty), so the editor starts from
-  // exactly what calls are using now.
+  // An empty Live Coach document means calls use Rafa's Master Behaviour Prompt
+  // v1.0 (the built-in fallback), so the editor starts from exactly what calls
+  // are using now.
   const saved = (row?.content || '').trim()
   const usingDefault = isLiveCoach && (!saved || saved.toUpperCase().startsWith('PLACEHOLDER'))
-  const initialContent = usingDefault ? LIVE_COACH_DEFAULT_INSTRUCTIONS : row?.content || ''
+  const initialContent = usingDefault ? LIVE_COACH_MASTER_BEHAVIOUR_PROMPT_V1 : row?.content || ''
 
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
@@ -46,21 +46,21 @@ export default async function SalesCoachKnowledgePage({ params }: Props) {
         />
         <div className="mb-8">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">
-            {isLiveCoach ? 'Live Coach · delivery on live voice calls' : `Authority order ${index + 1} of ${SALES_COACH_KNOWLEDGE_DOCS.length}`}
+            {isLiveCoach ? 'Live Coach · behaviour on live voice calls' : `Authority order ${index + 1} of ${SALES_COACH_KNOWLEDGE_DOCS.length}`}
           </p>
           <h1 className="text-lg font-semibold text-gray-900 mt-1">{doc.label}</h1>
           <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">{doc.description} Every update is versioned with full rollback.</p>
           {isLiveCoach && (
             <div className="mt-4 max-w-2xl border border-[#e5e3df] bg-[#faf9f7] px-4 py-3 text-xs leading-5 text-gray-600">
               <p>
-                Placed at the very end of every live call&apos;s instructions, after the five knowledge documents, the Report Card,
-                the transcript and the chat so far, so it wins on how the coach delivers. It can&apos;t change doctrine: the coach is
-                always told that every judgement and wording comes only from the five TRC documents. A change applies to the next
-                call that starts.
+                Placed at the very end of every live call&apos;s instructions, word for word, after the five knowledge documents, the
+                Report Card, the transcript and the chat so far. The coach is told it governs how it behaves on the call and wins over
+                the app&apos;s general coaching persona. Used only on live calls, never for Report Cards or the text coach. A change
+                applies to the next call that starts; a call already running keeps the text it started with.
               </p>
               {usingDefault && (
                 <p className="mt-2 font-medium text-gray-800">
-                  Not saved yet: this is the built-in text the Live Coach uses today. Edit it and save to take control.
+                  Not saved yet: this is the Master Behaviour Prompt v1.0 the Live Coach falls back to. Save it to take control.
                 </p>
               )}
             </div>

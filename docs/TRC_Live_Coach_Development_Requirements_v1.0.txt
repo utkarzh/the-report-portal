@@ -1,0 +1,75 @@
+TRC Live Coach
+Development Requirements | Separate implementation brief
+TRC INTERNAL  |  Version 1.0  |  13 November 2026
+Objective and scope
+Enhance the existing voice Live Coach with explicit controls for pause/coaching/resume, replay of a specific objection, role-play entry points, and persistent simulation scores. The Master Behaviour Prompt governs AI behaviour; this document defines product and technical work. Preserve the existing Report Card and tutorial access.
+Existing functionality and assumptions
+Existing: a Live Coach embedded in the Meeting Report Card with access to that card and TRC tutorials; voice conversation is already functioning.
+Assumption to verify: the current voice stack supports conversation/session state and tool or application events. The developer should identify any constraints before implementation.
+Out of scope: simulating the next real client conversation; replacing Report Card generation; changing commercial doctrine; introducing team rankings or management dashboards.
+Feature 1 — Role-play launch controls
+Provide two clear entry points: “Replay this meeting” and “Practise an objection”. Keep “Ask the Coach” available without requiring role play.
+“Replay this meeting” passes the current Report Card context and instructs the model to simulate the negotiation already held, not a future follow-up.
+“Practise an objection” permits a generic scenario; the user may select or say the objection. Default to intermediate difficulty, with optional easy/advanced selection.
+Always show the active mode (Ask Coach / CEO Role Play / Coaching / Review) so the user knows who is speaking.
+Feature 2 — Pause, coaching, resume and retry
+Provide visible “Pause & Coach”, “Resume Role Play”, “Retry Objection” and “End & Review” controls, available as relevant.
+When paused, stop CEO turn generation or playback, retain the complete simulation context, and route the next exchange to Coach mode.
+On resume, continue from the exact negotiation state and last unresolved CEO turn, without resetting personality, objections or earlier agreements.
+On retry, restore the last relevant objection and mark the new attempt as a retry so the review can distinguish original and revised responses.
+Voice commands (“pause”, “resume”, “retry”, “end role play”) should trigger the same actions where supported; ensure that ordinary speech does not cause accidental mode changes.
+Handle interrupted audio, lost connection and refresh gracefully; never silently restart a session or claim it was saved if it was not.
+Feature 3 — Score and review persistence
+At session end, save a review record linked to the relevant Sales Executive and, when applicable, Report Card. Generic practice sessions must also be supported.
+Store: session ID, executive ID, Report Card ID (nullable), simulation type, difficulty, date/time, outcome, overall score, dimension scores when provided, strengths, improvements, recommended practice, and whether coaching pauses or retries occurred.
+Store the model-generated review as generated, with a model/prompt version identifier for auditability; do not imply comparability across prompt revisions without validation.
+Allow the executive to view recent role plays and open a past review. Historical trend charts and manager rankings are not required in this phase.
+Only persist recordings or full transcripts if an existing approved retention and access policy permits it; otherwise store review and limited structured metadata. Confirm permissions and retention with TRC before release.
+If structured output fails validation, allow review display and retry saving; do not fabricate a score or silently drop the result.
+Feature 4 — Interface controls and feedback
+Display microphone/voice status, current mode and concise action buttons. Do not clutter the Report Card.
+When CEO mode is active, make Pause & Coach and End & Review prominent; while paused, make Resume and Retry available.
+On completion, display the coaching review with overall score, strengths, improvement areas, example alternative response and next practice suggestion.
+Give clear loading, unavailable, reconnect and save-error states. Make controls accessible via keyboard and usable on mobile where the current Live Coach is supported.
+Acceptance tests
+From a Report Card with a recorded marketing objection, “Replay this meeting” opens a CEO role play grounded in that objection without presenting fictional details as facts.
+“Practise an objection” works without a Report Card and starts a generic intermediate-level CEO negotiation.
+Pause after a CEO objection, ask for coaching, resume: the CEO continues from the same objection with the same scenario and no unexplained reset.
+“Retry Objection” repeats the previous objection and the review acknowledges both attempts.
+End & Review produces a review; the stored record is retrievable for the same executive and linked Report Card where relevant.
+Ordinary Ask the Coach questions do not create role-play scores or trigger CEO character.
+An interrupted or failed save displays an error rather than an inaccurate success confirmation.
+No unauthorised promises, price concessions or editorial guarantees are introduced by application logic.
+Delivery and approval sequence
+Feature 5 — Admin-editable behaviour prompt
+Provide an administrator-controlled configuration field or document-backed setting for the Master Behaviour Prompt, so TRC can revise approved Coach behaviour without code changes or developer intervention. First confirm whether this capability already exists; reuse it if available.
+Restrict editing and publishing to authorised TRC administrators. Sales Executives may use the Coach but must not be able to change its governing instructions.
+Support saving a draft, reviewing it and explicitly publishing an approved version. Record the active prompt version and activation date; retain a recoverable prior version where feasible.
+Apply updated instructions to new sessions; do not silently change the rules in an active role play. Preserve existing knowledge-base access and prompt priority.
+If admin editing is not currently supported, provide a separate effort estimate and implementation option for approval; do not assume or silently add a new configuration system.
+Acceptance test: an authorised administrator can update and publish a prompt revision without a code deployment; a Sales Executive cannot edit it; a new session uses the published version and existing sessions remain consistent.
+1. Developer confirms technical feasibility and any dependencies of voice session state, application events and persistence.
+2. Install the approved Master Behaviour Prompt in the existing prompt configuration and run sample conversations.
+3. Implement launch/mode controls and pause/resume/retry; demonstrate a full voice role play.
+4. Implement review persistence and retrieval; demonstrate saved records and failure handling.
+5. TRC management approves the behaviour and interface after testing against real anonymised Report Cards and generic objections.
+6. Do not add unapproved features or change sales doctrine. Raise blockers and alternatives for approval before implementation.
+Open technical confirmations
+What voice SDK and conversation/session persistence mechanisms are in use?
+Can the UI reliably interrupt playback and switch model roles within one session?
+Where will scores/reviews be stored, and what are existing user permissions and retention policies?
+Can the prompt version be stored alongside each review?
+What effort estimate and implementation sequence does the developer recommend for the scoped items?
+Does an admin-editable prompt configuration already exist? If not, what is the smallest secure implementation that permits TRC to maintain it without code deployments?
+Feature 6 — Distinct CEO voices and persona consistency
+Confirm whether the existing voice provider/SDK supports selecting different synthetic voices for different role-play sessions, and whether CEO and Coach modes can use separate voices within the same session. Do not assume these capabilities exist.
+If supported without major architectural changes, provide a small approved set of professional, natural-sounding voices. Assign one CEO voice at the start of each role play, vary the selection across sessions, and keep it stable through pause, resume and retry. Clearly distinguish Coach mode using a different voice or an explicit spoken role cue.
+If voice switching requires additional cost, latency, configuration or development, report the options and estimated effort for TRC approval before implementation. Do not make this a blocker for the behavioural prompt or core role-play controls.
+The voice layer must not infer a real CEO’s identity or imitate their actual voice, and should avoid caricatured accents and stereotypes. Persona selection belongs to the Master Behaviour Prompt; voice selection is only a presentation layer.
+Acceptance tests: two role plays can present recognisably different CEO voices where supported; the voice remains stable within a role play and after pause/resume; Coach mode is distinguishable; where unsupported, the system uses a consistent fallback without falsely claiming voice variation.
+Additional acceptance criteria from coaching design review
+Provide a simple entry point for replaying the completed Report Card negotiation and a separate entry point for generic objections; do not label the replay as preparation for the next client conversation.
+When the user asks to retry an objection, preserve the original attempt and the revised attempt in the session context so the final review can compare them. If the platform cannot reliably restore the conversational state, disclose this limitation and propose a bounded alternative for approval.
+Use the same approved TRC doctrine for spoken coaching and saved reviews. Validate that model output does not introduce unauthorised discounts, editorial guarantees or new sales tactics.
+Capture lightweight usage indicators where supported: role plays started, completed, retries and review availability. Do not build executive rankings or performance dashboards in this phase.
+Confirm feasibility and any extra cost of per-session voice selection, distinct Coach/CEO voices, and persistence of voice identity after pause and resume. Treat voice variation as an enhancement rather than a prerequisite for launch.

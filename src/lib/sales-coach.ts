@@ -66,16 +66,17 @@ export function isSalesCoachKnowledgeKey(v: unknown): v is SalesCoachKnowledgeKe
   return SALES_COACH_KNOWLEDGE_DOCS.some((d) => d.key === v)
 }
 
-// The sixth admin document (13 Nov 2026, migration 045): how the Live Coach
-// delivers on a live voice call (energy, length of a turn, the opening,
-// role-play). Deliberately NOT one of SALES_COACH_KNOWLEDGE_DOCS: it never
-// reaches the Report Card or the text coach, only the live call's prompt, so
-// editing it can't change a score. Its built-in text is
-// LIVE_COACH_DEFAULT_INSTRUCTIONS in sales-coach-voice.ts.
+// The sixth admin document (13 Nov 2026, migration 045): since 18 Nov 2026 it
+// holds Rafa's Live Coach Master Behaviour Prompt, which governs how the coach
+// behaves on a live voice call. Deliberately NOT one of
+// SALES_COACH_KNOWLEDGE_DOCS: it never reaches the Report Card or the text
+// coach, only the live call's prompt, so editing it can't change a score. Its
+// fallback is LIVE_COACH_MASTER_BEHAVIOUR_PROMPT_V1 in
+// sales-coach-live-coach-prompt.ts.
 export const SALES_COACH_LIVE_COACH_DOC: { key: 'live_coach'; label: string; description: string } = {
   key: 'live_coach',
   label: 'Live Coach Instructions',
-  description: 'How the Live Coach sounds and behaves on a live voice call: its tone and energy, how long each answer is, how it opens the call, and how it role-plays. Delivery only — never used for Report Cards or the text coach.',
+  description: 'The Live Coach Master Behaviour Prompt: how the coach behaves on a live voice call, from answering questions to playing the CEO, coaching pauses and the end-of-role-play review. Used only on live calls, never for Report Cards or the text coach.',
 }
 
 // Every document the admin area edits, in display order.
