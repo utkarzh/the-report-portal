@@ -16,10 +16,10 @@ import CorrectionModal, { type FlagTarget } from '@/components/sales-coach/Corre
 import ReevaluateButton from '@/components/sales-coach/ReevaluateButton'
 import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
-import { coachGreeting, coachingTrackSwitches, formatOutcomeDetails, outcomeLabel, pickTranscript, renderReportCardMarkdown, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
+import { coachGreeting, coachingTrackSwitches, followUpSupportApplies, formatOutcomeDetails, outcomeLabel, pickTranscript, renderReportCardMarkdown, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
 import { prefetchVoiceSecret } from '@/lib/sales-coach-voice-client'
-import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection } from '@/types'
+import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection, SalesCoachFollowUpSupport } from '@/types'
 import { useKeepScreenOn } from '@/lib/use-mobile'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -158,6 +158,32 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
     setBusy(null)
   }, [fetchRow, router])
 
+  // C. Follow-Up Decision Support (Rafa's prompt + playbook, its own call). Runs
+  // by itself right after a fresh Report Card, and from the card's button on
+  // an older card; never just from opening a page.
+  const [followUpBusy, setFollowUpBusy] = useState(false)
+  const [followUpError, setFollowUpError] = useState<string | null>(null)
+  const runFollowUp = useCallback(async () => {
+    setFollowUpBusy(true)
+    setFollowUpError(null)
+    try {
+      const res = await fetch(`/api/sales-coach/${initial.id}/follow-up`, { method: 'POST' })
+      const d = (await res.json().catch(() => ({}))) as { followUpSupport?: SalesCoachFollowUpSupport; error?: string }
+      if (!res.ok || !d.followUpSupport) throw new Error(d.error || 'The follow-up recommendations could not be written. Please try again.')
+      const support = d.followUpSupport
+      setN((prev) => (prev.report_card ? { ...prev, report_card: { ...prev.report_card, follow_up_support: support } } : prev))
+    } catch (e) {
+      setFollowUpError(e instanceof Error ? e.message : 'The follow-up recommendations could not be written. Please try again.')
+    } finally {
+      setFollowUpBusy(false)
+    }
+  }, [initial.id])
+  const followUpAfterCard = useCallback((row: SalesCoachNegotiation | null) => {
+    if (row?.stage === 'complete' && row.report_card && followUpSupportApplies(row.report_card) && !row.report_card.follow_up_support) {
+      void runFollowUp()
+    }
+  }, [runFollowUp])
+
   const runAnalyze = useCallback(async () => {
     setBusy('analyzing')
     setSubStatus(null)
@@ -193,14 +219,12 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
         }
       }
       if (errMsg) throw new Error(errMsg)
-      if (finalRow) setN(finalRow)
-      else {
-        const fresh = await fetchRow()
-        if (fresh) setN(fresh)
-      }
+      const row = finalRow ?? (await fetchRow())
+      if (row) setN(row)
       setTab('card')
       setBusy(null)
       router.refresh()
+      followUpAfterCard(row)
     } catch (e) {
       // The stream may have dropped while the server kept working — read the
       // row before deciding it failed.
@@ -209,6 +233,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
         setN(fresh)
         setBusy(null)
         router.refresh()
+        followUpAfterCard(fresh)
         return
       }
       if (fresh?.stage === 'analyzing') {
@@ -219,7 +244,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
       setError(e instanceof Error ? e.message : 'The Report Card could not be generated. Please try again.')
       setBusy(null)
     }
-  }, [initial.id, fetchRow, reconnect, router])
+  }, [initial.id, fetchRow, reconnect, router, followUpAfterCard])
 
   const runTranscribe = useCallback(async () => {
     setBusy('transcribing')
@@ -507,6 +532,11 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
                 }}
                 onStartLiveCoach={startLiveCoach}
                 onPrepareLiveCoach={prepareLiveCoach}
+                onRequestFollowUp={runFollowUp}
+                followUpBusy={followUpBusy}
+                followUpError={followUpError}
+                canRegenerateFollowUp={isAdmin || canDownloadAudio}
+                playbookHref="/commercial/sales-coach/playbook"
               />
             </div>
           )}

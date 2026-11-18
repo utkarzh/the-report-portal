@@ -6,6 +6,7 @@ import {
   pickTranscript,
 } from '@/lib/sales-coach'
 import { LIVE_COACH_MASTER_BEHAVIOUR_PROMPT_V1 } from '@/lib/sales-coach-live-coach-prompt'
+import { FOLLOW_UP_DECISION_PROMPT_V1 } from '@/lib/sales-coach-follow-up-prompt'
 import type { SalesCoachKnowledgeDoc, SalesCoachKnowledgeKey, SalesCoachNegotiation } from '@/types'
 
 // Server-only prompt assembly for the Sales Coach module, shared by the
@@ -22,6 +23,9 @@ export interface KnowledgeBundle {
   versions: Record<SalesCoachKnowledgeKey, string | null>
   // Docs that are still empty or the migration's placeholder text.
   missing: SalesCoachKnowledgeKey[]
+  // Each doc's own text ('' when missing or a placeholder), for prompts that
+  // present a document under its own heading (the Follow-Up Decision Support).
+  contents: Record<SalesCoachKnowledgeKey, string>
 }
 
 function isPlaceholder(content: string): boolean {
@@ -48,6 +52,27 @@ export async function loadLiveCoachInstructions(): Promise<string> {
   }
 }
 
+// Rafa's Follow-Up Decision Support prompt (doc_key 'followup_decision',
+// migration 049). Empty, a placeholder, missing (before 049 runs) or
+// unreadable all mean his 14 Nov 2026 text, word for word
+// (sales-coach-follow-up-prompt.ts), with updatedAt null so the saved output
+// records that the built-in copy was used.
+export async function loadFollowUpDecisionPrompt(): Promise<{ text: string; updatedAt: string | null }> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('sales_coach_knowledge')
+      .select('content, updated_at')
+      .eq('doc_key', 'followup_decision')
+      .maybeSingle()
+    const content = (data?.content || '').trim()
+    return isPlaceholder(content)
+      ? { text: FOLLOW_UP_DECISION_PROMPT_V1, updatedAt: null }
+      : { text: content, updatedAt: data?.updated_at ?? null }
+  } catch {
+    return { text: FOLLOW_UP_DECISION_PROMPT_V1, updatedAt: null }
+  }
+}
+
 export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
   const { data: docs } = await supabaseAdmin
     .from('sales_coach_knowledge')
@@ -58,11 +83,13 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
 
   const versions = {} as Record<SalesCoachKnowledgeKey, string | null>
   const missing: SalesCoachKnowledgeKey[] = []
+  const contents = {} as Record<SalesCoachKnowledgeKey, string>
 
   const block = SALES_COACH_KNOWLEDGE_DOCS.map(({ key, label }, i) => {
     const doc = byKey.get(key)
     const content = (doc?.content || '').trim()
     versions[key] = doc?.updated_at ?? null
+    contents[key] = isPlaceholder(content) ? '' : content
     if (isPlaceholder(content)) missing.push(key)
     const authority = i === 0
       ? ' (HIGHEST AUTHORITY)'
@@ -79,6 +106,7 @@ export async function loadKnowledgeBundle(): Promise<KnowledgeBundle> {
     projectPrompt: (byKey.get('project_prompt')?.content || '').trim(),
     versions,
     missing,
+    contents,
   }
 }
 

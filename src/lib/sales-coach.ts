@@ -59,7 +59,11 @@ export const SALES_COACH_KNOWLEDGE_DOCS: {
   { key: 'manual', label: 'Manual — TRC Overcoming Objections', description: 'Objection-handling doctrine and the planteo build-up formula referenced when offer build-up scores weak.' },
   { key: 'method', label: 'TRC Sales Coaching Method', description: 'The coaching method and evaluation approach.' },
   { key: 'examples', label: 'TRC Successful Negotiation Examples', description: 'Pattern-recognition reference only — its facts are never imported into another negotiation.' },
-  { key: 'followup_playbook', label: 'TRC Post-Meeting Follow-Up & Conversion Playbook', description: 'How the coach helps convert retornos into signed contracts. Used for post-meeting coaching only, never for scoring the recorded negotiation.' },
+  // Since 18 Nov 2026 this slot holds Rafa's TRC Retorno Strategy Playbook (14
+  // Nov 2026), the revised version of the October playbook (which is in its
+  // version history). The label is unchanged on purpose: it is the banner the
+  // Report Card and coach prompts already name.
+  { key: 'followup_playbook', label: 'TRC Post-Meeting Follow-Up & Conversion Playbook', description: 'The TRC Retorno Strategy Playbook: the follow-up tactics behind the Report Card’s Follow-Up Decision Support and the coaches’ next-step advice. Sales Executives can read it in full from the Report Card. Never used for scoring the recorded negotiation.' },
 ]
 
 export function isSalesCoachKnowledgeKey(v: unknown): v is SalesCoachKnowledgeKey {
@@ -79,10 +83,24 @@ export const SALES_COACH_LIVE_COACH_DOC: { key: 'live_coach'; label: string; des
   description: 'The Live Coach Master Behaviour Prompt: how the coach behaves on a live voice call, from answering questions to playing the CEO, coaching pauses and the end-of-role-play review. Used only on live calls, never for Report Cards or the text coach.',
 }
 
+// The seventh admin document (18 Nov 2026, migration 049): Rafa's Retorno
+// Decision Support AI Prompt, which writes the Report Card's Follow-Up
+// Decision Support (/api/sales-coach/[id]/follow-up) from the card, the
+// transcript, the playbook above and the other TRC documents. Like the Live
+// Coach Instructions it is NOT one of SALES_COACH_KNOWLEDGE_DOCS: the Report
+// Card call never reads it, so editing it can't change a score. Its fallback
+// is FOLLOW_UP_DECISION_PROMPT_V1 in sales-coach-follow-up-prompt.ts.
+export const SALES_COACH_FOLLOWUP_DECISION_DOC: { key: 'followup_decision'; label: string; description: string } = {
+  key: 'followup_decision',
+  label: 'Follow-Up Decision Support Prompt',
+  description: 'The AI instructions behind the Report Card’s Follow-Up Decision Support: how it assesses commercial interest, which 2–3 tactics it recommends from the playbook, and how it leaves the decision to the Sales Executive. Never used for scoring.',
+}
+
 // Every document the admin area edits, in display order.
 export const SALES_COACH_ADMIN_DOCS: { key: SalesCoachAdminDocKey; label: string; description: string }[] = [
   ...SALES_COACH_KNOWLEDGE_DOCS,
   SALES_COACH_LIVE_COACH_DOC,
+  SALES_COACH_FOLLOWUP_DECISION_DOC,
 ]
 
 export function isSalesCoachAdminDocKey(v: unknown): v is SalesCoachAdminDocKey {
@@ -940,7 +958,7 @@ const REPORT_CARD_SECTION_TITLES: Record<ReportCardSectionId, string> = {
 
 export function reportCardSections(card: SalesCoachReportCard): { id: ReportCardSectionId; title: string }[] {
   const ids: ReportCardSectionId[] = ['scorecard', 'result']
-  if (followUpAssessment(card)) ids.push('follow_up')
+  if (followUpAssessment(card) || card.follow_up_support?.text) ids.push('follow_up')
   if (Array.isArray(card.strengths)) ids.push('review')
   ids.push('detail', 'coaching')
   return ids.map((id, i) => ({ id, title: `${String.fromCharCode(65 + i)}. ${REPORT_CARD_SECTION_TITLES[id]}` }))
@@ -966,6 +984,62 @@ const FOLLOW_UP_ROWS: { key: string; label: string }[] = [
 export interface FollowUpAssessment {
   rows: { key: string; label: string; text: string }[]
   nextStep: string | null
+}
+
+// The Follow-Up Decision Support as shown on screen, in Copy and in Word. The
+// model tends to open with its own "FOLLOW-UP DECISION SUPPORT" title, which
+// repeats the section heading, and to use big headings that would compete with
+// the card's own. Display only: the saved text is kept exactly as written.
+export function followUpDisplayText(text: string): string {
+  const lines = text.trim().split('\n')
+  while (lines.length && (/^\s*#{1,6}\s.*decision support/i.test(lines[0]) || /^\s*(-{3,}|\*{3,})?\s*$/.test(lines[0]))) lines.shift()
+  return lines.map((l) => l.replace(/^#{1,2}\s/, '### ')).join('\n').trim()
+}
+
+// The Follow-Up Decision Support is for "any meeting that does not result in a
+// contract" (Rafa's playbook), so a signed card never gets one.
+export function followUpSupportApplies(card: SalesCoachReportCard): boolean {
+  return card.declared_outcome !== 'signed'
+}
+
+// The playbook as reading blocks for the Sales Executives' page. The admin
+// document is plain text, one paragraph per line, so this reads its shape back:
+// a numbered short line with no full stop is a heading ("3.1. Proposal Email +
+// Media Kit"), "• " lines are bullets, "1. " lines that read as sentences are a
+// numbered list, a line ending ":" introduces what follows, and "Example" /
+// "Another option" are labels. Display only: the text itself is untouched.
+export type PlaybookBlock =
+  | { kind: 'title' | 'subtitle' | 'heading' | 'subheading' | 'label' | 'para'; text: string }
+  | { kind: 'bullets' | 'numbered'; items: string[] }
+
+export function playbookBlocks(text: string): PlaybookBlock[] {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+  const blocks: PlaybookBlock[] = []
+  const isHeading = (l: string) => /^\d+(\.\d+)*\.\s+\S/.test(l) && l.length <= 80 && !/[.?!:]$/.test(l)
+  lines.forEach((line, i) => {
+    const last = blocks[blocks.length - 1]
+    if (line.startsWith('• ')) {
+      const item = line.slice(2)
+      if (last?.kind === 'bullets') last.items.push(item)
+      else blocks.push({ kind: 'bullets', items: [item] })
+      return
+    }
+    if (isHeading(line)) {
+      blocks.push({ kind: /^\d+\.\d+/.test(line) ? 'subheading' : 'heading', text: line })
+      return
+    }
+    const numbered = line.match(/^(\d+)\.\s+(.*)$/)
+    if (numbered) {
+      if (last?.kind === 'numbered') last.items.push(numbered[2])
+      else blocks.push({ kind: 'numbered', items: [numbered[2]] })
+      return
+    }
+    if (i === 0) { blocks.push({ kind: 'title', text: line }); return }
+    if (i === 1 && blocks[0]?.kind === 'title') { blocks.push({ kind: 'subtitle', text: line }); return }
+    if (/^(example( whatsapp| wording| email)?|another option)$/i.test(line)) { blocks.push({ kind: 'label', text: line }); return }
+    blocks.push({ kind: 'para', text: line })
+  })
+  return blocks
 }
 
 export function followUpAssessment(card: SalesCoachReportCard): FollowUpAssessment | null {
@@ -1034,7 +1108,14 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard, { showPoint
   lines.push('')
 
   const followUp = followUpAssessment(card)
-  if (followUp && title.follow_up) {
+  const support = card.follow_up_support?.text?.trim()
+  if (support && title.follow_up) {
+    // Rafa's Follow-Up Decision Support, as written, in place of the older
+    // "where it stands" + one-sentence next step (same as on screen).
+    lines.push(`## ${title.follow_up}`)
+    lines.push(followUpDisplayText(support))
+    lines.push('')
+  } else if (followUp && title.follow_up) {
     lines.push(`## ${title.follow_up}`)
     if (followUp.rows.length > 0) {
       lines.push('**Where it stands:**')

@@ -120,16 +120,26 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
             </p>
           </div>
         </div>
-        <Link
-          href="/commercial/sales-coach/new"
-          className="group inline-flex flex-shrink-0 items-center gap-2.5 self-start whitespace-nowrap rounded-xl bg-black py-2.5 pl-3 pr-4 text-sm font-medium tracking-wide text-white shadow-sm transition-all sm:self-auto hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
-        >
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/15 transition-colors group-hover:bg-white/25">
-            <Handshake size={14} />
-          </span>
-          <span>New negotiation</span>
-          <Plus size={15} className="opacity-60 transition-opacity group-hover:opacity-100" />
-        </Link>
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-2 self-start sm:flex-nowrap sm:self-auto">
+          {/* Rafa's TRC Retorno Strategy Playbook, read-only, for everyone. */}
+          <Link
+            href="/commercial/sales-coach/playbook"
+            className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-[#e5e3df] bg-white px-3.5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-400 hover:text-black"
+          >
+            <BookOpenText size={15} className="text-gray-500" />
+            <span>Follow-Up Playbook</span>
+          </Link>
+          <Link
+            href="/commercial/sales-coach/new"
+            className="group inline-flex flex-shrink-0 items-center gap-2.5 whitespace-nowrap rounded-xl bg-black py-2.5 pl-3 pr-4 text-sm font-medium tracking-wide text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-900 hover:shadow-md"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/15 transition-colors group-hover:bg-white/25">
+              <Handshake size={14} />
+            </span>
+            <span>New negotiation</span>
+            <Plus size={15} className="opacity-60 transition-opacity group-hover:opacity-100" />
+          </Link>
+        </div>
       </div>
 
       {isSalesCoachAdminEmail(profile.email) && (

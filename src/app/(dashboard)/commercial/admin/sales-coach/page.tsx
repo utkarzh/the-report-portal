@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { requireSalesCoachAdminHeader } from '@/lib/auth/session'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
-import { SALES_COACH_KNOWLEDGE_DOCS, SALES_COACH_LIVE_COACH_DOC } from '@/lib/sales-coach'
+import { SALES_COACH_FOLLOWUP_DECISION_DOC, SALES_COACH_KNOWLEDGE_DOCS, SALES_COACH_LIVE_COACH_DOC } from '@/lib/sales-coach'
 
 export default async function SalesCoachAdminPage() {
   requireSalesCoachAdminHeader()
@@ -88,6 +88,27 @@ export default async function SalesCoachAdminPage() {
                   <span className="block font-medium">{SALES_COACH_LIVE_COACH_DOC.label}</span>
                   <span className="block text-xs text-gray-500 mt-0.5">Master Behaviour Prompt · live voice calls only</span>
                 </span>
+              </span>
+              <span aria-hidden className="flex-shrink-0">→</span>
+            </Link>
+          </section>
+
+          <section className="bg-white border border-[#e5e3df] p-5 sm:p-6">
+            <h2 className="text-sm font-semibold text-gray-900">Follow-Up Decision Support</h2>
+            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+              The Report Card&apos;s follow-up recommendations: the commercial interest, up to three tactics from the playbook and the
+              executive&apos;s decision. Written in its own step after the Report Card, so editing it can&apos;t change a score.
+              Versioned with full rollback. The playbook itself is the &ldquo;Post-Meeting Follow-Up &amp; Conversion Playbook&rdquo;
+              document above, which Sales Executives can{' '}
+              <Link href="/commercial/sales-coach/playbook" className="underline underline-offset-2 hover:text-gray-800">read in full</Link>.
+            </p>
+            <Link
+              href={`/commercial/admin/sales-coach/knowledge/${SALES_COACH_FOLLOWUP_DECISION_DOC.key}`}
+              className="flex items-center justify-between gap-4 px-4 py-3 mt-4 border border-[#e5e3df] hover:border-gray-400 transition-colors text-sm text-gray-700 hover:text-black"
+            >
+              <span className="min-w-0">
+                <span className="block font-medium">{SALES_COACH_FOLLOWUP_DECISION_DOC.label}</span>
+                <span className="block text-xs text-gray-500 mt-0.5">Report Card · Follow-Up section only</span>
               </span>
               <span aria-hidden className="flex-shrink-0">→</span>
             </Link>

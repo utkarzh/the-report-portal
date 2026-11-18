@@ -430,6 +430,7 @@ export type UsageWorkflow =
   | "sales_coach_voice"
   | "sales_coach_report_card"
   | "sales_coach_pattern_analysis"
+  | "sales_coach_follow_up"
   | "copywriting_analyze"
   | "copywriting_research"
   | "copywriting_plan"
@@ -937,7 +938,7 @@ export type SalesCoachKnowledgeKey =
 // Every document Sales Coach admins edit: the five knowledge documents above
 // (doctrine, used by the Report Card and both coaches) plus the Live Coach
 // Instructions, which only govern how the coach delivers on a live voice call.
-export type SalesCoachAdminDocKey = SalesCoachKnowledgeKey | "live_coach";
+export type SalesCoachAdminDocKey = SalesCoachKnowledgeKey | "live_coach" | "followup_decision";
 export type SalesCoachOutcome = "signed" | "retorno" | "lost" | "uncertain";
 export type SalesCoachStage =
   | "draft"
@@ -1071,6 +1072,22 @@ export interface SalesCoachReportCard {
   // commercial priority it names. Absent on older cards.
   coaching_invitation?: string;
   next_commercial_priority?: string;
+  // C. Follow-Up Decision Support (18 Nov 2026): written by a SEPARATE call
+  // after the card (/api/sales-coach/[id]/follow-up, Rafa's Retorno Decision
+  // Support prompt + playbook), never by the Report Card call, so it can't
+  // affect a score. Absent until generated; replaced on Regenerate; gone when
+  // the card itself is re-run (the workspace then writes it again).
+  follow_up_support?: SalesCoachFollowUpSupport;
+}
+
+export interface SalesCoachFollowUpSupport {
+  text: string; // the model's reply, as written (markdown)
+  generated_at: string;
+  model: string;
+  // Which versions produced it: each document's updated_at, or null for the
+  // built-in copy of the prompt (before migration 049) / a missing playbook.
+  prompt_updated_at: string | null;
+  playbook_updated_at: string | null;
 }
 
 export interface SalesCoachNegotiation {

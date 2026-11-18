@@ -103,6 +103,11 @@ export const SALES_COACH_ANALYZE_RESERVE = 120_000;
 // (~46k tokens) plus one digest per Report Card (~1k tokens each, up to 60)
 // and writing ~1.5-3k tokens. 150k covers "All" for the largest history.
 export const SALES_COACH_PATTERN_RESERVE = 150_000;
+// Follow-Up Decision Support (18 Nov 2026): one call reading Rafa's prompt,
+// the five knowledge docs (~50k tokens), the Report Card (~6k) and the
+// transcript (often 10-30k), writing ~0.5-1k tokens; one corrective re-prompt
+// at most. 100k covers a long meeting with the re-prompt.
+export const SALES_COACH_FOLLOW_UP_RESERVE = 100_000;
 
 // AI Copywriting Tool — five Claude stages per article. Analysis reads every
 // uploaded source plus TRC guides/examples/publication guide (can be large);

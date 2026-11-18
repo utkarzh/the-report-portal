@@ -3,11 +3,13 @@
 import { useRef, useState } from 'react'
 import {
   CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare,
-  Target, Compass, ChevronDown, ChevronRight, ChevronUp, Send, TrendingUp, ArrowRight, Phone,
+  Target, Compass, ChevronDown, ChevronRight, ChevronUp, Send, TrendingUp, ArrowRight, Phone, BookOpen, RefreshCw, Loader2,
+  Sparkles, AlertCircle,
 } from 'lucide-react'
+import { marked } from 'marked'
 import {
   SALES_COACH_CRITERIA, SALES_COACH_TRACKS, SHOW_SCORE_POINTS, VERDICT_RATING, commercialOutcomeType, criterionDisplayNumber, evidenceLabel,
-  followUpAssessment, formatOverallScore, formatTimestamp, meetingLabel, outcomeLabel, reportCardSections, scoreBand,
+  followUpAssessment, followUpDisplayText, followUpSupportApplies, formatOverallScore, formatTimestamp, meetingLabel, outcomeLabel, reportCardSections, scoreBand,
   scorePercent, titleCaseHeading, unverifiedNote, type ReportCardSectionId,
 } from '@/lib/sales-coach'
 import { BAND_TONE, ScoreRing } from '@/components/sales-coach/ScoreDisplay'
@@ -117,6 +119,11 @@ export default function ReportCardView({
   showPoints = false,
   onStartLiveCoach,
   onPrepareLiveCoach,
+  onRequestFollowUp,
+  followUpBusy = false,
+  followUpError = null,
+  canRegenerateFollowUp = false,
+  playbookHref,
 }: {
   card: SalesCoachReportCard
   meta: ReportCardMeta
@@ -138,6 +145,16 @@ export default function ReportCardView({
   // the call is ready by the time it is tapped.
   onStartLiveCoach?: () => void
   onPrepareLiveCoach?: () => void
+  // C. Follow-Up Decision Support (Rafa's prompt + playbook, its own call):
+  // writes it, or rewrites it. Absent = no button (e.g. a read-only view).
+  onRequestFollowUp?: () => void
+  followUpBusy?: boolean
+  followUpError?: string | null
+  // Regenerate is for admins (Rafa testing prompt edits); everyone can get it
+  // the first time on an older card.
+  canRegenerateFollowUp?: boolean
+  // The full playbook, read-only, for Sales Executives.
+  playbookHref?: string
 }) {
   const pct = scorePercent(card.execution_score, card.execution_denominator)
   const band = scoreBand(pct)
@@ -148,6 +165,7 @@ export default function ReportCardView({
   const hasNewLayout = Array.isArray(card.strengths)
   const title = Object.fromEntries(reportCardSections(card).map((s) => [s.id, s.title])) as Partial<Record<ReportCardSectionId, string>>
   const followUp = followUpAssessment(card)
+  const support = card.follow_up_support?.text?.trim() || null
   const strengths = card.strengths || []
   const improvements = card.improvements || []
 
@@ -291,21 +309,40 @@ export default function ReportCardView({
       </section>
 
       {/* ── C. Follow-Up Assessment (open) ────────────────────── */}
-      {followUp && title.follow_up && (
+      {/* Rafa's Follow-Up Decision Support, once written, takes the place of
+          the older "Where it stands" tiles and one-sentence next step; until
+          then they show as before, with the way to get it. The coach button
+          stays either way. */}
+      {title.follow_up && (followUp || support) && (
         <section className={CARD}>
           <div className={CARD_BODY}>
             <SectionHeading title={title.follow_up} />
-            {followUp.rows.length > 0 && (
-              <div className="mt-6">
-                <p className={KICKER}>Where it stands</p>
-                {/* An odd last tile takes the full row rather than leaving a hole. */}
-                <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:[&>*:last-child:nth-child(odd)]:col-span-2">
-                  {followUp.rows.map((r) => <StandingTile key={r.key} label={r.label} text={r.text} />)}
-                </dl>
-              </div>
+            {support ? (
+              <FollowUpSupportBlock
+                text={support}
+                busy={followUpBusy}
+                error={followUpError}
+                onRegenerate={canRegenerateFollowUp ? onRequestFollowUp : undefined}
+                playbookHref={playbookHref}
+              />
+            ) : (
+              <>
+                {followUp && followUp.rows.length > 0 && (
+                  <div className="mt-6">
+                    <p className={KICKER}>Where it stands</p>
+                    {/* An odd last tile takes the full row rather than leaving a hole. */}
+                    <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:[&>*:last-child:nth-child(odd)]:col-span-2">
+                      {followUp.rows.map((r) => <StandingTile key={r.key} label={r.label} text={r.text} />)}
+                    </dl>
+                  </div>
+                )}
+                {followUpSupportApplies(card) && onRequestFollowUp && (
+                  <GetFollowUpSupport busy={followUpBusy} error={followUpError} onRequest={onRequestFollowUp} playbookHref={playbookHref} />
+                )}
+              </>
             )}
-            {(followUp.nextStep || onChooseTrack) && (
-              <NextStepPanel text={followUp.nextStep} onStart={onChooseTrack ? () => onChooseTrack('commercial') : undefined} />
+            {((!support && followUp?.nextStep) || onChooseTrack) && (
+              <NextStepPanel text={support ? null : followUp?.nextStep ?? null} onStart={onChooseTrack ? () => onChooseTrack('commercial') : undefined} />
             )}
           </div>
         </section>
@@ -558,6 +595,82 @@ function standingParts(label: string, text: string): { status: string | null; re
   const caps = CAPS.exec(t)
   if (caps) return { status: caps[1], rest: t.slice(caps[0].length) }
   return { status: null, rest: t.charAt(0).toUpperCase() + t.slice(1) }
+}
+
+// The Follow-Up Decision Support as Rafa's prompt writes it (markdown). Any
+// HTML in the reply is shown as text, never rendered.
+function FollowUpSupportBlock({ text, busy, error, onRegenerate, playbookHref }: {
+  text: string
+  busy: boolean
+  error: string | null
+  onRegenerate?: () => void
+  playbookHref?: string
+}) {
+  const html = marked.parse(followUpDisplayText(text).replace(/&/g, '&amp;').replace(/</g, '&lt;'), { gfm: true, breaks: true, async: false }) as string
+  return (
+    <>
+      <div className={`mt-6 rounded-2xl border border-[#e5e3df] bg-[#faf9f7] px-5 py-5 transition-opacity sm:px-7 sm:py-6 ${busy ? 'opacity-50' : ''}`}>
+        <p className={`flex items-center gap-2 ${KICKER_GOLD}`}><Sparkles size={13} /> Follow-Up Decision Support</p>
+        <div className="pattern-prose mt-3 [&_p]:my-2.5 [&_ol]:my-2.5 [&_ul]:my-2" dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+      <FollowUpFooter busy={busy} error={error} playbookHref={playbookHref} action={onRegenerate ? { label: busy ? 'Rewriting…' : 'Regenerate', onClick: onRegenerate } : undefined} />
+    </>
+  )
+}
+
+// Before the Follow-Up Decision Support exists (cards from before 18 Nov 2026,
+// or while it is being written right after a new card).
+function GetFollowUpSupport({ busy, error, onRequest, playbookHref }: {
+  busy: boolean
+  error: string | null
+  onRequest: () => void
+  playbookHref?: string
+}) {
+  return (
+    <>
+      <div className="mt-6 rounded-2xl border border-dashed border-[#d6d3cd] bg-[#faf9f7] px-5 py-5 sm:px-7">
+        <p className={`flex items-center gap-2 ${KICKER_GOLD}`}><Sparkles size={13} /> Follow-Up Decision Support</p>
+        <p className={`mt-2 ${MEASURE} text-[14px] leading-6 text-stone-600`}>
+          How strong the commercial interest is, and up to three follow-up tactics from the TRC Retorno Strategy Playbook that fit
+          this meeting. You decide which to use, if any.
+        </p>
+        <button
+          type="button"
+          onClick={onRequest}
+          disabled={busy}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 touch:py-3 text-sm font-medium text-white transition-colors hover:bg-gray-900 disabled:opacity-60"
+        >
+          {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+          {busy ? 'Writing recommendations from the playbook… usually under a minute' : 'Get follow-up recommendations'}
+        </button>
+      </div>
+      <FollowUpFooter busy={busy} error={error} playbookHref={playbookHref} />
+    </>
+  )
+}
+
+function FollowUpFooter({ busy, error, playbookHref, action }: {
+  busy: boolean
+  error: string | null
+  playbookHref?: string
+  action?: { label: string; onClick: () => void }
+}) {
+  if (!playbookHref && !action && !error) return null
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
+      {playbookHref && (
+        <a href={playbookHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-stone-800 underline-offset-4 hover:underline touch:py-1.5">
+          <BookOpen size={14} /> Read the full Retorno Strategy Playbook
+        </a>
+      )}
+      {action && (
+        <button type="button" onClick={action.onClick} disabled={busy} className="inline-flex items-center gap-1.5 text-stone-500 transition-colors hover:text-stone-900 disabled:opacity-50 touch:py-1.5">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} {action.label}
+        </button>
+      )}
+      {error && <span role="alert" className="inline-flex items-center gap-1.5 text-red-700"><AlertCircle size={14} /> {error}</span>}
+    </div>
+  )
 }
 
 // The Follow-Up's call to action, the card's warm dark panel: the next step

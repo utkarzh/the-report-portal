@@ -52,6 +52,14 @@ export function buildCoachSystemText(
     ? `--- REPORT CARD (already produced for this negotiation) ---\n${cardText ? scoreTextAsPercent(cardText, { showPoints }) : JSON.stringify(n.report_card, null, 2)}`
     : '--- REPORT CARD ---\nThe formal Report Card has not been generated yet. Coach directly from the transcript and context.'
 
+  // The Report Card's Follow-Up Decision Support (Rafa's prompt, its own call),
+  // which isn't in the stored card text, so the coach knows what the executive
+  // was shown when they come to discuss the next steps.
+  const followUp = n.report_card?.follow_up_support?.text?.trim()
+  const followUpBlock = followUp
+    ? `--- FOLLOW-UP DECISION SUPPORT (shown to the executive in the Report Card's Follow-Up section; advisory, the executive decides) ---\n${followUp}`
+    : ''
+
   return [
     COACH_PERSONA,
     format,
@@ -59,8 +67,9 @@ export function buildCoachSystemText(
     knowledge.block,
     buildNegotiationContext(n),
     reportCardBlock,
+    followUpBlock,
     pickTranscript(n)
       ? buildTranscriptBlock(n)
       : '--- NEGOTIATION TRANSCRIPT ---\n(No transcript available; coach from the context and Report Card.)',
-  ].join('\n\n')
+  ].filter(Boolean).join('\n\n')
 }

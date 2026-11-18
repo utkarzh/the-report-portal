@@ -64,7 +64,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { error: insertError } = await supabaseAdmin
       .from('sales_coach_knowledge')
       .insert({ doc_key: params.docKey, content: promptText, updated_by: user.id })
-    if (insertError) return NextResponse.json({ error: saveErrorMessage(insertError) }, { status: 500 })
+    if (insertError) return NextResponse.json({ error: saveErrorMessage(insertError, params.docKey) }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 
@@ -72,7 +72,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .from('sales_coach_knowledge_versions')
     .insert({ doc_key: params.docKey, content: current.content, saved_by: user.id })
   if (versionError) {
-    return NextResponse.json({ error: 'Failed to snapshot version: ' + saveErrorMessage(versionError) }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to snapshot version: ' + saveErrorMessage(versionError, params.docKey) }, { status: 500 })
   }
 
   const { error } = await supabaseAdmin
@@ -87,7 +87,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 // The doc_key CHECK constraints only allow 'live_coach' once migration 045 has
 // run; say so instead of showing Postgres's constraint name.
-function saveErrorMessage(error: { code?: string; message: string }): string {
+function saveErrorMessage(error: { code?: string; message: string }, docKey?: string): string {
+  if (error.code === '23514' && error.message.includes('doc_key') && docKey === 'followup_decision') {
+    return 'This document can be saved once the database update for it (migration 049_sales_coach_followup_decision.sql) has been run. Until then the Report Card uses the built-in 14 November 2026 Decision Support prompt.'
+  }
   if (error.code === '23514' && error.message.includes('doc_key')) {
     return 'This document can be saved once the database update for it (migration 045_sales_coach_live_coach_and_patterns.sql) has been run. Until then the Live Coach uses its built-in instructions.'
   }

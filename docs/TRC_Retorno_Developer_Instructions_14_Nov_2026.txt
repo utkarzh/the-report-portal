@@ -1,0 +1,20 @@
+TRC | Retorno Decision Support
+Developer Instructions  |  14 November 2026
+Objective
+Improve the recommendations in the existing Report Card follow-up recommendation engine. The engine is already functioning. This is a prompt and knowledge-base refinement, not a request to rebuild it or create another module.
+Implement now — minimal changes
+Keep the existing recommendation engine and Report Card workflow. Do not modify the main Sales Coach prompt.
+Load the approved “TRC Follow-Up Strategy Playbook” into the knowledge base used by this recommendation function. Ensure the function can access the meeting’s Report Card context.
+Apply the attached “TRC Follow-Up Decision Support AI Prompt — FINAL — 14 November 2026” to the existing follow-up recommendation function. If the system cannot support a separate section-specific prompt, confirm the current prompt architecture with us before changing anything.
+Have the AI recommend 2–3 relevant tactics, with brief meeting-specific reasons. The recommendations must reflect actual buying signals, concrete options discussed and urgency. Do not invent CEO endorsement.
+Every recommendation must explicitly state that the Sales Executive decides whether to use one tactic, several at once, different tactics, or no follow-up. Recommendations are advisory, not an approved plan.
+Provide access to the complete playbook through the simplest mechanism already supported by the platform (for example, an existing knowledge-base link). Do not build a new playbook interface.
+Do not develop at this stage
+No new chat, recommendation engine, workflow builder, action-selection screen, drag-and-drop sequencing, task management, automated sending or new approval process. Do not add a plan-saving interface unless that capability already exists and can be reused without meaningful development.
+Validation and acceptance
+Test the revised recommendations against five existing Report Cards, including strong, uncertain and low-interest cases.
+Check that recommendations are concise, commercially concrete, fast to execute, grounded in the playbook, and appropriate to each meeting.
+Check that the AI explicitly leaves the choice of one, multiple or no tactics to the Sales Executive every time.
+Share before-and-after outputs for review. Adjust prompt wording first if recommendations are weak; propose code changes only if a specific technical limitation is demonstrated.
+Dependencies / developer confirmation
+Please confirm (1) where the current follow-up recommendation prompt is configured, (2) whether it can read the approved playbook, and (3) whether the change can be delivered through configuration alone. Flag any genuine blocker before starting development.
