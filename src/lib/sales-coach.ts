@@ -957,7 +957,9 @@ const REPORT_CARD_SECTION_TITLES: Record<ReportCardSectionId, string> = {
 }
 
 export function reportCardSections(card: SalesCoachReportCard): { id: ReportCardSectionId; title: string }[] {
-  const ids: ReportCardSectionId[] = ['scorecard', 'result']
+  // Result first, the scorecard second (19 Nov 2026; the scorecard was first
+  // from 10 Nov). Screen, Copy as text and Word all follow this order.
+  const ids: ReportCardSectionId[] = ['result', 'scorecard']
   if (followUpAssessment(card) || card.follow_up_support?.text) ids.push('follow_up')
   if (Array.isArray(card.strengths)) ids.push('review')
   ids.push('detail', 'coaching')
@@ -1080,10 +1082,21 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard, { showPoint
   lines.push(`**Outcome:** ${outcomeType}`)
   lines.push('')
 
-  // A. Execution Scorecard: the ratings given in the Detailed Performance
-  // Assessment, one line each — a summary, never a second assessment. First,
-  // so the score is the first thing read. The `**n.**` keeps markdown from
-  // renumbering 1, 2, 4… as 1, 2, 3.
+  // A. Negotiation Result, first (19 Nov 2026).
+  lines.push(`## ${title.result}`)
+  lines.push(hasNewLayout ? `**${outcomeType} — ${card.headline}**` : `**${card.commercial_outcome_label}**`)
+  if (!hasNewLayout) lines.push(card.headline)
+  lines.push('')
+  lines.push(card.summary)
+  if (!hasNewLayout && card.report_summary) {
+    lines.push('')
+    lines.push(card.report_summary)
+  }
+  lines.push('')
+
+  // B. Execution Scorecard: the ratings given in the Detailed Performance
+  // Assessment, one line each — a summary, never a second assessment. The
+  // `**n.**` keeps markdown from renumbering 1, 2, 4… as 1, 2, 3.
   lines.push(`## ${title.scorecard}`)
   lines.push(`**Overall Execution Score: ${formatOverallScore(card, { showPoints })}**`)
   const uvNote = showPoints && SHOW_SCORE_POINTS ? null : unverifiedNote(card.criteria)
@@ -1094,17 +1107,6 @@ export function renderReportCardMarkdown(card: SalesCoachReportCard, { showPoint
     const number = criterionDisplayNumber(c.key)
     lines.push(`- **${number ? `${number} ` : ''}${meta?.label || c.label}** — ${verdictRating(c.verdict)}`)
   })
-  lines.push('')
-
-  lines.push(`## ${title.result}`)
-  lines.push(hasNewLayout ? `**${outcomeType} — ${card.headline}**` : `**${card.commercial_outcome_label}**`)
-  if (!hasNewLayout) lines.push(card.headline)
-  lines.push('')
-  lines.push(card.summary)
-  if (!hasNewLayout && card.report_summary) {
-    lines.push('')
-    lines.push(card.report_summary)
-  }
   lines.push('')
 
   const followUp = followUpAssessment(card)

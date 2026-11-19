@@ -20,12 +20,12 @@ import type {
   SalesCoachCardPoint, SalesCoachTrack, SalesCoachEvidence,
 } from '@/types'
 
-// The Report Card on screen: a title strip (Company · Meeting, Outcome), then
-// the sections in the order reportCardSections() gives: A. Execution Scorecard
-// first (the CEO, 10 Nov 2026: "first thing they see, not the last") — a
-// compact list of the ratings the Detailed Performance Assessment gives, never
-// a second assessment; then, per his 4 Nov brief, B. Negotiation Result and
-// C. Follow-Up Assessment & Recommended Actions open; D. What You Did Well /
+// The Report Card on screen, in the order reportCardSections() gives: A.
+// Negotiation Result under the title strip (Company · Meeting, Outcome tag top
+// right; first again since 19 Nov 2026), then B. Execution Scorecard (first
+// from 10 Nov to 19 Nov) — a compact list of the ratings the Detailed
+// Performance Assessment gives, never a second assessment — and, per the 4 Nov
+// brief, C. Follow-Up Assessment & Recommended Actions open; D. What You Did Well /
 // Main Areas for Improvement, E. Detailed Performance Assessment and F. Deeper
 // Coaching collapsed until opened. The score is a percentage only, for
 // everyone (SHOW_SCORE_POINTS). The scorecard's card ends with a Live Coach
@@ -187,11 +187,11 @@ export default function ReportCardView({
 
   return (
     <article className="flex flex-col gap-4 text-stone-900 antialiased selection:bg-[#f1e3c2] sm:gap-5">
-      {/* ── A. Execution Scorecard, under the card's title strip ── */}
-      {/* The first thing read (CEO, 10 Nov 2026). A compact summary of the
-          ratings the Detailed Performance Assessment gives, row for row —
-          never a second assessment. Each row opens that section at the
-          criterion. */}
+      {/* ── A. Negotiation Result (open), under the card's title strip ── */}
+      {/* First again since 19 Nov 2026, with the declared outcome tag at the
+          top right of its strip, as before 10 Nov (CEO: "keep this so
+          everyone stays focused on the result"). The headline below explains
+          the result; the tag is the result. */}
       <section className={`${CARD} overflow-hidden`}>
         <div aria-hidden className="h-[3px] bg-gradient-to-r from-[#e6cf9c] via-[#b8862f] to-[#e6cf9c]" />
         <header className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-2.5 border-b ${HAIRLINE} bg-[#fbf9f5] px-5 py-3.5 sm:px-10`}>
@@ -202,6 +202,50 @@ export default function ReportCardView({
           </p>
           <OutcomeBadge tone={outcomeTone}>{outcomeType}</OutcomeBadge>
         </header>
+        <div className={CARD_BODY}>
+          <SectionHeading title={title.result!} />
+          {hasNewLayout ? (
+            <p className={`mt-6 ${HEADLINE}`}>
+              <span className="sr-only">{outcomeType} — </span>{card.headline}
+            </p>
+          ) : (
+            <>
+              {/* Older cards carry their own outcome label ("Signed — full
+                  page"); the title strip already shows the outcome type. */}
+              {card.commercial_outcome_label && (
+                <div className="mt-6"><OutcomeBadge tone={outcomeTone} large>{card.commercial_outcome_label}</OutcomeBadge></div>
+              )}
+              <p className={`${card.commercial_outcome_label ? 'mt-4' : 'mt-6'} ${HEADLINE}`}>{card.headline}</p>
+            </>
+          )}
+          <p className={`mt-5 ${MEASURE} text-[15px] leading-[1.75] text-stone-600`}>{card.summary}</p>
+          {!hasNewLayout && card.report_summary && <p className={`mt-4 ${MEASURE} text-[15px] leading-[1.75] text-stone-600`}>{card.report_summary}</p>}
+
+          {corrections.length > 0 && (
+            <div className="mt-7 rounded-xl bg-[#faf8f5] px-4 py-4 ring-1 ring-inset ring-[#ebe7e0] sm:px-5">
+              <p className={`flex items-center gap-1.5 ${KICKER}`}>
+                <Flag size={11} className="text-[#a07530]" /> Corrections on record
+              </p>
+              <ul className="mt-3 flex flex-col gap-3">
+                {corrections.map((c) => (
+                  <li key={c.id} className={`${MEASURE} text-sm leading-6 text-stone-700`}>
+                    <span className="font-semibold text-stone-900">{c.field_label}. </span>
+                    {c.correction}
+                    <span className="ml-1.5 whitespace-nowrap text-xs text-stone-500">· {formatDayMonth(c.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── B. Execution Scorecard ───────────────────────────── */}
+      {/* Second since 19 Nov 2026 (first from 10 Nov). A compact summary of
+          the ratings the Detailed Performance Assessment gives, row for row —
+          never a second assessment. Each row opens that section at the
+          criterion. */}
+      <section className={`${CARD} overflow-hidden`}>
         {/* The hero card (16 Nov 2026): the scorecard — criteria in two
             columns where there is room, the score beside its ring on phones,
             a one-line key — and, along its foot, the Live Coach band. */}
@@ -266,46 +310,6 @@ export default function ReportCardView({
           </div>
         </div>
         {onStartLiveCoach && <LiveCoachBand onStart={onStartLiveCoach} onPrepare={onPrepareLiveCoach} />}
-      </section>
-
-      {/* ── B. Negotiation Result (open) ──────────────────────── */}
-      <section className={CARD}>
-        <div className={CARD_BODY}>
-          <SectionHeading title={title.result!} />
-          {hasNewLayout ? (
-            <p className={`mt-6 ${HEADLINE}`}>
-              <span className="sr-only">{outcomeType} — </span>{card.headline}
-            </p>
-          ) : (
-            <>
-              {/* Older cards carry their own outcome label ("Signed — full
-                  page"); the title strip already shows the outcome type. */}
-              {card.commercial_outcome_label && (
-                <div className="mt-6"><OutcomeBadge tone={outcomeTone} large>{card.commercial_outcome_label}</OutcomeBadge></div>
-              )}
-              <p className={`${card.commercial_outcome_label ? 'mt-4' : 'mt-6'} ${HEADLINE}`}>{card.headline}</p>
-            </>
-          )}
-          <p className={`mt-5 ${MEASURE} text-[15px] leading-[1.75] text-stone-600`}>{card.summary}</p>
-          {!hasNewLayout && card.report_summary && <p className={`mt-4 ${MEASURE} text-[15px] leading-[1.75] text-stone-600`}>{card.report_summary}</p>}
-
-          {corrections.length > 0 && (
-            <div className="mt-7 rounded-xl bg-[#faf8f5] px-4 py-4 ring-1 ring-inset ring-[#ebe7e0] sm:px-5">
-              <p className={`flex items-center gap-1.5 ${KICKER}`}>
-                <Flag size={11} className="text-[#a07530]" /> Corrections on record
-              </p>
-              <ul className="mt-3 flex flex-col gap-3">
-                {corrections.map((c) => (
-                  <li key={c.id} className={`${MEASURE} text-sm leading-6 text-stone-700`}>
-                    <span className="font-semibold text-stone-900">{c.field_label}. </span>
-                    {c.correction}
-                    <span className="ml-1.5 whitespace-nowrap text-xs text-stone-500">· {formatDayMonth(c.created_at)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
       </section>
 
       {/* ── C. Follow-Up Assessment (open) ────────────────────── */}

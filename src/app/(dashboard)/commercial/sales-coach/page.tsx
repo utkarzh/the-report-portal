@@ -187,18 +187,14 @@ export default async function SalesCoachPage({ searchParams }: { searchParams: {
                 icon={<Handshake size={16} />}
                 title={r.company || 'Untitled negotiation'}
                 subtitle={[r.country, r.media_publication].filter(Boolean).join(' · ') || outcomeLabel(r.declared_outcome)}
+                subtitlePrefix={r.reevaluated_from ? (
+                  <span className="mr-1.5 inline-flex items-center gap-1 font-medium text-gray-700">
+                    <RotateCcw size={11} className="flex-shrink-0" />Re-evaluation<span className="font-normal text-gray-300">·</span>
+                  </span>
+                ) : undefined}
                 date={new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 creatorName={r.creatorName}
-                badge={
-                  r.reevaluated_from ? (
-                    <span className="flex items-center gap-1.5">
-                      <StatusPill label="Re-evaluation" tone="stone" icon={<RotateCcw size={11} />} />
-                      <StageBadge stage={r.stage as SalesCoachStage} />
-                    </span>
-                  ) : (
-                    <StageBadge stage={r.stage as SalesCoachStage} />
-                  )
-                }
+                badge={<StageBadge stage={r.stage as SalesCoachStage} />}
                 metaRight={
                   <span className="flex flex-shrink-0 items-center gap-1.5">
                     {typeof r.execution_score === 'number' && typeof r.execution_denominator === 'number' && (
