@@ -16,10 +16,13 @@ import { Avatar, DeptMonogram, SectionHeader } from '@/components/knowledge/kb-u
 import type { KnowledgeDepartment } from '@/types'
 
 export default async function KnowledgeAdminDepartmentPage({ params }: { params: { deptId: string } }) {
-  await requireKbAdmin()
+  const profile = await requireKbAdmin()
   const { data: deptRow } = await supabaseAdmin.from('knowledge_departments').select('*').eq('id', params.deptId).maybeSingle()
   if (!deptRow) notFound()
   const department = deptRow as KnowledgeDepartment
+  // An admin who is also this department's Guardian edits and publishes right
+  // here, like on their Manage page; any other admin sees it read-only.
+  const isGuardian = department.guardian_id === profile.id && !department.archived_at
 
   const [{ data: memberRows }, users, content, { data: guardian }, { count: openCount }] = await Promise.all([
     supabaseAdmin.from('knowledge_department_members').select('user_id').eq('department_id', department.id),
@@ -101,8 +104,27 @@ export default async function KnowledgeAdminDepartmentPage({ params }: { params:
         </div>
 
         <section className="mt-8">
-          <SectionHeader title="Content" count={content.rows.length} action={<span className="text-[11px] text-gray-400">Read-only — only the Guardian publishes</span>} />
-          <ContentTable rows={content.rows} itemHrefBase={`/knowledge/manage/${department.id}/items`} canEdit={false} />
+          <SectionHeader
+            title="Content"
+            count={content.rows.length}
+            action={
+              isGuardian ? (
+                <Link href={`/knowledge/manage/${department.id}`} className="inline-flex items-center gap-1 text-[11px] font-medium text-[#a07530] hover:text-black">
+                  You’re the Guardian — add new knowledge on your Manage page <ArrowUpRight size={11} />
+                </Link>
+              ) : (
+                <span className="text-[11px] text-gray-400">Read-only — only the Guardian publishes</span>
+              )
+            }
+          />
+          <ContentTable
+            rows={content.rows}
+            canEdit={isGuardian}
+            canDelete
+            departmentId={department.id}
+            basePath={`/knowledge/manage/${department.id}`}
+            topics={content.topics}
+          />
         </section>
       </div>
     </div>

@@ -48,6 +48,12 @@ export default async function PresentationsAdminPage() {
       href: `${ADMIN_PATH}/why-now`,
     },
     {
+      title: 'Document reading instructions',
+      description: 'How Claude reads an uploaded document into the structure (Structure & locked methodology → Build from a document). Starts with the built-in instructions; edit, version and reset them here.',
+      meta: 'Used when building the structure from a document',
+      href: `${ADMIN_PATH}/structure/import-prompt`,
+    },
+    {
       title: 'Approved reference examples',
       description: '10–20 strong examples that teach the AI TRC’s tone and reasoning. Never used as facts.',
       meta: `${exampleCount ?? 0} active`,

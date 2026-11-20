@@ -20,7 +20,7 @@ export default async function KnowledgeManageDepartmentPage({
   searchParams,
 }: {
   params: { deptId: string }
-  searchParams: { tab?: string; topic?: string; show?: string }
+  searchParams: { tab?: string; topic?: string; show?: string; item?: string }
 }) {
   const ctx = await getKbPageContext()
   const managed = await departmentForManagement(ctx.actor, params.deptId)
@@ -44,6 +44,9 @@ export default async function KnowledgeManageDepartmentPage({
       : topic
         ? rows.filter((r) => r.item.topic_id === topic)
         : rows
+  // A link to one item (?item=) opens that row, even if a topic filter would hide it.
+  const openItem = rows.find((r) => r.item.id === searchParams.item) ?? null
+  const shownRows = openItem && !filtered.includes(openItem) ? [openItem, ...filtered] : filtered
   const reviewShow = searchParams.show === 'all' ? 'all' : 'open'
   const reviewEntries = tab === 'review' ? await loadReviewEntries(department.id, reviewShow) : []
   const isGuardian = department.guardian_id === ctx.actor.id
@@ -165,7 +168,16 @@ export default async function KnowledgeManageDepartmentPage({
         {tab === 'content' ? (
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
             <TopicsManager departmentId={department.id} topics={topics} counts={counts} activeTopic={topic} canEdit={canEdit} basePath={basePath} />
-            <ContentTable rows={filtered} itemHrefBase={`${basePath}/items`} canEdit={canEdit} canDelete={canEdit || ctx.isAdmin} departmentId={department.id} />
+            <ContentTable
+              key={topic ?? 'all'}
+              rows={shownRows}
+              canEdit={canEdit}
+              canDelete={canEdit || ctx.isAdmin}
+              departmentId={department.id}
+              basePath={basePath}
+              topics={topics}
+              initialOpenId={openItem?.item.id ?? null}
+            />
           </div>
         ) : (
           <div className="mt-6">

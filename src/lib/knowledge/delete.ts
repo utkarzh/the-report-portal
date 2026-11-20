@@ -43,21 +43,52 @@ export async function deleteKnowledgeItems(departmentId: string, itemIds: string
   const { error, count } = await supabaseAdmin.from('knowledge_items').delete({ count: 'exact' }).in('id', ownedIds).eq('department_id', departmentId)
   if (error) throw new Error(error.message)
 
-  let filesRemoved = 0
-  if (paths.length) {
-    // A file another item still uses stays. A failed check keeps every file.
-    const { data: stillUsed, error: checkError } = await supabaseAdmin.from('knowledge_item_versions').select('file_path').in('file_path', paths)
-    if (!checkError) {
-      const used = new Set((stillUsed || []).map((v) => v.file_path as string))
-      const removable = paths.filter((p) => !used.has(p))
-      if (removable.length) {
-        const { data: removed, error: removeError } = await supabaseAdmin.storage.from(KNOWLEDGE_BUCKET).remove(removable)
-        if (removeError) console.error('Knowledge Base: could not delete stored files:', removeError.message)
-        filesRemoved = removed?.length ?? 0
-      }
-    } else {
-      console.error('Knowledge Base: file reference check failed, kept the files:', checkError.message)
-    }
-  }
+  const filesRemoved = await removeUnusedKnowledgeFiles(paths)
   return { deleted: count ?? ownedIds.length, filesRemoved }
+}
+
+// Removes stored files no version uses any more. Versions copied from each
+// other share one file, so each path is checked first: a file another
+// version (of any item) still uses stays, and a failed check keeps every file.
+async function removeUnusedKnowledgeFiles(paths: string[]): Promise<number> {
+  if (paths.length === 0) return 0
+  const { data: stillUsed, error: checkError } = await supabaseAdmin.from('knowledge_item_versions').select('file_path').in('file_path', paths)
+  if (checkError) {
+    console.error('Knowledge Base: file reference check failed, kept the files:', checkError.message)
+    return 0
+  }
+  const used = new Set((stillUsed || []).map((v) => v.file_path as string))
+  const removable = paths.filter((p) => !used.has(p))
+  if (removable.length === 0) return 0
+  const { data: removed, error: removeError } = await supabaseAdmin.storage.from(KNOWLEDGE_BUCKET).remove(removable)
+  if (removeError) console.error('Knowledge Base: could not delete stored files:', removeError.message)
+  return removed?.length ?? 0
+}
+
+export class VersionDeleteRefused extends Error {}
+
+// Deletes one old version of an item. The live and the draft version can
+// never be deleted this way (publish, discard or delete the item instead).
+// Its search passages go with it (FK cascade); a version restored from it
+// keeps working (restored_from_version_id has no FK) and just shows that its
+// source was deleted. Past answers keep their source snapshots.
+export async function deleteKnowledgeVersion(versionId: string): Promise<{ filesRemoved: number }> {
+  const { data: version } = await supabaseAdmin
+    .from('knowledge_item_versions')
+    .select('id, item_id, file_path')
+    .eq('id', versionId)
+    .maybeSingle()
+  if (!version) throw new VersionDeleteRefused('That version no longer exists.')
+  const { data: item } = await supabaseAdmin
+    .from('knowledge_items')
+    .select('published_version_id, draft_version_id')
+    .eq('id', version.item_id)
+    .maybeSingle()
+  if (item?.published_version_id === versionId) throw new VersionDeleteRefused('The live version can’t be deleted. Publish another version first.')
+  if (item?.draft_version_id === versionId) throw new VersionDeleteRefused('The current draft can’t be deleted here. Use Discard draft instead.')
+
+  const { error } = await supabaseAdmin.from('knowledge_item_versions').delete().eq('id', versionId)
+  if (error) throw new Error(error.message)
+  const filesRemoved = await removeUnusedKnowledgeFiles(version.file_path ? [version.file_path as string] : [])
+  return { filesRemoved }
 }

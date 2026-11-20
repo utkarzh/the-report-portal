@@ -1,8 +1,12 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, CheckCircle2, FileUp, Loader2, Plus, Trash2 } from 'lucide-react'
+import Modal from '@/components/ui/Modal'
+import Link from 'next/link'
 import {
+  ADMIN_PATH,
+  API_PATH,
   BLOCK_TYPE_OPTIONS,
   BUILT_IN_VARIABLES,
   normalizeVarKey,
@@ -43,6 +47,12 @@ export default function StructureEditor({ initialRow }: { initialRow: Presentati
   const [labels, setLabels] = useState<string[]>([])
   const onLabels = useCallback((l: string[]) => setLabels(l), [])
   const [withAnchor, setWithAnchor] = useState(true)
+  // "Build from a document": the parsed structure replaces the editor's
+  // content as an unsaved draft; `undo` keeps what was there before.
+  const [importing, setImporting] = useState<string | null>(null)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [imported, setImported] = useState<{ fileName: string; blocks: number; fields: number; truncated: boolean; undo: PresentationStructure } | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
   const s = m.value
   const setS = (next: PresentationStructure) => m.setValue(next)
 
@@ -77,8 +87,93 @@ export default function StructureEditor({ initialRow }: { initialRow: Presentati
   const updateField = (i: number, patch: Partial<PresentationStructure['manualFields'][number]>) =>
     setS({ ...s, manualFields: s.manualFields.map((f, n) => (n === i ? { ...f, ...patch } : f)) })
 
+  async function importFrom(file: File) {
+    setPendingFile(null)
+    setImporting(file.name)
+    setImportError(null)
+    setImported(null)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const res = await fetch(`${API_PATH}/master/structure-from-document`, { method: 'POST', body })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Could not build a structure from that document.')
+      const next = data.structure as PresentationStructure
+      setImported({ fileName: data.fileName || file.name, blocks: next.blocks.length, fields: next.manualFields.length, truncated: !!data.truncated, undo: s })
+      setS(next)
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Could not build a structure from that document.')
+    } finally {
+      setImporting(null)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader
+          title="Build from a document"
+          description="Upload the presentation script or methodology (.docx, .pdf, .txt or .md). Its blocks, their SAY / ACTION / NOTE lines (verbatim), the with / without anchor-event wording and the manual fields are read into the editor below as a draft. Nothing is saved until you press Save."
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <label
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#e5e3df] bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition-colors touch:py-3 hover:border-gray-400 ${
+              importing ? 'pointer-events-none opacity-60' : ''
+            }`}
+          >
+            {importing ? <Loader2 size={15} className="animate-spin" /> : <FileUp size={15} />}
+            {importing ? 'Reading the document…' : 'Upload a document'}
+            <input
+              type="file"
+              accept=".docx,.pdf,.txt,.md,.markdown"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                e.target.value = ''
+                if (!f) return
+                if (s.blocks.length > 0) setPendingFile(f)
+                else void importFrom(f)
+              }}
+            />
+          </label>
+          {importing && <span className="text-xs text-gray-500">Reading {importing} — this can take a minute or two.</span>}
+          <Link href={`${ADMIN_PATH}/structure/import-prompt`} className="ml-auto text-xs font-medium text-gray-500 underline-offset-2 hover:text-black hover:underline">
+            Edit the reading instructions →
+          </Link>
+        </div>
+        {importError && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">{importError}</p>}
+        {imported && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800">
+            <CheckCircle2 size={13} />
+            <span>
+              Built {imported.blocks} block{imported.blocks === 1 ? '' : 's'} and {imported.fields} manual field{imported.fields === 1 ? '' : 's'} from{' '}
+              <span className="font-medium">{imported.fileName}</span>. Check them below, then press Save.
+              {imported.truncated && ' The document was long, so only its first part was read.'}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setS(imported.undo)
+                setImported(null)
+              }}
+              className="font-semibold underline underline-offset-2 hover:text-emerald-950"
+            >
+              Undo
+            </button>
+          </div>
+        )}
+      </Card>
+
+      <Modal
+        open={!!pendingFile}
+        onClose={() => setPendingFile(null)}
+        onConfirm={() => pendingFile && void importFrom(pendingFile)}
+        title="Replace the current structure?"
+        description={`The blocks and manual fields below will be replaced with the structure read from ${pendingFile?.name ?? 'the document'}. It stays a draft until you press Save, and you can undo it.`}
+        confirmLabel="Read the document"
+        confirmVariant="primary"
+      />
+
       {s.blocks.map((b, i) => (
         <Card key={b.key + i}>
           <div className="mb-4 flex flex-wrap items-end gap-3">

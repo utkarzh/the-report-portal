@@ -96,7 +96,7 @@ export default function ReviewQueue({ entries, canEdit, basePath }: { entries: R
                       {e.item_title && e.item_id && (
                         <>
                           <span className="text-gray-300">·</span> Source
-                          <Link href={`${basePath}/items/${e.item_id}`} className="font-medium text-gray-700 hover:underline">
+                          <Link href={`${basePath}?item=${e.item_id}`} className="font-medium text-gray-700 hover:underline">
                             {e.item_title}
                           </Link>
                         </>

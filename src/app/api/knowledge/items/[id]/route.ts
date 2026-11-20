@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getKbActor, requireGuardianForItem } from '@/lib/knowledge/access'
+import { departmentForManagement, forbidden, getKbActor, requireGuardianForItem } from '@/lib/knowledge/access'
 import { deleteKnowledgeItems, requireKbDeleter } from '@/lib/knowledge/delete'
+import { loadItemEditorData } from '@/lib/knowledge/manage-data'
+
+// GET /api/knowledge/items/[id] — everything the open row of a department's
+// content list shows for one item (versions, history, open feedback). Same
+// rule as the manage pages: the department's Guardian may edit; a platform
+// admin may look (read-only, plus delete).
+export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+  const { actor, response } = await getKbActor()
+  if (!actor) return response
+  const data = await loadItemEditorData(params.id)
+  if (!data) return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+  const managed = await departmentForManagement(actor, data.item.department_id)
+  if (!managed) return forbidden()
+  return NextResponse.json({ ...data, canEdit: managed.canEdit, canDelete: managed.canEdit || actor.role === 'admin' })
+}
 
 // PATCH /api/knowledge/items/[id] — { topicId?, isExample? }
 // Organisation metadata (US-101), applied straight away: moving an item

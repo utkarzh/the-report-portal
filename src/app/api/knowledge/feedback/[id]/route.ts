@@ -41,7 +41,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
               /* the editor offers Edit if this failed */
             }
           }
-          redirect = `${base}/items/${item.id}`
+          redirect = `${base}?item=${item.id}`
         }
       }
       if (!redirect) redirect = `${base}/new?type=text&fromFeedback=${fb.id}`

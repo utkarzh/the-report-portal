@@ -444,7 +444,8 @@ export type UsageWorkflow =
   | "country_intel_discovery"
   | "country_intel_profiles"
   | "country_intel_contacts"
-  | "commercial_presentation_why_now";
+  | "commercial_presentation_why_now"
+  | "commercial_presentation_structure_import";
 
 export interface UsageEvent {
   id: string;
@@ -1085,7 +1086,7 @@ export interface SalesCoachFollowUpSupport {
   generated_at: string;
   model: string;
   // Which versions produced it: each document's updated_at, or null for the
-  // built-in copy of the prompt (before migration 049) / a missing playbook.
+  // built-in copy of the prompt (before migration 050) / a missing playbook.
   prompt_updated_at: string | null;
   playbook_updated_at: string | null;
 }
@@ -1694,7 +1695,9 @@ export interface WhyNowConfig {
   letterChars: number;
 }
 
-export type PresentationMasterKind = "structure" | "agency" | "media" | "why_now_prompt";
+// structure_import_prompt (migration 050): the instructions used to read an
+// uploaded document into the structure; absent = the built-in default.
+export type PresentationMasterKind = "structure" | "agency" | "media" | "why_now_prompt" | "structure_import_prompt";
 
 export interface PresentationMasterContentRow {
   id: string;
