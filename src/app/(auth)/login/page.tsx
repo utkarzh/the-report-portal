@@ -44,26 +44,27 @@ function LoginForm() {
     // active session id and mirrors it into an httpOnly cookie, signing out any
     // other device on its next request ("newest login wins"). If it fails we
     // don't proceed, otherwise the middleware would sign this device out too.
-    // A transient 503 (Supabase Auth slow to answer — see getApiUser()) is
-    // worth exactly one retry rather than failing the whole sign-in.
-    let registerRes = await fetch('/api/auth/session-register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ method }),
-    })
-    if (!registerRes.ok) {
-      const data = await registerRes.json().catch(() => ({}))
-      const transient = [502, 503, 504, 429].includes(registerRes.status) || data.retryable === true
+    // A transient 503 (Supabase Auth slow to answer — see getApiUser()) or a
+    // request dropped on the way (fetch throws: mobile data, VPN switching) is
+    // worth exactly one retry rather than failing the whole sign-in. A dropped
+    // request used to throw into handlePassword's catch and show "Could not
+    // reach the sign-in service" even though the password was right.
+    const register = () =>
+      fetch('/api/auth/session-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method }),
+      }).catch(() => null)
+    let registerRes = await register()
+    if (!registerRes?.ok) {
+      const data = registerRes ? await registerRes.json().catch(() => ({})) : {}
+      const transient = !registerRes || [502, 503, 504, 429].includes(registerRes.status) || data.retryable === true
       if (transient) {
         await new Promise((r) => setTimeout(r, 1500))
-        registerRes = await fetch('/api/auth/session-register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method }),
-        })
+        registerRes = await register()
       }
     }
-    if (!registerRes.ok) {
+    if (!registerRes?.ok) {
       await supabase.auth.signOut()
       setError('Could not complete sign-in on this device. Please try again.')
       setLoading(false)
