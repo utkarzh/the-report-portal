@@ -95,7 +95,11 @@ function clearAuthCookies(response: NextResponse, request: NextRequest) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublicRoute =
-    pathname.startsWith("/login") || pathname.startsWith("/invite");
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/invite") ||
+    // Admin password reset: request a link, then choose a new password.
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password");
 
   let pendingCookies: {
     name: string;

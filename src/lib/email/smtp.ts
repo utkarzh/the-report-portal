@@ -1,5 +1,5 @@
 import nodemailer, { type Transporter } from 'nodemailer'
-import { renderEmailShell } from './template'
+import { emailButton, renderEmailShell } from './template'
 
 // SMTP transport for outbound mail. Configured entirely via env so the provider
 // (Google Workspace, a relay, etc.) can change without touching code:
@@ -72,6 +72,37 @@ export async function sendLoginCodeEmail(params: {
       `Enter it on the sign-in page to finish signing in. ` +
       `It expires shortly and can only be used once. ` +
       `If you didn't request this, you can ignore this email.`,
+    html,
+  })
+}
+
+// Sends an admin a link to choose a new password (POST /api/auth/forgot-password).
+// The link carries a one-time Supabase recovery token, checked only when the new
+// password is submitted on /reset-password.
+export async function sendPasswordResetEmail(params: {
+  resetUrl: string
+  userEmail: string
+  name?: string | null
+}): Promise<void> {
+  const { resetUrl, userEmail, name } = params
+  const firstName = name?.trim().split(/\s+/)[0] || null
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  const html = renderEmailShell({
+    preheader: 'Reset your password for the editorial tool',
+    bodyHtml: `
+<p style="margin:0 0 18px;font-size:15px;font-weight:600;color:#111111;">Reset your password</p>
+<p style="margin:0 0 20px;color:#4b4844;">${firstName ? `Hi ${esc(firstName)}, we` : 'We'} received a request to reset the password for your editorial-tool account (${esc(userEmail)}). Click the button below to choose a new one.</p>
+<div style="margin:0 0 22px;">${emailButton('Reset password', resetUrl)}</div>
+<p style="margin:0 0 14px;color:#8a867f;font-size:12.5px;">If the button doesn't work, copy this link into your browser:<br /><a href="${resetUrl}" style="color:#4b4844;word-break:break-all;">${resetUrl}</a></p>
+<p style="margin:0;color:#8a867f;font-size:12.5px;">This link expires shortly and can only be used once. If you didn't ask to reset your password, you can safely ignore this email: your password won't change.</p>`,
+  })
+  await sendEmail({
+    to: userEmail,
+    subject: 'Reset your editorial-tool password',
+    text:
+      `${firstName ? `Hi ${firstName},\n\n` : ''}We received a request to reset the password for your editorial-tool account (${userEmail}).\n\n` +
+      `Choose a new password here:\n${resetUrl}\n\n` +
+      `This link expires shortly and can only be used once. If you didn't ask to reset your password, you can ignore this email: your password won't change.`,
     html,
   })
 }

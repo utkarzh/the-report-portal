@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import Input from '@/components/ui/Input'
@@ -223,6 +224,12 @@ function LoginForm() {
           </div>
         )}
 
+        {searchParams.get('reset') === 'success' && !notice && !error && (
+          <div className="mb-5 p-3 bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+            Your password has been changed. Sign in with your new password.
+          </div>
+        )}
+
         {notice && (
           <div className="mb-5 p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800">
             {notice}
@@ -274,6 +281,12 @@ function LoginForm() {
               autoFocus
               autoComplete="current-password"
             />
+            <Link
+              href={`/forgot-password?email=${encodeURIComponent(email)}`}
+              className="-mt-2 self-end text-xs text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              Forgot password?
+            </Link>
             <div className="pt-2">
               <Button type="submit" loading={loading} arrow>
                 Sign In

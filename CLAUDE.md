@@ -184,6 +184,11 @@ CRON_SECRET=                                    # protects /api/cron/* (Caja rem
   returns `password` (admin) or `otp` (user). The OTP is a Supabase code from
   `admin.generateLink({type:'magiclink'})`, emailed via `src/lib/email/smtp.ts`, and
   verified client-side with `verifyOtp`.
+- **Admin password reset (20 Nov 2026).**
+  - **Request:** "Forgot password?" on the admin password step opens `/forgot-password`. [forgot-password/route.ts](src/app/api/auth/forgot-password/route.ts) mints a recovery token with `admin.generateLink({type:'recovery'})`, which sends no email itself, and emails a link to `/reset-password?token=<hashed_token>` through our SMTP (`sendPasswordResetEmail()`).
+  - **Who gets one:** only active admins. The reply is the same for any email, so it never reveals whether an account exists. A repeat request within 60s sends nothing (it checks the user's `recovery_sent_at`).
+  - **Reset:** `/reset-password` checks the token with `verifyOtp({ token_hash, type: 'recovery' })` only when the new password is submitted, so an email link scanner can't use it up. It then calls `updateUser({ password })` (8+ characters), signs out every session (`scope: 'global'`) and sends the admin to `/login?reset=success` to sign in normally, which also claims the one-device slot.
+  - Both pages are public routes in the middleware. Supabase's own email templates and redirect URLs aren't involved.
 
 ### One-device-one-login (all roles)
 Every account may be signed in on only one device at a time; the newest login wins.
