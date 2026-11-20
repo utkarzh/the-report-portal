@@ -85,6 +85,9 @@ export default function FeedbackWidget() {
         whileTap={{ scale: 0.96 }}
         className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-black px-4 py-3 text-white shadow-lg transition-shadow hover:shadow-xl"
         aria-label="Give feedback"
+        // The floating Live Coach button (negotiation pages) sits above this
+        // one instead of on top of it, if the widget is ever turned back on.
+        data-floating-clear
       >
         <MessageCircle size={16} />
         <span className="text-xs font-semibold tracking-wide">Feedback</span>

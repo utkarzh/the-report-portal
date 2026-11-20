@@ -99,8 +99,8 @@ export default function CoachConversation({
   // Report Card's "Start Live Coach"). The call screen is portalled to the
   // page body, so it shows even while this tab is hidden.
   callRequest?: number
-  // Keep a call prepared even while this tab is hidden (the Report Card tab
-  // offers Live Coach too), so a tap there connects as fast as one here.
+  // Keep a call prepared even while this tab is hidden (the floating Live
+  // Coach button is on every tab), so a tap there connects as fast as here.
   keepCallReady?: boolean
 }) {
   const [messages, setMessages] = useState<Msg[]>(
@@ -575,8 +575,9 @@ export default function CoachConversation({
         </div>
       </div>
 
-      {/* Dock */}
-      <div className="border-t border-[#eceae5] bg-[#faf9f7] px-5 py-4">
+      {/* Dock. data-floating-clear: the floating Live Coach button lifts
+          above it whenever it would cover the message box or send button. */}
+      <div data-floating-clear className="border-t border-[#eceae5] bg-[#faf9f7] px-5 py-4">
         {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
         {trackSwitches && messages.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2">

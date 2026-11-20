@@ -15,6 +15,7 @@ import ReportCardView from '@/components/sales-coach/ReportCardView'
 import CorrectionModal, { type FlagTarget } from '@/components/sales-coach/CorrectionModal'
 import ReevaluateButton from '@/components/sales-coach/ReevaluateButton'
 import TranscriptPlayer from '@/components/sales-coach/TranscriptPlayer'
+import LiveCoachFloating from '@/components/sales-coach/LiveCoachFloating'
 import { formatCost, formatTokens } from '@/lib/claude/tokens'
 import { coachGreeting, coachingTrackSwitches, followUpSupportApplies, formatOutcomeDetails, outcomeLabel, pickTranscript, renderReportCardMarkdown, scoreTextAsPercent, suggestedCoachingPrompts } from '@/lib/sales-coach'
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
@@ -75,8 +76,8 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
   // True when the prefill is a question typed in the card's "Ask the coach
   // anything" field: it is sent straight away rather than left in the box.
   const [coachAutoSend, setCoachAutoSend] = useState(false)
-  // Bumped by the Report Card's Live Coach buttons; CoachConversation opens
-  // the call (it owns the call and saves its turns into the chat).
+  // Bumped by the floating Live Coach button; CoachConversation opens the call
+  // (it owns the call and saves its turns into the chat).
   const [liveCoachRequest, setLiveCoachRequest] = useState(0)
   const [reevaluateOpen, setReevaluateOpen] = useState(false)
   const startLiveCoach = useCallback(() => setLiveCoachRequest((r) => r + 1), [])
@@ -481,9 +482,9 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               <TabButton active={tab === 'coach'} onClick={() => setTab('coach')} icon={<MessageSquare size={13} />} label="Coaching" badge={!hasCoachingHistory} />
               <TabButton active={tab === 'submission'} onClick={() => setTab('submission')} icon={<ClipboardList size={13} />} label="Submission" />
             </div>
-            {/* Decluttered (16 Nov 2026): Live Coach lives in the scorecard's
-                card now; the occasional actions sit in one "More" menu; the
-                Word download stays in view. Tabs and actions share one row. */}
+            {/* Decluttered (16 Nov 2026): the occasional actions sit in one
+                "More" menu; the Word download stays in view. Tabs and actions
+                share one row. Live Coach floats over every tab (below). */}
             {tab === 'card' && (
               <div className="flex items-center gap-2">
                 <CardActionsMenu
@@ -530,8 +531,6 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
                   setCoachAutoSend(true)
                   setTab('coach')
                 }}
-                onStartLiveCoach={startLiveCoach}
-                onPrepareLiveCoach={prepareLiveCoach}
                 onRequestFollowUp={runFollowUp}
                 followUpBusy={followUpBusy}
                 followUpError={followUpError}
@@ -570,10 +569,15 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               callTitle={n.company || n.report_card?.company || 'Your negotiation'}
               callSubtitle={n.report_card?.meeting || undefined}
               callRequest={liveCoachRequest}
-              keepCallReady={tab === 'card'}
+              keepCallReady
             />
           </div>
           {tab === 'submission' && <SubmissionPanel n={n} open />}
+          {/* Live Coach floats over every tab (20 Nov 2026, replacing the band
+              in the scorecard). The space below lets the last thing on any tab
+              be scrolled clear of it, so it never sits on top of a button. */}
+          <LiveCoachFloating onStart={startLiveCoach} onPrepare={prepareLiveCoach} />
+          <div aria-hidden className="h-16 sm:h-20" />
         </>
       )}
 

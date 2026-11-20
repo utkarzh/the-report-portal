@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import {
   CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare,
-  Target, Compass, ChevronDown, ChevronRight, ChevronUp, Send, TrendingUp, ArrowRight, Phone, BookOpen, RefreshCw, Loader2,
+  Target, Compass, ChevronDown, ChevronRight, ChevronUp, Send, TrendingUp, ArrowRight, BookOpen, RefreshCw, Loader2,
   Sparkles, AlertCircle,
 } from 'lucide-react'
 import { marked } from 'marked'
@@ -13,7 +13,6 @@ import {
   scorePercent, titleCaseHeading, unverifiedNote, type ReportCardSectionId,
 } from '@/lib/sales-coach'
 import { BAND_TONE, ScoreRing } from '@/components/sales-coach/ScoreDisplay'
-import { LiveCoachLockup } from '@/components/sales-coach/LiveCoachBrand'
 import { formatDayMonthYearTime, formatDayMonth } from '@/lib/date-format'
 import type {
   SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict, SalesCoachOutcome, SalesCoachCorrection,
@@ -28,9 +27,10 @@ import type {
 // brief, C. Follow-Up Assessment & Recommended Actions open; D. What You Did Well /
 // Main Areas for Improvement, E. Detailed Performance Assessment and F. Deeper
 // Coaching collapsed until opened. The score is a percentage only, for
-// everyone (SHOW_SCORE_POINTS). The scorecard's card ends with a Live Coach
-// band that starts a live voice call with the coach. The content of every section is unchanged from the Oct
-// 2026 sample-card layout. renderReportCardMarkdown() is the text twin of this
+// everyone (SHOW_SCORE_POINTS). Live Coach is no longer part of the card: since
+// 20 Nov 2026 it is a floating button on every tab (LiveCoachFloating, mounted
+// by NegotiationWorkspace). The content of every section is unchanged from the
+// Oct 2026 sample-card layout. renderReportCardMarkdown() is the text twin of this
 // view; both read the same object. Cards generated before Oct 2026 have no
 // strengths/improvements/commercial reality; those sections are simply left
 // out.
@@ -79,8 +79,10 @@ const NUMBER =
 const CHIP = 'inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset'
 // Running text stops at ~80 characters a line; boxes and tables keep the full width.
 const MEASURE = 'max-w-[40rem]'
+// Section A's headline and summary use the card's full width (20 Nov 2026: the
+// old 46rem/40rem caps left a wide empty strip on the right of the card).
 const HEADLINE =
-  'max-w-[46rem] text-pretty font-serif text-[19px] font-medium leading-[1.5] tracking-[-0.01em] text-stone-900 sm:text-[24px] sm:leading-[1.42]'
+  'text-pretty font-serif text-[19px] font-medium leading-[1.5] tracking-[-0.01em] text-stone-900 sm:text-[24px] sm:leading-[1.42]'
 const HAIRLINE = 'border-[#ece9e3]'
 const GOLD_PANEL = 'rounded-xl bg-[#fbf7ee] ring-1 ring-inset ring-[#c8973f]/25'
 const FOCUS =
@@ -117,8 +119,6 @@ export default function ReportCardView({
   onChooseTrack,
   onAskCoach,
   showPoints = false,
-  onStartLiveCoach,
-  onPrepareLiveCoach,
   onRequestFollowUp,
   followUpBusy = false,
   followUpError = null,
@@ -140,11 +140,6 @@ export default function ReportCardView({
   // Admins would see the score's points as well as the percentage, but only
   // while SHOW_SCORE_POINTS is on; it's off, so everyone sees the percentage.
   showPoints?: boolean
-  // Live Coach: starts a live voice call with the coach (OpenAI Realtime), the
-  // same call as the Coaching tab's. Prepare is called on hover/focus/touch so
-  // the call is ready by the time it is tapped.
-  onStartLiveCoach?: () => void
-  onPrepareLiveCoach?: () => void
   // C. Follow-Up Decision Support (Rafa's prompt + playbook, its own call):
   // writes it, or rewrites it. Absent = no button (e.g. a read-only view).
   onRequestFollowUp?: () => void
@@ -218,8 +213,8 @@ export default function ReportCardView({
               <p className={`${card.commercial_outcome_label ? 'mt-4' : 'mt-6'} ${HEADLINE}`}>{card.headline}</p>
             </>
           )}
-          <p className={`mt-5 ${MEASURE} text-[15px] leading-[1.75] text-stone-600`}>{card.summary}</p>
-          {!hasNewLayout && card.report_summary && <p className={`mt-4 ${MEASURE} text-[15px] leading-[1.75] text-stone-600`}>{card.report_summary}</p>}
+          <p className="mt-5 text-pretty text-[15px] leading-[1.75] text-stone-600">{card.summary}</p>
+          {!hasNewLayout && card.report_summary && <p className="mt-4 text-pretty text-[15px] leading-[1.75] text-stone-600">{card.report_summary}</p>}
 
           {corrections.length > 0 && (
             <div className="mt-7 rounded-xl bg-[#faf8f5] px-4 py-4 ring-1 ring-inset ring-[#ebe7e0] sm:px-5">
@@ -228,7 +223,7 @@ export default function ReportCardView({
               </p>
               <ul className="mt-3 flex flex-col gap-3">
                 {corrections.map((c) => (
-                  <li key={c.id} className={`${MEASURE} text-sm leading-6 text-stone-700`}>
+                  <li key={c.id} className="text-sm leading-6 text-stone-700">
                     <span className="font-semibold text-stone-900">{c.field_label}. </span>
                     {c.correction}
                     <span className="ml-1.5 whitespace-nowrap text-xs text-stone-500">· {formatDayMonth(c.created_at)}</span>
@@ -248,7 +243,7 @@ export default function ReportCardView({
       <section className={`${CARD} overflow-hidden`}>
         {/* The hero card (16 Nov 2026): the scorecard — criteria in two
             columns where there is room, the score beside its ring on phones,
-            a one-line key — and, along its foot, the Live Coach band. */}
+            a one-line key. */}
         <div className="px-5 py-6 sm:px-10 sm:py-7">
           <SectionHeading title={title.scorecard!} />
           <div className="mt-5 overflow-hidden rounded-2xl ring-1 ring-inset ring-[#e6e2da] md:grid md:grid-cols-[15rem,minmax(0,1fr)]">
@@ -309,7 +304,6 @@ export default function ReportCardView({
             </div>
           </div>
         </div>
-        {onStartLiveCoach && <LiveCoachBand onStart={onStartLiveCoach} onPrepare={onPrepareLiveCoach} />}
       </section>
 
       {/* ── C. Follow-Up Assessment (open) ────────────────────── */}
@@ -704,56 +698,6 @@ function NextStepPanel({ text, onStart }: { text: string | null; onStart?: () =>
             <span className="text-[12.5px] leading-5 text-white/60">{SALES_COACH_TRACKS.commercial.hint}</span>
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-// Live Coach, merged into the foot of the scorecard's card (16 Nov 2026:
-// "merge with score card… make it look brilliant"), presented as TRC's own
-// product: the call screen's deep blue-black (.sc-live-card) with soft
-// coloured lights, The Report Company wordmark beside "Live Coach"
-// (LiveCoachLockup — the logo is white on dark, so it sits here with no box),
-// the animated orb and a white call button. Its indigo night reads as a
-// different thing from the Follow-Up's warm, gold next-step panel.
-function LiveCoachBand({ onStart, onPrepare }: { onStart: () => void; onPrepare?: () => void }) {
-  return (
-    <div className="sc-live-card relative isolate overflow-hidden text-white">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -left-20 -top-32 h-72 w-72 rounded-full bg-indigo-500/25 blur-3xl" />
-        <div className="absolute -right-10 -top-24 h-56 w-56 rounded-full bg-fuchsia-500/[0.14] blur-3xl" />
-        <div className="absolute -bottom-32 left-1/2 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-      </div>
-      <div className="flex flex-col gap-5 px-5 py-6 sm:px-10 sm:py-7 md:flex-row md:items-center md:gap-7">
-        <span aria-hidden className="relative hidden h-[68px] w-[68px] flex-shrink-0 md:block">
-          <span className="absolute -inset-3 rounded-full bg-[conic-gradient(from_90deg,#22d3ee,#6366f1,#a855f7,#ec4899,#22d3ee)] opacity-40 blur-2xl" />
-          <span className="sc-live-orb relative block h-full w-full rounded-full" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <LiveCoachLockup size="sm" />
-          <p className="mt-3 text-balance font-serif text-[19px] font-medium leading-[1.3] tracking-[-0.01em] text-white sm:text-[22px]">
-            Talk this meeting through, out loud
-          </p>
-          <p className={`mt-1.5 ${MEASURE} text-[13.5px] leading-[1.6] text-white/60`}>
-            Your coach has read the transcript and this Report Card. Role-play the CEO, rehearse your close or plan the next step, in a real-time voice call you can interrupt any time.
-          </p>
-        </div>
-        <div className="flex flex-col items-stretch gap-1.5 md:items-center">
-          <button
-            type="button"
-            onClick={onStart}
-            onPointerEnter={onPrepare}
-            onFocus={onPrepare}
-            onTouchStart={onPrepare}
-            className="group inline-flex items-center justify-center gap-2.5 rounded-full bg-white py-2 pl-2 pr-5 touch:py-2.5 text-sm font-semibold text-[#0b1024] shadow-[0_14px_32px_-14px_rgba(129,140,248,0.9)] transition hover:-translate-y-px hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1024]"
-          >
-            <span className="sc-live-orb h-8 w-8 rounded-full" />
-            Start Live Coach
-            <Phone size={14} className="text-[#0b1024]/60 transition group-hover:text-[#0b1024]" />
-          </button>
-          <span className="text-center text-[11px] leading-5 text-white/40">Connects in seconds · up to 15 minutes</span>
-        </div>
       </div>
     </div>
   )
