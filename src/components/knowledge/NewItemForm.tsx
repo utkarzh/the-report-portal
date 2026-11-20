@@ -59,7 +59,7 @@ export default function NewItemForm({
       setError(data.error || 'Could not save.')
       return
     }
-    router.push(`${basePath}/items/${data.item.id}`)
+    router.push(`${basePath}?item=${data.item.id}`)
   }
 
   return (

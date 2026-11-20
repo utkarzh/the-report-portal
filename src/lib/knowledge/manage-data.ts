@@ -12,8 +12,43 @@ export interface ContentRow {
   topicName: string | null
   state: ItemDisplayState
   openFeedback: number
-  draft: Pick<KnowledgeItemVersion, 'id' | 'extraction_status' | 'extraction_error' | 'extraction_started_at' | 'updated_at'> | null
+  draft: Pick<KnowledgeItemVersion, 'id' | 'version_number' | 'extraction_status' | 'extraction_error' | 'extraction_started_at' | 'updated_at'> | null
+  /** The version answers use right now, if the item was ever published. */
+  live: Pick<KnowledgeItemVersion, 'id' | 'version_number' | 'published_at'> | null
   stalled: boolean
+}
+
+// One line of an item's version history, as the Guardian's row shows it.
+export interface VersionSummary {
+  id: string
+  version_number: number
+  title: string
+  // What the version says, so a version can be viewed (and compared with the
+  // one before it) in place — a version may differ only in its description.
+  description: string
+  content: string
+  url: string | null
+  file_path: string | null
+  file_name: string | null
+  file_size: number | null
+  published_at: string | null
+  published_by_name: string | null
+  created_at: string
+  restored_from_number: number | null
+  /** Restored from a version that has since been deleted. */
+  restored_from_deleted: boolean
+}
+
+export type LeanVersion = Omit<KnowledgeItemVersion, 'extracted_text'>
+
+// Everything the open row of the content list needs for one item: the live
+// and draft versions (with a text guide's body), the history, open feedback.
+export interface ItemEditorData {
+  item: KnowledgeItem
+  published: LeanVersion | null
+  draft: LeanVersion | null
+  versions: VersionSummary[]
+  openFeedback: number
 }
 
 // Version columns safe to load in bulk (never the extracted text body).
@@ -30,21 +65,34 @@ export async function loadDepartmentContent(departmentId: string): Promise<{
     supabaseAdmin.from('knowledge_items').select('*').eq('department_id', departmentId).order('updated_at', { ascending: false }),
     supabaseAdmin.from('knowledge_feedback').select('item_id').eq('department_id', departmentId).eq('status', 'open'),
   ])
-  const draftIds = (items || []).map((i) => i.draft_version_id).filter(Boolean) as string[]
-  const { data: drafts } = draftIds.length
+  // The draft and live version of every item, in one query: the row shows
+  // both version numbers ("Live v2 → Draft v3").
+  const versionIds = (items || []).flatMap((i) => [i.draft_version_id, i.published_version_id]).filter(Boolean) as string[]
+  const { data: versionRows } = versionIds.length
     ? await supabaseAdmin
         .from('knowledge_item_versions')
-        .select('id, extraction_status, extraction_error, extraction_started_at, updated_at')
-        .in('id', draftIds)
-    : { data: [] as ContentRow['draft'][] }
-  const draftMap = new Map((drafts || []).map((d) => [d!.id, d!]))
+        .select('id, version_number, published_at, extraction_status, extraction_error, extraction_started_at, updated_at')
+        .in('id', versionIds)
+    : { data: [] as (NonNullable<ContentRow['draft']> & { published_at: string | null })[] }
+  const draftMap = new Map((versionRows || []).map((d) => [d.id, d]))
   const topicMap = new Map((topics || []).map((t) => [t.id, t.name as string]))
   const fbCount = new Map<string, number>()
   for (const f of feedback || []) if (f.item_id) fbCount.set(f.item_id, (fbCount.get(f.item_id) ?? 0) + 1)
 
   const counts: Record<string, number> = { __all: 0, __unsorted: 0 }
   const rows: ContentRow[] = ((items || []) as KnowledgeItem[]).map((item) => {
-    const draft = item.draft_version_id ? draftMap.get(item.draft_version_id) ?? null : null
+    const draftRow = item.draft_version_id ? draftMap.get(item.draft_version_id) ?? null : null
+    const draft = draftRow
+      ? {
+          id: draftRow.id,
+          version_number: draftRow.version_number,
+          extraction_status: draftRow.extraction_status,
+          extraction_error: draftRow.extraction_error,
+          extraction_started_at: draftRow.extraction_started_at,
+          updated_at: draftRow.updated_at,
+        }
+      : null
+    const liveRow = item.published_version_id ? draftMap.get(item.published_version_id) ?? null : null
     counts.__all++
     if (item.topic_id && topicMap.has(item.topic_id)) counts[item.topic_id] = (counts[item.topic_id] ?? 0) + 1
     else counts.__unsorted++
@@ -54,10 +102,51 @@ export async function loadDepartmentContent(departmentId: string): Promise<{
       state: itemDisplayState(item, draft),
       openFeedback: fbCount.get(item.id) ?? 0,
       draft,
+      live: liveRow ? { id: liveRow.id, version_number: liveRow.version_number, published_at: liveRow.published_at } : null,
       stalled: !!draft && isExtractionStalled(draft),
     }
   })
   return { topics: (topics || []) as KnowledgeTopic[], rows, counts }
+}
+
+export async function loadItemEditorData(itemId: string): Promise<ItemEditorData | null> {
+  const { data: itemRow } = await supabaseAdmin.from('knowledge_items').select('*').eq('id', itemId).maybeSingle()
+  const item = itemRow as KnowledgeItem | null
+  if (!item) return null
+  // Text guides need their markdown body; documents never load extracted text here.
+  const [{ data: versionRows }, { count: openFeedback }] = await Promise.all([
+    supabaseAdmin.from('knowledge_item_versions').select(`${LEAN_VERSION_COLUMNS}, content`).eq('item_id', item.id).order('version_number', { ascending: false }),
+    supabaseAdmin.from('knowledge_feedback').select('id', { count: 'exact', head: true }).eq('item_id', item.id).eq('status', 'open'),
+  ])
+  const versions = (versionRows || []) as unknown as LeanVersion[]
+  const publisherIds = Array.from(new Set(versions.map((v) => v.published_by).filter(Boolean))) as string[]
+  const { data: publishers } = publisherIds.length
+    ? await supabaseAdmin.from('profiles').select('id, full_name, email').in('id', publisherIds)
+    : { data: [] as { id: string; full_name: string | null; email: string }[] }
+  const pubName = new Map((publishers || []).map((p) => [p.id, displayName(p)]))
+  const numberById = new Map(versions.map((v) => [v.id, v.version_number]))
+  return {
+    item,
+    published: versions.find((v) => v.id === item.published_version_id) ?? null,
+    draft: versions.find((v) => v.id === item.draft_version_id) ?? null,
+    versions: versions.map((v) => ({
+      id: v.id,
+      version_number: v.version_number,
+      title: v.title,
+      description: v.description ?? '',
+      content: v.content ?? '',
+      url: v.url,
+      file_path: v.file_path,
+      file_name: v.file_name,
+      file_size: v.file_size,
+      published_at: v.published_at,
+      published_by_name: v.published_by ? pubName.get(v.published_by) ?? null : null,
+      created_at: v.created_at,
+      restored_from_number: v.restored_from_version_id ? numberById.get(v.restored_from_version_id) ?? null : null,
+      restored_from_deleted: !!v.restored_from_version_id && !numberById.has(v.restored_from_version_id),
+    })),
+    openFeedback: openFeedback ?? 0,
+  }
 }
 
 export async function loadReviewEntries(departmentId: string, status: 'open' | 'all'): Promise<ReviewEntry[]> {

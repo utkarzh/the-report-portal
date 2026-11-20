@@ -9,9 +9,10 @@ import {
   validateWhyNowConfig,
 } from '@/lib/commercial-presentations'
 import { requireAdminActor, requirePresentationActor } from '@/lib/commercial-presentations-server'
+import { validateStructureImportPrompt } from '@/lib/commercial-presentations-structure-import'
 import type { PresentationMasterKind } from '@/types'
 
-const KINDS: PresentationMasterKind[] = ['structure', 'agency', 'media', 'why_now_prompt']
+const KINDS: PresentationMasterKind[] = ['structure', 'agency', 'media', 'why_now_prompt', 'structure_import_prompt']
 
 function parseTarget(kind: unknown, refId: unknown, language: unknown) {
   if (!KINDS.includes(kind as PresentationMasterKind)) return { error: 'Unknown master content kind' as const }
@@ -67,6 +68,10 @@ export async function PUT(request: NextRequest) {
     const { data } = await supabaseAdmin.from('media_library').select('id').eq('id', target.refId!).maybeSingle()
     if (!data) return NextResponse.json({ error: 'Media not found in the Media Library' }, { status: 404 })
     content = validateMediaContent(body.content)
+  } else if (target.kind === 'structure_import_prompt') {
+    const v = validateStructureImportPrompt(body.content)
+    if (!v.prompt.trim()) return NextResponse.json({ error: 'The instructions can’t be empty. Use “Reset to default” to go back to the built-in ones.' }, { status: 400 })
+    content = v
   } else {
     const cfg = validateWhyNowConfig(body.content)
     if (!cfg.prompt.trim()) return NextResponse.json({ error: 'The prompt can’t be empty.' }, { status: 400 })
@@ -83,6 +88,12 @@ export async function PUT(request: NextRequest) {
       .insert({ kind: target.kind, ref_id: target.refId, language: target.language, content, version_label: INITIAL_PROMPT_VERSION, updated_by: actor.id })
       .select('*')
       .single()
+    if (error?.code === '23514' && target.kind === 'structure_import_prompt') {
+      return NextResponse.json(
+        { error: 'Saving these instructions needs a database update: run supabase/migrations/050_presentation_structure_import_prompt.sql. Until then the built-in instructions are used.' },
+        { status: 503 },
+      )
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ row })
   }
