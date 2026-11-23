@@ -24,12 +24,25 @@ import type {
 export const SALES_COACH_AUDIO_BUCKET = 'sales-coach-audio'
 
 // The four negotiation outcomes the Sales Executive declares (US-036).
-export const SALES_COACH_OUTCOMES: { value: SalesCoachOutcome; label: string }[] = [
+// hidden: not offered on the New Negotiation form, and refused by
+// POST /api/sales-coach, but still a valid outcome everywhere else, so
+// negotiations already declared that way keep their label, score and
+// re-evaluation. Uncertain was hidden on 20 Nov 2026 (client request: every
+// Sales Executive must declare Signed, Retorno or Lost). To offer it again,
+// delete its `hidden: true`.
+export const SALES_COACH_OUTCOMES: { value: SalesCoachOutcome; label: string; hidden?: boolean }[] = [
   { value: 'signed', label: 'Signed on the spot' },
   { value: 'retorno', label: 'Retorno' },
   { value: 'lost', label: 'Lost' },
-  { value: 'uncertain', label: 'Uncertain' },
+  { value: 'uncertain', label: 'Uncertain', hidden: true },
 ]
+
+// The outcomes a new submission may declare.
+export const SELECTABLE_SALES_COACH_OUTCOMES = SALES_COACH_OUTCOMES.filter((o) => !o.hidden)
+
+export function isSelectableSalesCoachOutcome(v: unknown): v is SalesCoachOutcome {
+  return SELECTABLE_SALES_COACH_OUTCOMES.some((o) => o.value === v)
+}
 
 export function outcomeLabel(v: SalesCoachOutcome | null | undefined): string {
   return SALES_COACH_OUTCOMES.find((o) => o.value === v)?.label || 'Not declared'
@@ -1004,45 +1017,8 @@ export function followUpSupportApplies(card: SalesCoachReportCard): boolean {
   return card.declared_outcome !== 'signed'
 }
 
-// The playbook as reading blocks for the Sales Executives' page. The admin
-// document is plain text, one paragraph per line, so this reads its shape back:
-// a numbered short line with no full stop is a heading ("3.1. Proposal Email +
-// Media Kit"), "• " lines are bullets, "1. " lines that read as sentences are a
-// numbered list, a line ending ":" introduces what follows, and "Example" /
-// "Another option" are labels. Display only: the text itself is untouched.
-export type PlaybookBlock =
-  | { kind: 'title' | 'subtitle' | 'heading' | 'subheading' | 'label' | 'para'; text: string }
-  | { kind: 'bullets' | 'numbered'; items: string[] }
-
-export function playbookBlocks(text: string): PlaybookBlock[] {
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
-  const blocks: PlaybookBlock[] = []
-  const isHeading = (l: string) => /^\d+(\.\d+)*\.\s+\S/.test(l) && l.length <= 80 && !/[.?!:]$/.test(l)
-  lines.forEach((line, i) => {
-    const last = blocks[blocks.length - 1]
-    if (line.startsWith('• ')) {
-      const item = line.slice(2)
-      if (last?.kind === 'bullets') last.items.push(item)
-      else blocks.push({ kind: 'bullets', items: [item] })
-      return
-    }
-    if (isHeading(line)) {
-      blocks.push({ kind: /^\d+\.\d+/.test(line) ? 'subheading' : 'heading', text: line })
-      return
-    }
-    const numbered = line.match(/^(\d+)\.\s+(.*)$/)
-    if (numbered) {
-      if (last?.kind === 'numbered') last.items.push(numbered[2])
-      else blocks.push({ kind: 'numbered', items: [numbered[2]] })
-      return
-    }
-    if (i === 0) { blocks.push({ kind: 'title', text: line }); return }
-    if (i === 1 && blocks[0]?.kind === 'title') { blocks.push({ kind: 'subtitle', text: line }); return }
-    if (/^(example( whatsapp| wording| email)?|another option)$/i.test(line)) { blocks.push({ kind: 'label', text: line }); return }
-    blocks.push({ kind: 'para', text: line })
-  })
-  return blocks
-}
+// The playbook's display structure (sections, tactics, copyable examples) is
+// parsePlaybook() in sales-coach-playbook.ts.
 
 export function followUpAssessment(card: SalesCoachReportCard): FollowUpAssessment | null {
   const rows = FOLLOW_UP_ROWS.flatMap(({ key, label }) => {

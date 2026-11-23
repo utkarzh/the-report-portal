@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Mic, MicOff, PhoneOff, Target, Compass, RotateCcw, X } from 'lucide-react'
+import { Mic, MicOff, Target, Compass, RotateCcw, X } from 'lucide-react'
 import { useKeepScreenOn } from '@/lib/use-mobile'
 import { SALES_COACH_TRACKS } from '@/lib/sales-coach'
 import { voiceUsageFromResponse, type VoiceUsage } from '@/lib/sales-coach-voice'
@@ -641,7 +641,7 @@ export default function VoiceCoachSession({
                 aria-label="End the call"
                 className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-[#ff6b72] to-[#e5484d] text-white shadow-[0_12px_34px_-10px_rgba(229,72,77,0.85)] ring-1 ring-white/20 transition-transform hover:scale-105 active:scale-95"
               >
-                <PhoneOff size={22} />
+                <X size={24} strokeWidth={2.5} />
               </button>
               <div className="h-14 w-14" aria-hidden />
             </div>

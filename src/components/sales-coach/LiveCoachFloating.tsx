@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Phone } from 'lucide-react'
+import { Mic } from 'lucide-react'
 import { isTouchDevice } from '@/lib/use-mobile'
 
 // Live Coach as a floating button (20 Nov 2026, replacing the band at the foot
@@ -162,7 +162,7 @@ export default function LiveCoachFloating({ onStart, onPrepare }: { onStart: () 
               <span className="hidden text-[11px] leading-4 text-white/60 sm:block">Talk this meeting through</span>
             </span>
             <span aria-hidden className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#0b1024] transition-transform group-hover:scale-105">
-              <Phone size={15} />
+              <Mic size={15} />
             </span>
           </span>
         </button>

@@ -14,8 +14,12 @@ import {
   Search,
   TrendingUp,
   Layers,
+  ChevronLeft,
+  ChevronRight,
+  ListOrdered,
 } from "lucide-react";
 import type { UsageWorkflow } from "@/types";
+import AnalyticsDayPicker from "@/components/admin/AnalyticsDayPicker";
 
 // Analytics now reads the append-only usage_events ledger (see migration 010),
 // NOT the mutable research_sessions row. So it counts every regeneration and
@@ -23,9 +27,14 @@ import type { UsageWorkflow } from "@/types";
 
 interface SearchParams {
   range?: string;
+  date?: string;
 }
 
+// Daily (20 Nov 2026): one day at a time, in UTC like the rest of the page,
+// with its hourly cost, the same breakdowns, a comparison with the day
+// before and every request made that day.
 const RANGES = [
+  { key: "day", label: "Daily" },
   { key: "this_month", label: "This month" },
   { key: "last_month", label: "Last month" },
   { key: "last_30", label: "Last 30 days" },
@@ -122,14 +131,85 @@ const WORKFLOW_ORDER: UsageWorkflow[] = [
   "input_validation",
 ];
 
+const EVENT_COLUMNS =
+  "id, user_id, workflow, model, tokens_input, tokens_output, tokens_total, web_searches, cost_usd, status, error, created_at";
+
+type UsageRow = {
+  id: string;
+  user_id: string | null;
+  workflow: UsageWorkflow;
+  model: string | null;
+  tokens_input: number | null;
+  tokens_output: number | null;
+  tokens_total: number | null;
+  web_searches: number | null;
+  cost_usd: number | string | null;
+  status: string | null;
+  error: string | null;
+  created_at: string;
+};
+
+// Every ledger row in the range, read 1,000 at a time. A single select stops
+// at the API's 1,000-row cap, which (until 20 Nov 2026) silently cut every
+// range but a single day short: this month read 1,000 of 1,229 rows, all time
+// 1,000 of 4,963.
+async function loadEvents(start: string | null, end: string | null): Promise<UsageRow[]> {
+  const PAGE = 1000;
+  const out: UsageRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = supabaseAdmin
+      .from("usage_events")
+      .select(EVENT_COLUMNS)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (start) q = q.gte("created_at", start);
+    if (end) q = q.lte("created_at", end);
+    const { data, error } = await q;
+    if (error) throw error;
+    out.push(...((data || []) as UsageRow[]));
+    if (!data || data.length < PAGE) break;
+  }
+  return out;
+}
+
+// The day the Daily view shows: a valid YYYY-MM-DD no later than today
+// (UTC), otherwise today.
+function resolveDay(date: string | undefined): string {
+  const today = new Date().toISOString().slice(0, 10);
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) return today;
+  return date > today ? today : date;
+}
+
+function shiftDay(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function dayBounds(date: string): { start: string; end: string } {
+  return { start: `${date}T00:00:00.000Z`, end: `${date}T23:59:59.999Z` };
+}
+
+function formatDay(date: string, opts: Intl.DateTimeFormatOptions): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", ...opts });
+}
+
 // Resolves a range key to concrete bounds + how the trend should be bucketed.
 // `start`/`end` are ISO strings (null start = "from the beginning").
-function resolveRange(key: RangeKey): {
+function resolveRange(key: RangeKey, day: string): {
   start: string | null;
   end: string | null;
   label: string;
-  bucket: "day" | "month";
+  bucket: "hour" | "day" | "month";
 } {
+  if (key === "day") {
+    return {
+      ...dayBounds(day),
+      label: formatDay(day, { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+      bucket: "hour",
+    };
+  }
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
@@ -191,22 +271,25 @@ export default async function AnalyticsPage({
   const rangeKey: RangeKey = RANGES.some((r) => r.key === searchParams.range)
     ? (searchParams.range as RangeKey)
     : "this_month";
-  const { start, end, label, bucket } = resolveRange(rangeKey);
+  const isDaily = rangeKey === "day";
+  const today = new Date().toISOString().slice(0, 10);
+  const day = resolveDay(searchParams.date);
+  const prevDay = shiftDay(day, -1);
+  const nextDay = shiftDay(day, 1);
+  const { start, end, label, bucket } = resolveRange(rangeKey, day);
 
-  let eventsQuery = supabaseAdmin
-    .from("usage_events")
-    .select(
-      "user_id, workflow, tokens_input, tokens_output, tokens_total, web_searches, cost_usd, status, created_at",
-    );
-  if (start) eventsQuery = eventsQuery.gte("created_at", start);
-  if (end) eventsQuery = eventsQuery.lte("created_at", end);
-
-  const [{ data: events }, { data: users }] = await Promise.all([
-    eventsQuery,
+  // The Daily view also reads the day before, for its comparison.
+  const prevBounds = dayBounds(prevDay);
+  const [rows, { data: users }, prevRows] = await Promise.all([
+    loadEvents(start, end),
     supabaseAdmin.from("profiles").select("id, full_name, email"),
+    isDaily ? loadEvents(prevBounds.start, prevBounds.end) : Promise.resolve([] as UsageRow[]),
   ]);
-
-  const rows = events || [];
+  const prevTotals = {
+    requests: prevRows.length,
+    cost: prevRows.reduce((s, r) => s + Number(r.cost_usd || 0), 0),
+  };
+  const prevLabel = formatDay(prevDay, { weekday: "short", day: "numeric", month: "short" });
 
   // ---- Totals ----
   const totals = rows.reduce(
@@ -249,7 +332,7 @@ export default async function AnalyticsPage({
   const bucketMap = new Map<string, { cost: number; requests: number }>();
   for (const r of rows) {
     const d = new Date(r.created_at);
-    const key = bucket === "day" ? dayKey(d) : monthKey(d);
+    const key = bucket === "hour" ? String(d.getUTCHours()) : bucket === "day" ? dayKey(d) : monthKey(d);
     const cur = bucketMap.get(key) || { cost: 0, requests: 0 };
     cur.cost += Number(r.cost_usd || 0);
     cur.requests += 1;
@@ -273,7 +356,12 @@ export default async function AnalyticsPage({
         )
       : new Date();
   const rangeEnd = end ? new Date(end) : new Date();
-  if (bucket === "day") {
+  if (bucket === "hour") {
+    for (let h = 0; h < 24; h++) {
+      const v = bucketMap.get(String(h)) || { cost: 0, requests: 0 };
+      trend.push({ key: String(h), label: `${String(h).padStart(2, "0")}:00`, ...v });
+    }
+  } else if (bucket === "day") {
     const cur = new Date(rangeStart);
     cur.setHours(0, 0, 0, 0);
     while (cur <= rangeEnd) {
@@ -344,6 +432,10 @@ export default async function AnalyticsPage({
   const perUserList = Object.values(perUser).sort((a, b) => b.cost - a.cost);
   const maxUserCost = perUserList[0]?.cost || 1;
 
+  // Daily: every request that day, newest first.
+  const dayLog = isDaily ? [...rows].reverse() : [];
+  const LOG_LIMIT = 500;
+
   return (
     <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-8">
       <div className="max-w-5xl mx-auto">
@@ -352,14 +444,15 @@ export default async function AnalyticsPage({
           <div>
             <h1 className="text-lg font-semibold text-gray-900">Analytics</h1>
             <p className="text-sm text-gray-500 mt-1.5">
-              {label} · all workflows (interview + transcription)
+              {label}
+              {isDaily ? " (UTC)" : ""} · all workflows
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1">
             {RANGES.map((r) => (
               <Link
                 key={r.key}
-                href={`/admin/analytics?range=${r.key}`}
+                href={r.key === "day" ? `/admin/analytics?range=day${isDaily ? `&date=${day}` : ""}` : `/admin/analytics?range=${r.key}`}
                 className={`px-3 py-2 text-xs font-medium transition-colors ${
                   rangeKey === r.key
                     ? "bg-black text-white"
@@ -372,6 +465,36 @@ export default async function AnalyticsPage({
           </div>
         </div>
 
+        {/* Daily: move a day at a time, or pick one. */}
+        {isDaily && (
+          <div className="-mt-4 mb-8 flex flex-wrap items-center gap-2">
+            <Link
+              href={`/admin/analytics?range=day&date=${prevDay}`}
+              className="inline-flex h-9 items-center gap-1 border border-[#e5e3df] bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-400"
+            >
+              <ChevronLeft size={14} /> {formatDay(prevDay, { day: "numeric", month: "short" })}
+            </Link>
+            <AnalyticsDayPicker date={day} max={today} />
+            {day < today ? (
+              <Link
+                href={`/admin/analytics?range=day&date=${nextDay}`}
+                className="inline-flex h-9 items-center gap-1 border border-[#e5e3df] bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-400"
+              >
+                {formatDay(nextDay, { day: "numeric", month: "short" })} <ChevronRight size={14} />
+              </Link>
+            ) : (
+              <span className="inline-flex h-9 items-center gap-1 border border-[#efede9] bg-[#faf9f7] px-3 text-xs font-medium text-gray-300">
+                Next <ChevronRight size={14} />
+              </span>
+            )}
+            {day !== today && (
+              <Link href="/admin/analytics?range=day" className="inline-flex h-9 items-center px-3 text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline">
+                Today
+              </Link>
+            )}
+          </div>
+        )}
+
         {/* Summary stat cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 mb-10">
           <StatCard
@@ -379,12 +502,14 @@ export default async function AnalyticsPage({
             value={totals.requests.toLocaleString()}
             icon={Activity}
             sub={totals.errors > 0 ? `${totals.errors} failed` : undefined}
+            delta={isDaily ? deltaText(totals.requests - prevTotals.requests, prevLabel, (n) => n.toLocaleString()) : undefined}
           />
           <StatCard
             label="Total Cost"
             value={`$${totals.cost.toFixed(4)}`}
             sub={`$${inputCost.toFixed(4)} in + $${outputCost.toFixed(4)} out + $${webSearchCost.toFixed(4)} search`}
             icon={DollarSign}
+            delta={isDaily ? deltaText(totals.cost - prevTotals.cost, prevLabel, (n) => `$${n.toFixed(4)}`) : undefined}
           />
           <StatCard
             label="Input Tokens"
@@ -426,7 +551,7 @@ export default async function AnalyticsPage({
                 <div className="flex items-center gap-2 mb-5">
                   <TrendingUp size={14} className="text-gray-400" />
                   <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
-                    Cost over time
+                    {isDaily ? "Cost by hour (UTC)" : "Cost over time"}
                   </h2>
                 </div>
                 <div className="flex items-end gap-[3px] h-32">
@@ -609,6 +734,66 @@ export default async function AnalyticsPage({
                 )}
               </table>
             </div>
+
+            {/* Daily: every request made that day */}
+            {isDaily && (
+              <>
+                <div className="mt-10 mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <ListOrdered size={14} className="text-gray-400" />
+                    <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+                      Requests on this day
+                    </h2>
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    {dayLog.length > LOG_LIMIT ? `Latest ${LOG_LIMIT} of ${dayLog.length}` : `${dayLog.length} request${dayLog.length === 1 ? "" : "s"}`} · newest first
+                  </span>
+                </div>
+                <div className="table-cards-wrap bg-white border border-[#e5e3df] overflow-x-auto">
+                  <table className="table-cards w-full text-xs min-w-[640px]">
+                    <thead>
+                      <tr className="border-b border-[#e5e3df] bg-[#f9f8f6]">
+                        <th className="text-left px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Time</th>
+                        <th className="text-left px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">User</th>
+                        <th className="text-left px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Workflow</th>
+                        <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Tokens</th>
+                        <th className="text-right px-5 py-3.5 font-semibold uppercase tracking-widest text-gray-400">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#e5e3df]">
+                      {dayLog.slice(0, LOG_LIMIT).map((r) => {
+                        const u = r.user_id ? userMap[r.user_id] : undefined;
+                        return (
+                          <tr key={r.id} className="hover:bg-[#f9f8f6] transition-colors">
+                            <td data-label="Time" className="px-5 py-3 text-gray-500 tabular-nums whitespace-nowrap">
+                              {new Date(r.created_at).toLocaleTimeString("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" })}
+                            </td>
+                            <td data-cell="title" className="px-5 py-3">
+                              <p className="font-medium text-gray-900 truncate max-w-[14rem]">{u?.full_name || u?.email || (r.user_id ? "Unknown user" : "Deleted user")}</p>
+                            </td>
+                            <td data-label="Workflow" className="px-5 py-3 text-gray-700">
+                              <span>{WORKFLOW_LABELS[r.workflow] || r.workflow}</span>
+                              {r.status === "error" && (
+                                <span title={r.error || undefined} className="ml-2 inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700 ring-1 ring-inset ring-red-600/20">
+                                  Failed
+                                </span>
+                              )}
+                              {r.model && <p className="mt-0.5 text-[10.5px] text-gray-400">{r.model}</p>}
+                            </td>
+                            <td data-label="Tokens" className="px-5 py-3 text-right text-gray-600 tabular-nums">
+                              {formatTokens(r.tokens_total || 0)}
+                            </td>
+                            <td data-label="Cost" className="px-5 py-3 text-right font-medium text-gray-900 tabular-nums">
+                              ${Number(r.cost_usd || 0).toFixed(4)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
@@ -616,14 +801,21 @@ export default async function AnalyticsPage({
   );
 }
 
+// "+$0.4210 vs Thu 19 Nov", "−12 vs Thu 19 Nov", "Same as Thu 19 Nov".
+function deltaText(diff: number, prevLabel: string, fmt: (n: number) => string): { text: string; tone: "up" | "down" | "same" } {
+  if (Math.abs(diff) < 0.00005) return { text: `Same as ${prevLabel}`, tone: "same" };
+  return { text: `${diff > 0 ? "+" : "−"}${fmt(Math.abs(diff))} vs ${prevLabel}`, tone: diff > 0 ? "up" : "down" };
+}
+
 interface StatCardProps {
   label: string;
   value: string;
   icon: React.ElementType;
   sub?: string;
+  delta?: { text: string; tone: "up" | "down" | "same" };
 }
 
-function StatCard({ label, value, icon: Icon, sub }: StatCardProps) {
+function StatCard({ label, value, icon: Icon, sub, delta }: StatCardProps) {
   return (
     <div className="bg-white border border-[#e5e3df] p-5">
       <div className="flex items-center gap-2 mb-4">
@@ -642,6 +834,11 @@ function StatCard({ label, value, icon: Icon, sub }: StatCardProps) {
       {sub && (
         <p className="text-[10px] text-gray-400 mt-1.5 uppercase tracking-wide">
           {sub}
+        </p>
+      )}
+      {delta && (
+        <p className={`mt-1.5 text-[11px] font-medium tabular-nums ${delta.tone === "same" ? "text-gray-400" : "text-gray-700"}`}>
+          {delta.text}
         </p>
       )}
     </div>

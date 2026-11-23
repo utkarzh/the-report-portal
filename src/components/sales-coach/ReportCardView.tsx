@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import {
   CheckCircle2, AlertTriangle, XCircle, MinusCircle, HelpCircle, Quote, MessageCircleQuestion, Play, Flag, MessageSquare,
-  Target, Compass, ChevronDown, ChevronRight, ChevronUp, Send, TrendingUp, ArrowRight, BookOpen, RefreshCw, Loader2,
+  Target, Compass, ChevronDown, ChevronRight, ChevronUp, Send, TrendingUp, ArrowRight, RefreshCw, Loader2,
   Sparkles, AlertCircle,
 } from 'lucide-react'
 import { marked } from 'marked'
@@ -13,6 +13,10 @@ import {
   scorePercent, titleCaseHeading, unverifiedNote, type ReportCardSectionId,
 } from '@/lib/sales-coach'
 import { BAND_TONE, ScoreRing } from '@/components/sales-coach/ScoreDisplay'
+import FollowUpSupportView from '@/components/sales-coach/FollowUpSupportView'
+import { PlaybookTemplatesPanel } from '@/components/sales-coach/PlaybookTemplates'
+import { parseFollowUpSupport } from '@/lib/sales-coach-follow-up-view'
+import type { PlaybookTemplateGroup } from '@/lib/sales-coach-playbook'
 import { formatDayMonthYearTime, formatDayMonth } from '@/lib/date-format'
 import type {
   SalesCoachReportCard, SalesCoachCriterion, SalesCoachVerdict, SalesCoachOutcome, SalesCoachCorrection,
@@ -124,6 +128,7 @@ export default function ReportCardView({
   followUpError = null,
   canRegenerateFollowUp = false,
   playbookHref,
+  playbookTemplates = [],
 }: {
   card: SalesCoachReportCard
   meta: ReportCardMeta
@@ -150,6 +155,9 @@ export default function ReportCardView({
   canRegenerateFollowUp?: boolean
   // The full playbook, read-only, for Sales Executives.
   playbookHref?: string
+  // The playbook's ready-to-send emails and WhatsApp messages (Rafa's
+  // examples), shown with Copy in the Follow-Up section.
+  playbookTemplates?: PlaybookTemplateGroup[]
 }) {
   const pct = scorePercent(card.execution_score, card.execution_denominator)
   const band = scoreBand(pct)
@@ -321,7 +329,7 @@ export default function ReportCardView({
                 busy={followUpBusy}
                 error={followUpError}
                 onRegenerate={canRegenerateFollowUp ? onRequestFollowUp : undefined}
-                playbookHref={playbookHref}
+                templates={playbookTemplates}
               />
             ) : (
               <>
@@ -335,9 +343,14 @@ export default function ReportCardView({
                   </div>
                 )}
                 {followUpSupportApplies(card) && onRequestFollowUp && (
-                  <GetFollowUpSupport busy={followUpBusy} error={followUpError} onRequest={onRequestFollowUp} playbookHref={playbookHref} />
+                  <GetFollowUpSupport busy={followUpBusy} error={followUpError} onRequest={onRequestFollowUp} />
                 )}
               </>
+            )}
+            {/* The playbook, prominent, with its ready-to-send messages (20 Nov
+                2026). Retorno-type outcomes only, like the Decision Support. */}
+            {followUpSupportApplies(card) && (playbookHref || playbookTemplates.length > 0) && (
+              <PlaybookTemplatesPanel groups={playbookTemplates} playbookHref={playbookHref} />
             )}
             {((!support && followUp?.nextStep) || onChooseTrack) && (
               <NextStepPanel text={support ? null : followUp?.nextStep ?? null} onStart={onChooseTrack ? () => onChooseTrack('commercial') : undefined} />
@@ -595,34 +608,41 @@ function standingParts(label: string, text: string): { status: string | null; re
   return { status: null, rest: t.charAt(0).toUpperCase() + t.slice(1) }
 }
 
-// The Follow-Up Decision Support as Rafa's prompt writes it (markdown). Any
-// HTML in the reply is shown as text, never rendered.
-function FollowUpSupportBlock({ text, busy, error, onRegenerate, playbookHref }: {
+// The Follow-Up Decision Support as Rafa's prompt writes it. A reply in his
+// four-part format is laid out part by part (FollowUpSupportView, 20 Nov
+// 2026: "the AI talks too much… important things highlighted"); anything else
+// is shown as the markdown it is. Any HTML in the reply is shown as text,
+// never rendered. Same words either way.
+function FollowUpSupportBlock({ text, busy, error, onRegenerate, templates }: {
   text: string
   busy: boolean
   error: string | null
   onRegenerate?: () => void
-  playbookHref?: string
+  templates: PlaybookTemplateGroup[]
 }) {
-  const html = marked.parse(followUpDisplayText(text).replace(/&/g, '&amp;').replace(/</g, '&lt;'), { gfm: true, breaks: true, async: false }) as string
+  const view = parseFollowUpSupport(followUpDisplayText(text))
+  const html = view ? '' : marked.parse(followUpDisplayText(text).replace(/&/g, '&amp;').replace(/</g, '&lt;'), { gfm: true, breaks: true, async: false }) as string
   return (
     <>
-      <div className={`mt-6 rounded-2xl border border-[#e5e3df] bg-[#faf9f7] px-5 py-5 transition-opacity sm:px-7 sm:py-6 ${busy ? 'opacity-50' : ''}`}>
+      <div className={`mt-6 rounded-2xl border border-[#e5e3df] bg-[#faf9f7] px-4 py-5 transition-opacity sm:px-7 sm:py-6 ${busy ? 'opacity-50' : ''}`}>
         <p className={`flex items-center gap-2 ${KICKER_GOLD}`}><Sparkles size={13} /> Follow-Up Decision Support</p>
-        <div className="pattern-prose mt-3 [&_p]:my-2.5 [&_ol]:my-2.5 [&_ul]:my-2" dangerouslySetInnerHTML={{ __html: html }} />
+        {view ? (
+          <div className="mt-4"><FollowUpSupportView view={view} templates={templates} /></div>
+        ) : (
+          <div className="pattern-prose mt-3 [&_p]:my-2.5 [&_ol]:my-2.5 [&_ul]:my-2" dangerouslySetInnerHTML={{ __html: html }} />
+        )}
       </div>
-      <FollowUpFooter busy={busy} error={error} playbookHref={playbookHref} action={onRegenerate ? { label: busy ? 'Rewriting…' : 'Regenerate', onClick: onRegenerate } : undefined} />
+      <FollowUpFooter busy={busy} error={error} action={onRegenerate ? { label: busy ? 'Rewriting…' : 'Regenerate', onClick: onRegenerate } : undefined} />
     </>
   )
 }
 
 // Before the Follow-Up Decision Support exists (cards from before 18 Nov 2026,
 // or while it is being written right after a new card).
-function GetFollowUpSupport({ busy, error, onRequest, playbookHref }: {
+function GetFollowUpSupport({ busy, error, onRequest }: {
   busy: boolean
   error: string | null
   onRequest: () => void
-  playbookHref?: string
 }) {
   return (
     <>
@@ -642,25 +662,21 @@ function GetFollowUpSupport({ busy, error, onRequest, playbookHref }: {
           {busy ? 'Writing recommendations from the playbook… usually under a minute' : 'Get follow-up recommendations'}
         </button>
       </div>
-      <FollowUpFooter busy={busy} error={error} playbookHref={playbookHref} />
+      <FollowUpFooter busy={busy} error={error} />
     </>
   )
 }
 
-function FollowUpFooter({ busy, error, playbookHref, action }: {
+// The playbook link moved into the playbook panel below (20 Nov 2026); this
+// keeps Regenerate (admins) and any error.
+function FollowUpFooter({ busy, error, action }: {
   busy: boolean
   error: string | null
-  playbookHref?: string
   action?: { label: string; onClick: () => void }
 }) {
-  if (!playbookHref && !action && !error) return null
+  if (!action && !error) return null
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
-      {playbookHref && (
-        <a href={playbookHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-stone-800 underline-offset-4 hover:underline touch:py-1.5">
-          <BookOpen size={14} /> Read the full Retorno Strategy Playbook
-        </a>
-      )}
+    <div className="mt-3 flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[13px]">
       {action && (
         <button type="button" onClick={action.onClick} disabled={busy} className="inline-flex items-center gap-1.5 text-stone-500 transition-colors hover:text-stone-900 disabled:opacity-50 touch:py-1.5">
           {busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} {action.label}

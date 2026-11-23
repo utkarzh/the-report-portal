@@ -7,6 +7,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { reconcilePendingNegotiations } from '@/lib/assemblyai/reconcile'
 import { SALES_COACH_AUDIO_BUCKET, isMissingReevaluatedColumn } from '@/lib/sales-coach'
 import { isSalesCoachAdminEmail } from '@/lib/sales-coach-admins'
+import { parsePlaybook, playbookTemplateGroups } from '@/lib/sales-coach-playbook'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import NegotiationWorkspace from '@/components/sales-coach/NegotiationWorkspace'
 import DeleteNegotiationButton from '@/components/sales-coach/DeleteNegotiationButton'
@@ -39,7 +40,7 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
 
   // Everything below depends only on `n`, so it's fetched in parallel: one
   // database round trip instead of five in a row.
-  const [signed, msgResult, correctionResult, latestCopyResult, creator] = await Promise.all([
+  const [signed, msgResult, correctionResult, latestCopyResult, creator, playbookResult] = await Promise.all([
     // Short-lived signed URL for the private audio object (service role).
     n.audio_path
       ? supabaseAdmin.storage.from(SALES_COACH_AUDIO_BUCKET).createSignedUrl(n.audio_path, 60 * 60)
@@ -68,7 +69,16 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
     profile.role === 'admin' && n.user_id
       ? supabaseAdmin.from('profiles').select('full_name').eq('id', n.user_id).single()
       : Promise.resolve(null),
+    // The Retorno playbook, for its ready-to-send messages in the Follow-Up
+    // section (only outcomes that get a follow-up show them).
+    n.report_card && n.declared_outcome !== 'signed'
+      ? supabaseAdmin.from('sales_coach_knowledge').select('content').eq('doc_key', 'followup_playbook').maybeSingle()
+      : Promise.resolve(null),
   ])
+  const playbookText = (playbookResult?.data?.content || '').trim()
+  const playbookTemplates = playbookText && !playbookText.toUpperCase().startsWith('PLACEHOLDER')
+    ? playbookTemplateGroups(parsePlaybook(playbookText))
+    : []
 
   const audioUrl: string | null = signed?.data?.signedUrl ?? null
   const messages = (msgResult.data || []) as SalesCoachMessage[]
@@ -114,6 +124,7 @@ export default async function NegotiationDetailPage({ params, searchParams }: Pr
           autoStart={searchParams.start === '1'}
           creatorName={creatorName}
           newerReevaluationId={newerReevaluationId}
+          playbookTemplates={playbookTemplates}
         />
       </div>
     </div>

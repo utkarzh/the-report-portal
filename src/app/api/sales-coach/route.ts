@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
 import { canAccessSalesNegotiationCoach } from '@/lib/access'
-import { deriveCompanyFromFilename, isSalesCoachOutcome } from '@/lib/sales-coach'
+import { deriveCompanyFromFilename, isSalesCoachOutcome, isSelectableSalesCoachOutcome } from '@/lib/sales-coach'
 import { canonicalMediaName } from '@/lib/media-library-server'
 import type { SalesCoachParticipant } from '@/types'
 
@@ -42,6 +42,11 @@ export async function POST(request: NextRequest) {
   // Declared outcome is required and single-choice (US-036).
   if (!isSalesCoachOutcome(declaredOutcome)) {
     return NextResponse.json({ error: 'A valid declared outcome is required' }, { status: 400 })
+  }
+  // A hidden outcome (Uncertain, since 20 Nov 2026) can't be declared on a new
+  // submission; re-evaluations of older negotiations go through their own route.
+  if (!isSelectableSalesCoachOutcome(declaredOutcome)) {
+    return NextResponse.json({ error: 'Please declare the outcome as Signed, Retorno or Lost.' }, { status: 400 })
   }
 
   // Required contextual fields (US-034). Company is the one exception: it can

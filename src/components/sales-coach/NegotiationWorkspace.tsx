@@ -21,6 +21,7 @@ import { coachGreeting, coachingTrackSwitches, followUpSupportApplies, formatOut
 import { formatDayMonth, formatDayMonthYear } from '@/lib/date-format'
 import { prefetchVoiceSecret } from '@/lib/sales-coach-voice-client'
 import type { SalesCoachNegotiation, SalesCoachMessage, SalesCoachCorrection, SalesCoachFollowUpSupport } from '@/types'
+import type { PlaybookTemplateGroup } from '@/lib/sales-coach-playbook'
 import { useKeepScreenOn } from '@/lib/use-mobile'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -65,9 +66,11 @@ interface Props {
   // The most recent "Re-evaluate" copy of this negotiation, when it isn't
   // this one (migration 036) — so an older card points to the newer one.
   newerReevaluationId?: string | null
+  // The playbook's ready-to-send messages, for the Follow-Up section.
+  playbookTemplates?: PlaybookTemplateGroup[]
 }
 
-export default function NegotiationWorkspace({ negotiation: initial, messages, corrections: initialCorrections, audioUrl, canDownloadAudio, isAdmin, autoStart, creatorName, newerReevaluationId }: Props) {
+export default function NegotiationWorkspace({ negotiation: initial, messages, corrections: initialCorrections, audioUrl, canDownloadAudio, isAdmin, autoStart, creatorName, newerReevaluationId, playbookTemplates }: Props) {
   const router = useRouter()
   const [n, setN] = useState<SalesCoachNegotiation>(initial)
   const [corrections, setCorrections] = useState<SalesCoachCorrection[]>(initialCorrections)
@@ -536,6 +539,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
                 followUpError={followUpError}
                 canRegenerateFollowUp={isAdmin || canDownloadAudio}
                 playbookHref="/commercial/sales-coach/playbook"
+                playbookTemplates={playbookTemplates}
               />
             </div>
           )}

@@ -9,7 +9,7 @@ import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import MediaSelect from '@/components/ui/MediaSelect'
 import { getSupabaseBrowserClient, ensureFreshSession } from '@/lib/supabase/client'
-import { SALES_COACH_OUTCOMES } from '@/lib/sales-coach'
+import { SELECTABLE_SALES_COACH_OUTCOMES } from '@/lib/sales-coach'
 import { postWithRetry } from '@/lib/post-with-retry'
 import type { MediaOption, SalesCoachOutcome, SalesCoachParticipant } from '@/types'
 import { useKeepScreenOn } from '@/lib/use-mobile'
@@ -191,8 +191,8 @@ export default function SalesCoachForm({ userId, media }: { userId: string; medi
       {/* ── Step 2: declared outcome ────────────────────────────────── */}
       <section className="rounded-2xl border border-[#e5e3df] bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold text-gray-900">What was the final outcome of this negotiation? *</h2>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {SALES_COACH_OUTCOMES.map((o) => (
+        <div className={`mt-3 grid grid-cols-1 gap-2 ${SELECTABLE_SALES_COACH_OUTCOMES.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+          {SELECTABLE_SALES_COACH_OUTCOMES.map((o) => (
             <button
               key={o.value}
               type="button"

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines, Phone } from 'lucide-react'
+import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines } from 'lucide-react'
 import { isTouchDevice } from '@/lib/use-mobile'
 import VoiceCoachSession from '@/components/sales-coach/VoiceCoachSession'
 import { LiveCoachLockup } from '@/components/sales-coach/LiveCoachBrand'
@@ -539,7 +539,7 @@ export default function CoachConversation({
                   <LiveCoachLockup size="sm" />
                   <span className="mt-2 block text-xs leading-5 text-white/60">A real-time voice call with your coach: role-play the CEO, rehearse the close, plan the next step. Interrupt any time.</span>
                 </span>
-                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white text-black transition-transform group-hover:scale-105"><Phone size={16} /></span>
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white text-black transition-transform group-hover:scale-105"><Mic size={16} /></span>
               </button>
             )}
             {!LEGACY_VOICE_MODE && <p className="mt-5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Or type a question</p>}
