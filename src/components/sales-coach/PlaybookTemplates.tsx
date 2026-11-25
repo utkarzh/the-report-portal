@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { BookOpen, Check, ChevronDown, Copy, Info, Mail, MessageCircle, Quote, ArrowUpRight } from 'lucide-react'
+import { BookOpen, Check, ChevronDown, Copy, Info, Mail, MessageCircle, Quote, ArrowUpRight, X } from 'lucide-react'
 import { PLACEHOLDER, isPriceLine, type PlaybookExample, type PlaybookTemplateGroup } from '@/lib/sales-coach-playbook'
 
 // Rafa's example messages from the TRC Retorno Strategy Playbook as ready-to-
@@ -147,10 +148,11 @@ function exampleDescriptor(e: PlaybookExample): string | null {
   return null
 }
 
-export function TemplateCard({ example: e, heading }: { example: PlaybookExample; heading?: string }) {
+// full: show a long email whole, with no "Show the whole email" (the pop-up).
+export function TemplateCard({ example: e, heading, full = false }: { example: PlaybookExample; heading?: string; full?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const ch = CHANNEL[e.channel]
-  const long = e.lines.length > 12
+  const long = !full && e.lines.length > 12
   const descriptor = exampleDescriptor(e)
   const title = heading ?? (e.count > 1 ? `Example ${e.index}` : 'Example')
 
@@ -257,19 +259,57 @@ export function PlaybookTemplatesPanel({ groups, playbookHref }: { groups: Playb
   )
 }
 
-function TemplateGroupBlock({ group: g }: { group: PlaybookTemplateGroup }) {
+function TemplateGroupBlock({ group: g, full = false }: { group: PlaybookTemplateGroup; full?: boolean }) {
   return (
-    <section id={g.tacticNumber ? `pb-template-${g.tacticNumber.replace('.', '-')}` : undefined} className="flex scroll-mt-24 flex-col rounded-2xl transition-colors duration-700">
+    <section id={!full && g.tacticNumber ? `pb-template-${g.tacticNumber.replace('.', '-')}` : undefined} className="flex scroll-mt-24 flex-col rounded-2xl transition-colors duration-700">
       <p className="flex items-baseline gap-2 text-[14px] font-semibold text-stone-900">
         {g.tacticNumber && <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-stone-600">{g.tacticNumber}</span>}
         {g.tactic}
       </p>
       {g.hints.map((h, i) => <p key={i} className="mt-1 text-[13px] text-stone-500">{h}</p>)}
       <div className={`mt-3 grid flex-1 grid-cols-1 gap-4 ${g.examples.length > 1 ? 'lg:grid-cols-2' : ''}`}>
-        {g.examples.map((e) => <TemplateCard key={e.key} example={e} />)}
+        {g.examples.map((e) => <TemplateCard key={e.key} example={e} full={full} />)}
       </div>
       {g.notes.length > 0 && <div className="mt-3 flex flex-col gap-2">{g.notes.map((n, i) => <PlaybookNote key={i} text={n} />)}</div>}
     </section>
+  )
+}
+
+// The playbook's templates in a pop-up window, opened from a recommended
+// action's "See possible WhatsApp templates" / "See email proposal template"
+// button (24 Nov 2026, Rafa: "upon clicking there, just have a window open…
+// with an icon that allows users to copy the email and paste it directly onto
+// the Outlook"). Same words and Copy buttons as the playbook page; portalled
+// to the page body so no card around the button can clip it.
+export function PlaybookTemplatesDialog({ title, groups, onClose }: { title: string; groups: PlaybookTemplateGroup[]; onClose: () => void }) {
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey) }
+  }, [onClose])
+
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="modal-backdrop-in absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="modal-sheet modal-panel-in relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[#efece6] bg-[#fcfbf9] px-5 py-4 sm:px-6">
+          <div className="min-w-0">
+            <p className="font-serif text-[19px] font-semibold leading-snug text-stone-900">{title}</p>
+            <p className="mt-1 text-[13px] text-stone-500">Copy one, then replace the <mark className="rounded bg-[#fdf0c7] px-1 font-semibold text-[#7a5418]">HIGHLIGHTED</mark> words and adapt it to this meeting.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="flex-shrink-0 rounded-lg p-1.5 touch:p-2.5 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-col gap-7 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
+          {groups.map((g) => <TemplateGroupBlock key={g.tacticNumber ?? g.tactic} group={g} full />)}
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

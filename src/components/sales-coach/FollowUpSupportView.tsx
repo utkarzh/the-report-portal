@@ -1,17 +1,51 @@
 'use client'
 
+import { useState } from 'react'
+import Link from 'next/link'
 import { marked } from 'marked'
-import { AlertTriangle, ArrowDown, Clock, Crosshair, Gauge, Info, ListChecks, UserCheck } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, BookOpen, Clock, Crosshair, Gauge, Info, ListChecks, Mail, MessageCircle, UserCheck } from 'lucide-react'
 import type { FollowUpView, InterestTone } from '@/lib/sales-coach-follow-up-view'
 import { templateGroupForAction, type PlaybookTemplateGroup } from '@/lib/sales-coach-playbook'
-import { showTemplateGroup } from '@/components/sales-coach/PlaybookTemplates'
+import { PlaybookTemplatesDialog } from '@/components/sales-coach/PlaybookTemplates'
 
 // The Follow-Up Decision Support laid out in its four parts (20 Nov 2026,
 // Rafa: the AI says a lot and people may not read it all, so what to do must
 // stand out). Every word the model wrote is shown; only the layout changes:
 // the interest verdict is a badge, each recommended action is a card whose
 // timing and objective lead, the watch-out is a warning, and the decision is
-// its own panel. An action that uses a playbook template links to it.
+// its own panel.
+//
+// 24 Nov 2026 (Rafa's Loom): part 2 is headed "Next possible actions", with
+// "Make your decision by reading the playbook" beside it; a WhatsApp action
+// gets "See possible WhatsApp templates" and the proposal email "See email
+// proposal template", each opening the playbook's templates in a pop-up (they
+// replaced the playbook panel under the section).
+const ACTIONS_HEADING = 'Next possible actions'
+
+const onlyWhatsApp = (g: PlaybookTemplateGroup) => g.examples.every((e) => e.channel === 'whatsapp')
+
+interface TemplateButton { label: string; channel: 'whatsapp' | 'email'; title: string; groups: PlaybookTemplateGroup[] }
+
+// The pop-up buttons for one action: the playbook's WhatsApp messages when the
+// action is a WhatsApp, and the template of the tactic it matches (the
+// proposal email, the contract…) unless that is a WhatsApp already offered.
+function templateButtons(title: string, templates: PlaybookTemplateGroup[], whatsapp: PlaybookTemplateGroup[]): TemplateButton[] {
+  const out: TemplateButton[] = []
+  const isWhatsApp = /whats\s*app/i.test(title)
+  if (isWhatsApp && whatsapp.length > 0) {
+    out.push({ label: 'See possible WhatsApp templates', channel: 'whatsapp', title: 'Possible WhatsApp templates', groups: whatsapp })
+  }
+  const group = templateGroupForAction(title, templates)
+  if (group && !(isWhatsApp && onlyWhatsApp(group))) {
+    out.push({
+      label: /proposal/i.test(group.tactic || '') ? 'See email proposal template' : `Use the playbook ${onlyWhatsApp(group) ? 'message' : 'template'}`,
+      channel: onlyWhatsApp(group) ? 'whatsapp' : 'email',
+      title: group.tactic || 'Playbook template',
+      groups: [group],
+    })
+  }
+  return out
+}
 
 // Markdown from the model; any HTML in it is shown as text, never rendered.
 function md(text: string, inline = false): string {
@@ -51,8 +85,13 @@ function PartHeading({ n, icon, children }: { n: number; icon: React.ReactNode; 
   )
 }
 
-export default function FollowUpSupportView({ view, templates = [] }: { view: FollowUpView; templates?: PlaybookTemplateGroup[] }) {
+export default function FollowUpSupportView({ view, templates = [], playbookHref }: { view: FollowUpView; templates?: PlaybookTemplateGroup[]; playbookHref?: string }) {
   const { interest, actions, watchOut, decision } = view
+  const [dialog, setDialog] = useState<{ title: string; groups: PlaybookTemplateGroup[] } | null>(null)
+  // Every WhatsApp message in the playbook, by tactic.
+  const whatsapp = templates
+    .map((g) => ({ ...g, examples: g.examples.filter((e) => e.channel === 'whatsapp') }))
+    .filter((g) => g.examples.length > 0)
   let n = 0
   return (
     <div className="flex flex-col gap-7">
@@ -84,11 +123,24 @@ export default function FollowUpSupportView({ view, templates = [] }: { view: Fo
       {/* 2. Recommended actions */}
       {actions && (
         <section>
-          <PartHeading n={++n} icon={<ListChecks size={15} />}>{actions.heading}</PartHeading>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <PartHeading n={++n} icon={<ListChecks size={15} />}>{ACTIONS_HEADING}</PartHeading>
+            {playbookHref && (
+              <Link
+                href={playbookHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex flex-shrink-0 items-center justify-center gap-2 self-start rounded-xl bg-stone-900 px-5 py-3 touch:py-3.5 text-sm font-semibold text-white shadow-[0_10px_24px_-12px_rgba(28,25,23,0.6)] transition hover:bg-black sm:self-center"
+              >
+                <BookOpen size={15} /> Make your decision by reading the playbook
+                <ArrowUpRight size={15} className="transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+              </Link>
+            )}
+          </div>
           {actions.intro && <Md text={actions.intro} className="mt-2 text-[14px] leading-[1.65] text-stone-600" />}
           <ol className="mt-3 flex flex-col gap-3.5">
             {actions.items.map((a) => {
-              const template = templateGroupForAction(a.title, templates)
+              const buttons = templateButtons(a.title, templates, whatsapp)
               const objective = a.fields.filter((f) => /objective|goal/i.test(f.label))
               const when = a.fields.filter((f) => /when|timing/i.test(f.label))
               const rest = a.fields.filter((f) => !objective.includes(f) && !when.includes(f))
@@ -106,14 +158,19 @@ export default function FollowUpSupportView({ view, templates = [] }: { view: Fo
                         )}
                       </div>
                     </div>
-                    {template?.tacticNumber && (
-                      <button
-                        type="button"
-                        onClick={() => showTemplateGroup(template.tacticNumber!)}
-                        className="inline-flex flex-shrink-0 items-center gap-1.5 self-start rounded-lg bg-white px-3 py-1.5 touch:py-2.5 text-xs font-semibold text-[#7a5418] ring-1 ring-inset ring-[#d9bf8a] transition hover:bg-[#fbf3df] sm:self-center"
-                      >
-                        <ArrowDown size={13} /> Use the playbook {template.examples.every((e) => e.channel === 'whatsapp') ? 'message' : 'template'}
-                      </button>
+                    {buttons.length > 0 && (
+                      <div className="flex flex-shrink-0 flex-wrap gap-2 self-start sm:self-center">
+                        {buttons.map((b) => (
+                          <button
+                            key={b.label}
+                            type="button"
+                            onClick={() => setDialog({ title: b.title, groups: b.groups })}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 touch:py-2.5 text-xs font-semibold text-[#7a5418] ring-1 ring-inset ring-[#d9bf8a] transition hover:bg-[#fbf3df]"
+                          >
+                            {b.channel === 'whatsapp' ? <MessageCircle size={13} /> : <Mail size={13} />} {b.label}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-col gap-3 px-5 py-4 sm:px-6">
@@ -176,6 +233,8 @@ export default function FollowUpSupportView({ view, templates = [] }: { view: Fo
           <Md text={o.body} className="mt-3 text-[14.5px] leading-[1.7] text-stone-700" />
         </section>
       ))}
+
+      {dialog && <PlaybookTemplatesDialog title={dialog.title} groups={dialog.groups} onClose={() => setDialog(null)} />}
     </div>
   )
 }

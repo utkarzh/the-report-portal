@@ -436,7 +436,14 @@ export const SALES_COACH_TRACKS: Record<SalesCoachTrack, { label: string; hint: 
   commercial: { label: 'Next commercial action', hint: 'Decide what to do with this opportunity now.' },
 }
 
+// The chat's opening line. For a retorno it's Rafa's two lines (24 Nov 2026:
+// "just in a couple of lines, more concise… let's not create cognitive
+// dissonance"), in his words. Other outcomes keep the earlier greeting: he
+// only reviewed a retorno.
 export function coachGreeting(card: SalesCoachReportCard, company: string | null): string {
+  if (card.declared_outcome === 'retorno') {
+    return `I've read your Report Card${company ? ` for ${company}` : ''}. We can go over your planteo to ensure the signature or the buy-in next time, or we can discuss your potential retorno actions.`
+  }
   const read = `I've read your Report Card${company ? ` for ${company}` : ''}, the full transcript and the TRC knowledge documents.`
   const invitation = (card.coaching_invitation || '').trim()
   return invitation
@@ -449,12 +456,15 @@ export function coachGreeting(card: SalesCoachReportCard, company: string | null
 // immediate priority. The Project Prompt: retorno → convert towards
 // signature; won → contract/implementation coordination only where relevant;
 // lost → a recovery route only if new evidence supports one, otherwise lessons.
+// A retorno's is one short line matching the greeting (24 Nov 2026, Rafa found
+// the long pre-filled text confusing next to the greeting); the coach already
+// has the Report Card and its Follow-Up Decision Support.
 function commercialTrackPrompt(card: SalesCoachReportCard): SalesCoachCoachingPrompt {
   const priority = (card.next_commercial_priority || '').trim()
   const withPriority = priority ? ` The Report Card named the immediate priority as: "${priority}"` : ''
   switch (card.declared_outcome) {
     case 'retorno':
-      return { track: 'commercial', label: 'Plan how to convert this retorno', prompt: `Let's work on converting this retorno into a signed contract.${withPriority} What should I do next, and when?` }
+      return { track: 'commercial', label: 'Plan how to convert this retorno', prompt: "Let's discuss my potential retorno actions." }
     case 'signed':
       return { track: 'commercial', label: 'Anything to coordinate after signature?', prompt: `The deal is signed. Is there anything in the contract or implementation I should coordinate now?${withPriority}` }
     case 'lost':

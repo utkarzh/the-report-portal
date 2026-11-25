@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines } from 'lucide-react'
+import { Mic, Square, Volume2, VolumeX, Send, MessageSquare, Radio, Sparkles, AudioLines, ArrowLeft } from 'lucide-react'
 import { isTouchDevice } from '@/lib/use-mobile'
 import VoiceCoachSession from '@/components/sales-coach/VoiceCoachSession'
 import { LiveCoachLockup } from '@/components/sales-coach/LiveCoachBrand'
@@ -61,6 +61,7 @@ export default function CoachConversation({
   callSubtitle,
   callRequest = 0,
   keepCallReady = false,
+  onBack,
 }: {
   negotiationId: string
   initialMessages: SalesCoachMessage[]
@@ -102,6 +103,10 @@ export default function CoachConversation({
   // Keep a call prepared even while this tab is hidden (the floating Live
   // Coach button is on every tab), so a tap there connects as fast as here.
   keepCallReady?: boolean
+  // Shows "Back to Report Card" at the top (24 Nov 2026, Rafa couldn't find
+  // the way back: the tabs are scrolled out of view, and the browser's Back
+  // left the negotiation).
+  onBack?: () => void
 }) {
   const [messages, setMessages] = useState<Msg[]>(
     initialMessages.map((m) => ({ role: m.role, content: m.content })),
@@ -453,6 +458,18 @@ export default function CoachConversation({
           onTurnsSaved={(turns) => setMessages((m) => [...m, ...turns])}
         />,
         document.body,
+      )}
+
+      {onBack && (
+        <div className="border-b border-[#eceae5] px-3 py-2 sm:px-4">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 touch:py-2.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+          >
+            <ArrowLeft size={14} /> Back to Report Card
+          </button>
+        </div>
       )}
 
       {/* Header */}

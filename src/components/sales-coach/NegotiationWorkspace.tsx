@@ -574,6 +574,7 @@ export default function NegotiationWorkspace({ negotiation: initial, messages, c
               callSubtitle={n.report_card?.meeting || undefined}
               callRequest={liveCoachRequest}
               keepCallReady
+              onBack={n.report_card ? () => setTab('card') : undefined}
             />
           </div>
           {tab === 'submission' && <SubmissionPanel n={n} open />}

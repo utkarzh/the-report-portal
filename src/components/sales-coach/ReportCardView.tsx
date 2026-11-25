@@ -23,6 +23,14 @@ import type {
   SalesCoachCardPoint, SalesCoachTrack, SalesCoachEvidence,
 } from '@/types'
 
+// The playbook panel under the Follow-Up section ("TRC Retorno Strategy
+// Playbook" with every ready-to-send message) is hidden (24 Nov 2026, Rafa:
+// "this whole block has to go away, it's too convoluted"). Its templates now
+// open in a pop-up from each recommended action, and "Make your decision by
+// reading the playbook" sits beside "Next possible actions". Set to true to
+// bring the panel back.
+const SHOW_PLAYBOOK_TEMPLATES_PANEL = false
+
 // The Report Card on screen, in the order reportCardSections() gives: A.
 // Negotiation Result under the title strip (Company · Meeting, Outcome tag top
 // right; first again since 19 Nov 2026), then B. Execution Scorecard (first
@@ -330,6 +338,7 @@ export default function ReportCardView({
                 error={followUpError}
                 onRegenerate={canRegenerateFollowUp ? onRequestFollowUp : undefined}
                 templates={playbookTemplates}
+                playbookHref={playbookHref}
               />
             ) : (
               <>
@@ -348,8 +357,9 @@ export default function ReportCardView({
               </>
             )}
             {/* The playbook, prominent, with its ready-to-send messages (20 Nov
-                2026). Retorno-type outcomes only, like the Decision Support. */}
-            {followUpSupportApplies(card) && (playbookHref || playbookTemplates.length > 0) && (
+                2026). Retorno-type outcomes only, like the Decision Support.
+                Hidden since 24 Nov 2026 (SHOW_PLAYBOOK_TEMPLATES_PANEL). */}
+            {SHOW_PLAYBOOK_TEMPLATES_PANEL && followUpSupportApplies(card) && (playbookHref || playbookTemplates.length > 0) && (
               <PlaybookTemplatesPanel groups={playbookTemplates} playbookHref={playbookHref} />
             )}
             {((!support && followUp?.nextStep) || onChooseTrack) && (
@@ -613,12 +623,13 @@ function standingParts(label: string, text: string): { status: string | null; re
 // 2026: "the AI talks too much… important things highlighted"); anything else
 // is shown as the markdown it is. Any HTML in the reply is shown as text,
 // never rendered. Same words either way.
-function FollowUpSupportBlock({ text, busy, error, onRegenerate, templates }: {
+function FollowUpSupportBlock({ text, busy, error, onRegenerate, templates, playbookHref }: {
   text: string
   busy: boolean
   error: string | null
   onRegenerate?: () => void
   templates: PlaybookTemplateGroup[]
+  playbookHref?: string
 }) {
   const view = parseFollowUpSupport(followUpDisplayText(text))
   const html = view ? '' : marked.parse(followUpDisplayText(text).replace(/&/g, '&amp;').replace(/</g, '&lt;'), { gfm: true, breaks: true, async: false }) as string
@@ -627,7 +638,7 @@ function FollowUpSupportBlock({ text, busy, error, onRegenerate, templates }: {
       <div className={`mt-6 rounded-2xl border border-[#e5e3df] bg-[#faf9f7] px-4 py-5 transition-opacity sm:px-7 sm:py-6 ${busy ? 'opacity-50' : ''}`}>
         <p className={`flex items-center gap-2 ${KICKER_GOLD}`}><Sparkles size={13} /> Follow-Up Decision Support</p>
         {view ? (
-          <div className="mt-4"><FollowUpSupportView view={view} templates={templates} /></div>
+          <div className="mt-4"><FollowUpSupportView view={view} templates={templates} playbookHref={playbookHref} /></div>
         ) : (
           <div className="pattern-prose mt-3 [&_p]:my-2.5 [&_ol]:my-2.5 [&_ul]:my-2" dangerouslySetInnerHTML={{ __html: html }} />
         )}
@@ -667,7 +678,7 @@ function GetFollowUpSupport({ busy, error, onRequest }: {
   )
 }
 
-// The playbook link moved into the playbook panel below (20 Nov 2026); this
+// The playbook link sits beside "Next possible actions" (24 Nov 2026); this
 // keeps Regenerate (admins) and any error.
 function FollowUpFooter({ busy, error, action }: {
   busy: boolean

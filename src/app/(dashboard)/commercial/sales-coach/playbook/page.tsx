@@ -48,7 +48,10 @@ export default async function SalesCoachPlaybookPage() {
             </span>
             <div className="min-w-0 flex-1">
               <h1 className="font-serif text-[26px] font-semibold leading-tight tracking-tight text-stone-900 sm:text-[32px]">{doc?.title || 'TRC Retorno Strategy Playbook'}</h1>
-              {doc?.subtitle && <p className="mt-1 text-sm text-stone-600">{doc.subtitle}</p>}
+              {/* "Prepared by Rafa, 14.11.2026 - Internal": for the Sales Coach
+                  admins only (24 Nov 2026, Rafa: "this cannot be seen by any
+                  users"). Still in the document the AI reads. */}
+              {canEdit && doc?.subtitle && <p className="mt-1 text-sm text-stone-600">{doc.subtitle}</p>}
             </div>
             {canEdit && (
               <Link
