@@ -1439,11 +1439,12 @@ export interface CopywritingProjectEvent {
   created_at: string;
 }
 
-// App-wide feedback widget (reviews + bug reports) — see
-// FeedbackWidget.tsx / /admin/feedback. Not gated by a can_access_* flag;
-// every signed-in user can submit.
+// "Report an issue" (issues + feedback) — see ReportIssue.tsx /
+// /admin/feedback. Not gated by a can_access_* flag: every signed-in user,
+// admins included, can raise one and follow its status; only admins see
+// everyone's. Statuses per migration 051.
 export type FeedbackType = 'review' | 'bug'
-export type FeedbackStatus = 'new' | 'reviewed'
+export type FeedbackStatus = 'new' | 'in_progress' | 'resolved' | 'closed'
 
 export interface AppFeedback {
   id: string
@@ -1454,7 +1455,11 @@ export interface AppFeedback {
   rating: number | null
   message: string
   page_url: string | null
-  status: FeedbackStatus
+  // 'reviewed' only on rows from before migration 051; read it through
+  // feedbackStatusOf(), which shows it as Closed.
+  status: FeedbackStatus | 'reviewed'
+  // Added by 051; absent before it runs.
+  status_updated_at?: string | null
   created_at: string
 }
 

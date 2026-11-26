@@ -31,6 +31,8 @@ import {
   Building2,
 } from "lucide-react";
 import type { UserRole } from "@/types";
+import ReportIssue from "@/components/feedback/ReportIssue";
+import { REPORT_ISSUE_ENABLED } from "@/lib/feedback";
 
 interface SidebarProps {
   role: UserRole;
@@ -353,7 +355,7 @@ export default function Sidebar({
             <NavLink item={{ label: 'Media Library', href: '/admin/media-library', icon: Newspaper }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Agencies', href: '/admin/agencies', icon: Building2 }} collapsed={collapsed} pathname={pathname} />
             <NavLink item={{ label: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }} collapsed={collapsed} pathname={pathname} />
-            <NavLink item={{ label: 'Feedback', href: '/admin/feedback', icon: Inbox }} collapsed={collapsed} pathname={pathname} />
+            <NavLink item={{ label: 'Reported Issues', href: '/admin/feedback', icon: Inbox }} collapsed={collapsed} pathname={pathname} />
           </>
         )}
       </nav>
@@ -361,6 +363,18 @@ export default function Sidebar({
       <div
         className={`pb-5 border-t border-gray-800 pt-4 px-5 ${collapsed ? "lg:px-3" : ""}`}
       >
+        {/* Every role: admins raise issues too. In the sidebar, not floating
+            over the page, so it can never cover a page's buttons. */}
+        {REPORT_ISSUE_ENABLED && (
+          <div className="mb-4">
+            <ReportIssue
+              variant="sidebar"
+              collapsed={collapsed}
+              onOpen={onMobileClose}
+            />
+          </div>
+        )}
+
         {role === "user" && (
           <div className={`mb-4 ${collapsed ? "lg:hidden" : ""}`}>
             <div className="flex justify-between text-xs text-gray-400 mb-1.5">

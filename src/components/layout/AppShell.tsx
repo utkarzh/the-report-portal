@@ -2,8 +2,8 @@
 
 import Sidebar from './Sidebar'
 import MobileTopBar from './MobileTopBar'
-import FeedbackWidget from '@/components/feedback/FeedbackWidget'
-import { FEEDBACK_WIDGET_ENABLED } from '@/lib/feedback'
+import ReportIssue from '@/components/feedback/ReportIssue'
+import { REPORT_ISSUE_ENABLED } from '@/lib/feedback'
 import { useMobileDrawer } from '@/lib/use-mobile'
 import type { UserRole } from '@/types'
 
@@ -53,7 +53,9 @@ export default function AppShell({
   // sidebar + independently scrolling main.
   return (
     <div className="flex min-h-dvh flex-col lg:h-screen lg:min-h-0 lg:flex-row lg:overflow-hidden">
-      <MobileTopBar onOpenMenu={drawer.openDrawer} menuOpen={drawer.open} />
+      <MobileTopBar onOpenMenu={drawer.openDrawer} menuOpen={drawer.open}>
+        {REPORT_ISSUE_ENABLED && <ReportIssue variant="topbar" />}
+      </MobileTopBar>
 
       {/* Backdrop — mobile only */}
       {drawer.open && (
@@ -87,8 +89,6 @@ export default function AppShell({
       <main className="min-w-0 flex-1 overflow-x-clip bg-[#f0efec] lg:overflow-x-auto lg:overflow-y-auto">
         {children}
       </main>
-
-      {FEEDBACK_WIDGET_ENABLED && <FeedbackWidget />}
     </div>
   );
 }

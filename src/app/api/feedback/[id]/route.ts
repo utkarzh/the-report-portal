@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { User } from '@supabase/supabase-js'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getApiUser } from '@/lib/auth/api-user'
+import { isFeedbackStatus } from '@/lib/feedback'
 
 export const runtime = 'nodejs'
 
@@ -21,19 +22,37 @@ async function requireAdmin(): Promise<AdminResult> {
   return { user: auth.user, response: undefined }
 }
 
-// PATCH /api/feedback/[id] — admin-only triage toggle (new <-> reviewed).
+// PATCH /api/feedback/[id] — admin-only: move a report to another status
+// (Open / In progress / Resolved / Closed). The reporter sees the change
+// under "My reports".
 export async function PATCH(request: NextRequest, { params }: Params) {
   const admin = await requireAdmin()
   if (!admin.user) return admin.response
 
   const body = await request.json().catch(() => ({}))
   const status = (body as Record<string, unknown>).status
-  if (status !== 'new' && status !== 'reviewed') {
+  if (!isFeedbackStatus(status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
 
-  const { error } = await supabaseAdmin.from('app_feedback').update({ status }).eq('id', params.id)
+  let { data, error } = await supabaseAdmin
+    .from('app_feedback')
+    .update({ status, status_updated_at: new Date().toISOString() })
+    .eq('id', params.id)
+    .select('id')
+  // Before migration 051 there is no status_updated_at column (42703).
+  if (error?.code === '42703') {
+    ;({ data, error } = await supabaseAdmin.from('app_feedback').update({ status }).eq('id', params.id).select('id'))
+  }
+  // ...and the old CHECK only allows new/reviewed (23514).
+  if (error?.code === '23514') {
+    return NextResponse.json(
+      { error: 'This status needs the database update in supabase/migrations/051_app_feedback_status.sql. Run it in the Supabase SQL editor, then try again.' },
+      { status: 409 },
+    )
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data || data.length === 0) return NextResponse.json({ error: 'Report not found' }, { status: 404 })
 
   return NextResponse.json({ success: true })
 }

@@ -8,6 +8,8 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import MobileTopBar from '@/components/layout/MobileTopBar'
 import { useMediaQuery, useMobileDrawer } from '@/lib/use-mobile'
 import NotificationBell from './NotificationBell'
+import ReportIssue from '@/components/feedback/ReportIssue'
+import { REPORT_ISSUE_ENABLED } from '@/lib/feedback'
 
 // Icons are resolved here, inside the client boundary, from a plain string
 // key — the parent layouts are Server Components, and a React component
@@ -56,6 +58,7 @@ export default function FinanceShell({ navItems, personaLabel, userName, backHre
   return (
     <div className="flex min-h-dvh flex-col lg:h-screen lg:min-h-0 lg:flex-row lg:overflow-hidden">
       <MobileTopBar onOpenMenu={drawer.openDrawer} menuOpen={drawer.open} homeHref={navItems[0]?.href}>
+        {REPORT_ISSUE_ENABLED && <ReportIssue variant="topbar" />}
         {isDesktop === false && <NotificationBell placement="topbar" />}
       </MobileTopBar>
 
@@ -128,6 +131,11 @@ export default function FinanceShell({ navItems, personaLabel, userName, backHre
         </nav>
 
         <div className="border-t border-gray-800 pt-4 pb-5 px-5">
+          {REPORT_ISSUE_ENABLED && (
+            <div className="mb-4">
+              <ReportIssue variant="sidebar" onOpen={drawer.close} />
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-xs font-medium text-white truncate">{userName || 'User'}</p>
