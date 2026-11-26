@@ -5,6 +5,29 @@
 // Private Supabase Storage bucket holding uploaded audio. Created in migration 005.
 export const TRANSCRIPTION_AUDIO_BUCKET = 'transcription-audio'
 
+// What a transcript is called on screen: the interviewee, not the audio file.
+// The interviewee fields are required at upload since migration 024. Older
+// transcripts have none, so they keep their file-based title (hasInterviewee
+// false) and show the file name where the role would go.
+export function transcriptDisplay(t: {
+  title?: string | null
+  audio_filename?: string | null
+  full_name?: string | null
+  title_position?: string | null
+  company_org?: string | null
+  publication?: string | null
+}): { name: string; role: string | null; publication: string | null; fileName: string | null; hasInterviewee: boolean } {
+  const clean = (v?: string | null) => v?.trim() || null
+  const person = clean(t.full_name)
+  return {
+    name: person || clean(t.title) || 'Untitled transcript',
+    role: [clean(t.title_position), clean(t.company_org)].filter(Boolean).join(', ') || null,
+    publication: clean(t.publication),
+    fileName: clean(t.audio_filename),
+    hasInterviewee: Boolean(person),
+  }
+}
+
 // Active transcription provider. `assemblyai` (default) does speaker diarization
 // and transcribes the whole file as one async job — no in-browser chunking.
 // `openai` is the legacy chunked/streaming path (kept until AssemblyAI is proven,

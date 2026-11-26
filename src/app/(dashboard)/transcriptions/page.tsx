@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, AudioLines, WandSparkles, CheckCircle2, Loader2, AlertCircle, Sparkles, ShieldCheck } from 'lucide-react'
+import { Plus, AudioLines, WandSparkles, CheckCircle2, Loader2, AlertCircle, Sparkles, ShieldCheck, Newspaper, FileAudio } from 'lucide-react'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { reconcilePendingTranscriptions } from '@/lib/assemblyai/reconcile'
@@ -12,6 +12,7 @@ import EntityCard from '@/components/ui/EntityCard'
 import SearchInput from '@/components/ui/SearchInput'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import { orIlikeFilter } from '@/lib/search'
+import { transcriptDisplay } from '@/lib/transcriptions'
 import type { TranscriptionStatus } from '@/types'
 
 const PAGE_SIZE = 12
@@ -29,7 +30,7 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
   const runList = () => {
     let query = supabase
       .from('transcriptions')
-      .select('id, user_id, title, audio_filename, status, created_at, tokens_total, cost_usd', { count: 'exact' })
+      .select('id, user_id, title, audio_filename, full_name, title_position, company_org, publication, status, created_at, tokens_total, cost_usd', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(from, to)
 
@@ -37,7 +38,7 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
       query = query.eq('user_id', profile.id)
     }
     if (search) {
-      query = query.or(orIlikeFilter(['title', 'audio_filename'], search))
+      query = query.or(orIlikeFilter(['full_name', 'company_org', 'title_position', 'publication', 'title', 'audio_filename'], search))
     }
     return query
   }
@@ -130,7 +131,7 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
       )}
 
       <div className="mb-6">
-        <SearchInput basePath="/transcriptions" initialValue={search} placeholder="Search by title or filename..." />
+        <SearchInput basePath="/transcriptions" initialValue={search} placeholder="Search by interviewee, company, publication or file name..." />
       </div>
 
       {rows.length === 0 ? (
@@ -150,14 +151,36 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
       ) : (
         <>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map((t, i) => (
+          {rows.map((t, i) => {
+            // Led by the interviewee; the file name is a small grey line.
+            // Transcripts from before the interviewee fields keep the file.
+            const d = transcriptDisplay(t)
+            const showCaption = d.hasInterviewee && Boolean(d.role) && Boolean(d.publication || d.fileName)
+            return (
             <EntityCard
               key={t.id}
               index={i}
               href={`/transcriptions/${t.id}`}
               icon={<AudioLines size={16} />}
-              title={t.title}
-              subtitle={t.audio_filename || 'audio'}
+              title={d.name}
+              subtitle={(d.hasInterviewee && d.role) || d.fileName || 'audio'}
+              caption={showCaption ? (
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {d.publication && (
+                    <>
+                      <Newspaper size={11} className="flex-shrink-0" />
+                      <span className="max-w-[50%] flex-shrink-0 truncate">{d.publication}</span>
+                    </>
+                  )}
+                  {d.publication && d.fileName && <span className="flex-shrink-0 text-gray-300">·</span>}
+                  {d.fileName && (
+                    <>
+                      <FileAudio size={11} className="flex-shrink-0" />
+                      <span className="truncate">{d.fileName}</span>
+                    </>
+                  )}
+                </span>
+              ) : undefined}
               date={new Date(t.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
               creatorName={t.creatorName}
               badge={<StatusBadge status={t.status as TranscriptionStatus} />}
@@ -172,9 +195,10 @@ export default async function TranscriptionsPage({ searchParams }: { searchParam
                 ) : undefined
               }
               footerLabel="View transcript"
-              deleteSlot={profile.role === 'admin' ? <DeleteTranscriptionButton transcriptionId={t.id} transcriptionTitle={t.title} variant="icon" /> : undefined}
+              deleteSlot={profile.role === 'admin' ? <DeleteTranscriptionButton transcriptionId={t.id} transcriptionTitle={d.name} variant="icon" /> : undefined}
             />
-          ))}
+            )
+          })}
         </div>
 
         {totalPages > 1 && (

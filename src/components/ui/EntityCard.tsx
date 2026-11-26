@@ -15,6 +15,8 @@ interface EntityCardProps {
    *  Kept out of `badge` on purpose: the badge never shrinks, so a wide badge
    *  squeezes the title to nothing. */
   subtitlePrefix?: ReactNode
+  /** An optional third line under the subtitle, in small grey text. */
+  caption?: ReactNode
   date: string
   creatorName?: string | null
   badge?: ReactNode
@@ -32,7 +34,7 @@ interface EntityCardProps {
 // happened) and a staggered entrance so a full page of cards doesn't just
 // pop in at once.
 export default function EntityCard({
-  href, icon, title, subtitle, subtitlePrefix, date, creatorName, badge, metaRight, footerLabel, deleteSlot, index = 0,
+  href, icon, title, subtitle, subtitlePrefix, caption, date, creatorName, badge, metaRight, footerLabel, deleteSlot, index = 0,
 }: EntityCardProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -79,6 +81,7 @@ export default function EntityCard({
             <div className="min-w-0">
               <p className="line-clamp-2 text-sm font-semibold text-gray-900 sm:line-clamp-none sm:truncate">{title}</p>
               <p className="mt-1 line-clamp-2 text-xs text-gray-500 sm:line-clamp-none sm:truncate">{subtitlePrefix}{subtitle}</p>
+              {caption && <div className="mt-1.5 min-w-0 text-[11px] text-gray-400">{caption}</div>}
             </div>
           </div>
           {badge && <div className="flex-shrink-0">{badge}</div>}

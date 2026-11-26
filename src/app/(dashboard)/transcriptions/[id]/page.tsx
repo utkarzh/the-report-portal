@@ -4,7 +4,7 @@ import { redirect, notFound } from 'next/navigation'
 import { getProfileFromHeaders } from '@/lib/auth/session'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { TRANSCRIPTION_AUDIO_BUCKET } from '@/lib/transcriptions'
+import { TRANSCRIPTION_AUDIO_BUCKET, transcriptDisplay } from '@/lib/transcriptions'
 import { isTranscriptionAudioAdminEmail } from '@/lib/transcription-admins'
 import { reconcilePendingTranscriptions } from '@/lib/assemblyai/reconcile'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -47,13 +47,13 @@ export default async function TranscriptionDetailPage({ params }: { params: { id
           <Breadcrumbs
             items={[
               { label: 'Transcriptions', href: '/transcriptions' },
-              { label: transcription.title },
+              { label: transcriptDisplay(transcription).name },
             ]}
           />
           {profile.role === 'admin' && (
             <DeleteTranscriptionButton
               transcriptionId={transcription.id}
-              transcriptionTitle={transcription.title}
+              transcriptionTitle={transcriptDisplay(transcription).name}
               redirectTo="/transcriptions"
             />
           )}

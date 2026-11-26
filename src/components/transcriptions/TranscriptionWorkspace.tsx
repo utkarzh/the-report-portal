@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { marked } from 'marked'
-import { AudioLines, Mic, WandSparkles, FileText, Loader2, Download, Languages, ChevronDown, Copy, Check, Sparkles } from 'lucide-react'
+import { AudioLines, Mic, WandSparkles, FileText, Loader2, Download, Languages, ChevronDown, Copy, Check, Sparkles, Newspaper, FileAudio } from 'lucide-react'
 import type { Transcription } from '@/types'
 import {
   TRANSCRIPTION_PROVIDER,
   TRANSLATION_LANGUAGES,
   TRANSLATION_LANGUAGES_WITHOUT_PDF,
   type TranslationLanguage,
+  transcriptDisplay,
 } from '@/lib/transcriptions'
 import { useStickToBottom } from '@/lib/use-stick-to-bottom'
 import AudioPlayer from './AudioPlayer'
@@ -460,6 +461,9 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
   // Fact-checking reminder — pops whenever a Claude refine or translate starts.
   const disclaimer = useAiDisclaimer(refining || translating)
 
+  // Led by the interviewee, like the list; older transcripts keep the file name.
+  const display = transcriptDisplay(transcription)
+
   return (
     <div className="flex flex-col gap-6">
       <AiDisclaimerModal open={disclaimer.open} onClose={disclaimer.dismiss} />
@@ -497,10 +501,29 @@ export default function TranscriptionWorkspace({ transcription, audioUrl, isAdmi
               <AudioLines size={18} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-base font-semibold text-gray-900 sm:truncate">{transcription.title}</h1>
-              <p className="mt-1 truncate text-sm text-gray-500">
-                {transcription.audio_filename || 'audio'}
-              </p>
+              <h1 className="text-base font-semibold text-gray-900 sm:truncate">{display.name}</h1>
+              {display.hasInterviewee && display.role ? (
+                <>
+                  <p className="mt-1 truncate text-sm text-gray-500">{display.role}</p>
+                  <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-gray-400">
+                    {display.publication && (
+                      <>
+                        <Newspaper size={12} className="flex-shrink-0" />
+                        <span className="max-w-[50%] flex-shrink-0 truncate">{display.publication}</span>
+                      </>
+                    )}
+                    {display.publication && display.fileName && <span className="flex-shrink-0 text-gray-300">·</span>}
+                    {display.fileName && (
+                      <>
+                        <FileAudio size={12} className="flex-shrink-0" />
+                        <span className="truncate">{display.fileName}</span>
+                      </>
+                    )}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 truncate text-sm text-gray-500">{display.fileName || 'audio'}</p>
+              )}
               {transcription.topic_outline && (
                 <span
                   title={transcription.topic_outline_filename || 'Topic outline attached'}
