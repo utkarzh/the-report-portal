@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opportunity Radar Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<style>
+  :root { --content:#f0efec; --border:#e5e3df; --gold:#a07530; }
+  body { font-family: Inter, system-ui, sans-serif; background: var(--content); }
+  .card { background:#fff; border:1px solid var(--border); border-radius:10px; }
+  .chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .lbl { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:#6b7280; }
+  .tab-btn[aria-selected="true"] { color:#111827; border-color:#111827; }
+  .fade-in { animation: fade .25s ease-out; }
+  @keyframes fade { from { opacity:0; transform:translateY(4px) } to { opacity:1; transform:none } }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg) } }
+  details > summary { list-style:none; cursor:pointer; }
+  details > summary::-webkit-details-marker { display:none; }
+  details[open] .chev { transform: rotate(180deg); }
+</style>
+</head>
+<body class="text-gray-800">
+
+<div class="flex min-h-screen">
+  <!-- Sidebar: same look as the platform -->
+  <aside class="hidden lg:flex w-60 flex-shrink-0 bg-black border-r border-gray-800 flex-col">
+    <div class="px-5 py-5 border-b border-gray-800">
+      <div class="text-white text-sm font-semibold tracking-wide">THE REPORT COMPANY</div>
+      <div class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">AI Operating System</div>
+    </div>
+    <nav class="px-3 py-4 text-sm flex-1">
+      <div class="px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">Editorial</div>
+      <a class="flex px-3 py-2.5 rounded text-gray-400">Interview Tool</a>
+      <a class="flex px-3 py-2.5 rounded text-gray-400">Transcriptions</a>
+      <a class="flex px-3 py-2.5 rounded text-gray-400 mb-4">Editorial Briefs</a>
+      <div class="px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">Commercial</div>
+      <a class="flex items-center gap-2 px-3 py-2.5 rounded bg-white/10 text-white font-medium">Opportunity Radar
+        <span class="text-[9px] font-semibold uppercase tracking-wide text-amber-400/90 border border-amber-400/40 rounded px-1 leading-none py-px">New</span></a>
+      <a class="flex px-3 py-2.5 rounded text-gray-400">Business Cases</a>
+      <a class="flex px-3 py-2.5 rounded text-gray-400">Country Intelligence</a>
+      <a class="flex px-3 py-2.5 rounded text-gray-400">Meeting Preparation</a>
+      <a class="flex px-3 py-2.5 rounded text-gray-400">Presentations</a>
+      <a class="flex px-3 py-2.5 rounded text-gray-400">Sales Coach</a>
+    </nav>
+    <div class="px-5 py-4 border-t border-gray-800 flex items-center gap-3">
+      <div class="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-semibold text-gray-200">RM</div>
+      <div><p class="text-xs font-medium text-white">Management user</p><p class="text-[10px] text-gray-500 uppercase tracking-wide">Admin</p></div>
+    </div>
+  </aside>
+
+  <main class="flex-1 min-w-0">
+    <div class="bg-amber-100 border-b border-amber-200 text-amber-900 text-xs px-4 sm:px-8 py-2">
+      <b>Prototype, screens only.</b> Every country, advertiser, date and source below is made-up sample data to show the layout. Nothing has been researched.
+    </div>
+
+    <div class="max-w-6xl mx-auto px-4 sm:px-8 py-6">
+      <!-- Header -->
+      <div class="text-xs text-gray-500 mb-1">Commercial / Opportunity Radar</div>
+      <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+        <div>
+          <h1 class="text-xl font-semibold text-gray-900">Country Opportunity Outlook</h1>
+          <p class="text-sm text-gray-500 mt-1">Countries worth considering for opening in the next 6–12 months (Dec 2026 – Nov 2027). Last refreshed <b class="text-gray-700">24 Nov 2026</b> by Management user.</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="showTab('ask')" class="px-3.5 py-2 text-sm rounded-md border border-[#e5e3df] bg-white hover:bg-gray-50">Ask the Radar</button>
+          <button onclick="openRefresh()" class="px-3.5 py-2 text-sm rounded-md bg-black text-white hover:bg-gray-800">↻ Refresh the worldwide Outlook</button>
+        </div>
+      </div>
+
+      <!-- Admin strip, like other modules -->
+      <div class="mt-4 rounded-md border border-[#e9dcc3] bg-[#faf5ea] px-4 py-2 text-xs flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span class="font-semibold uppercase tracking-wider text-[#a07530]">Admin tools</span>
+        <button onclick="showTab('settings')" class="text-[#7d5a22] hover:underline">Evidence sources</button>
+        <button onclick="showTab('settings')" class="text-[#7d5a22] hover:underline">Competitor publications</button>
+        <button onclick="showTab('settings')" class="text-[#7d5a22] hover:underline">Research instructions</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="mt-5 border-b border-[#e5e3df] flex gap-6 text-sm" role="tablist">
+        <button class="tab-btn pb-2.5 border-b-2 border-transparent text-gray-500" data-tab="outlook" aria-selected="true" onclick="showTab('outlook')">Outlook</button>
+        <button class="tab-btn pb-2.5 border-b-2 border-transparent text-gray-500" data-tab="ask" onclick="showTab('ask')">Ask the Radar</button>
+        <button class="tab-btn pb-2.5 border-b-2 border-transparent text-gray-500" data-tab="log" onclick="showTab('log')">What changed</button>
+        <button class="tab-btn pb-2.5 border-b-2 border-transparent text-gray-500" data-tab="settings" onclick="showTab('settings')">Settings</button>
+      </div>
+
+      <!-- ============ OUTLOOK ============ -->
+      <section id="tab-outlook" class="pt-5">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="card p-4"><div class="lbl">Strong Opportunities</div><div class="text-2xl font-semibold mt-1" id="n-strong"></div></div>
+          <div class="card p-4"><div class="lbl">Worth Investigating</div><div class="text-2xl font-semibold mt-1" id="n-investigate"></div></div>
+          <div class="card p-4"><div class="lbl">Emerging</div><div class="text-2xl font-semibold mt-1" id="n-emerging"></div></div>
+          <div class="card p-4"><div class="lbl">Changed in last refresh</div><div class="text-2xl font-semibold mt-1">5 <button onclick="showTab('log')" class="text-xs font-medium text-gray-500 hover:underline align-middle">see why →</button></div></div>
+        </div>
+
+        <div class="mt-4 flex flex-wrap items-center gap-2 text-sm">
+          <input id="q" oninput="render()" placeholder="Search countries…" class="px-3 py-2 rounded-md border border-[#e5e3df] bg-white w-full sm:w-56">
+          <select id="f-region" onchange="render()" class="px-3 py-2 rounded-md border border-[#e5e3df] bg-white">
+            <option value="">All regions</option><option>Asia</option><option>Africa</option><option>Middle East</option><option>Europe & Central Asia</option><option>Americas</option>
+          </select>
+          <select id="f-market" onchange="render()" class="px-3 py-2 rounded-md border border-[#e5e3df] bg-white">
+            <option value="">All publication markets</option><option>United States</option><option>Germany</option><option>United Kingdom</option><option>UAE</option><option>China</option>
+          </select>
+          <span class="text-xs text-gray-500 ml-auto">No scores: countries are grouped and ordered by the Radar's judgement, with reasons.</span>
+        </div>
+
+        <div id="groups" class="mt-5 space-y-8"></div>
+      </section>
+
+      <!-- ============ ASK ============ -->
+      <section id="tab-ask" class="pt-5 hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div class="lg:col-span-2 card flex flex-col" style="min-height:560px">
+            <div id="chat" class="flex-1 p-5 space-y-5 overflow-y-auto" style="max-height:640px"></div>
+            <div class="border-t border-[#e5e3df] p-3 flex gap-2">
+              <input id="ask-input" onkeydown="if(event.key==='Enter')ask()" placeholder="Ask about the Outlook, a country, a market… or challenge a recommendation" class="flex-1 px-3 py-2 text-sm rounded-md border border-[#e5e3df]">
+              <button onclick="ask()" class="px-4 py-2 text-sm rounded-md bg-black text-white">Send</button>
+            </div>
+          </div>
+          <div class="space-y-4">
+            <div class="card p-4">
+              <div class="lbl mb-2">Try asking</div>
+              <div class="flex flex-col gap-2 text-sm" id="suggestions"></div>
+            </div>
+            <div class="card p-4 text-xs text-gray-600 leading-relaxed">
+              <div class="lbl mb-2">How answers work</div>
+              The Radar answers from the saved Outlook and its sources, and runs new research when the question needs it.
+              When your feedback changes an assessment, it proposes the change with a reason. Nothing changes until you apply it, and every change is recorded under <b>What changed</b>.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ CHANGE LOG ============ -->
+      <section id="tab-log" class="pt-5 hidden space-y-4"></section>
+
+      <!-- ============ SETTINGS ============ -->
+      <section id="tab-settings" class="pt-5 hidden space-y-5">
+        <div class="card p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h3 class="font-semibold text-gray-900">TRC advertising history</h3>
+              <p class="text-sm text-gray-500 mt-1">TRC's past countries, projects and advertisers. The Radar uses the workbook already uploaded for Meeting Prep and Business Cases, so there's nothing new to maintain.</p>
+            </div>
+            <button class="px-3 py-1.5 text-sm rounded-md border border-[#e5e3df] whitespace-nowrap">Replace file</button>
+          </div>
+          <div class="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            <span class="chip bg-gray-100 text-gray-700">📄 TRC_Advertiser_History.xlsm</span>
+            <span class="text-gray-500">4,221 rows · 96 countries · TRC and competitor placements · uploaded 12 Oct 2026</span>
+          </div>
+        </div>
+
+        <div class="card p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h3 class="font-semibold text-gray-900">Competitor publications</h3>
+              <p class="text-sm text-gray-500 mt-1">Researched on every refresh for countries, dates and advertisers. Pages or PDFs the Radar can't open are reported, never guessed.</p>
+            </div>
+            <button class="px-3 py-1.5 text-sm rounded-md bg-black text-white whitespace-nowrap">+ Add competitor</button>
+          </div>
+          <table class="w-full mt-4 text-sm">
+            <thead><tr class="text-left lbl"><th class="py-2">Name</th><th>Website</th><th>Last checked</th><th>Access</th></tr></thead>
+            <tbody class="divide-y divide-[#efede9]">
+              <tr><td class="py-2.5 font-medium">Competitor A (sample)</td><td class="text-gray-500">competitor-a.example</td><td class="text-gray-500">24 Nov 2026</td><td><span class="chip bg-emerald-50 text-emerald-700">Readable</span></td></tr>
+              <tr><td class="py-2.5 font-medium">Competitor B (sample)</td><td class="text-gray-500">competitor-b.example</td><td class="text-gray-500">24 Nov 2026</td><td><span class="chip bg-amber-50 text-amber-700">PDFs blocked · 3 reports unread</span></td></tr>
+              <tr><td class="py-2.5 font-medium">Competitor C (sample)</td><td class="text-gray-500">competitor-c.example</td><td class="text-gray-500">24 Nov 2026</td><td><span class="chip bg-emerald-50 text-emerald-700">Readable</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-900">Publication markets</h3>
+            <p class="text-sm text-gray-500 mt-1">Recommendations only use these. Titles come from the central Media Library.</p>
+            <ul class="mt-3 text-sm space-y-2">
+              <li class="flex justify-between"><span>🇺🇸 United States</span><span class="text-gray-500">USA Today, Newsweek, Foreign Policy</span></li>
+              <li class="flex justify-between"><span>🇩🇪 Germany</span><span class="text-gray-500">Der Spiegel</span></li>
+              <li class="flex justify-between"><span>🇬🇧 United Kingdom</span><span class="text-gray-500">The Guardian, The Times</span></li>
+              <li class="flex justify-between"><span>🇦🇪 UAE</span><span class="text-gray-500">From the Media Library</span></li>
+              <li class="flex justify-between"><span>🇨🇳 China <span class="chip bg-gray-100 text-gray-600 ml-1">Occasional, never the default</span></span><span class="text-gray-500">From the Media Library</span></li>
+            </ul>
+          </div>
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-900">Excluded this refresh</h3>
+            <p class="text-sm text-gray-500 mt-1">Countries at war or in severe political upheaval are skipped. The Radar lists them with a reason, and you can exclude others by hand.</p>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs">
+              <span class="chip bg-red-50 text-red-700">Country P · active conflict</span>
+              <span class="chip bg-red-50 text-red-700">Country Q · active conflict</span>
+              <span class="chip bg-red-50 text-red-700">Country R · coup, Sep 2026</span>
+              <span class="chip bg-gray-100 text-gray-600">Country S · excluded by hand</span>
+              <button class="chip border border-dashed border-gray-300 text-gray-500">+ Exclude a country</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-900">Research instructions</h3>
+            <p class="text-sm text-gray-500 mt-1">The prompts for screening, assessment and challenge. Editable, with version history and rollback like every other prompt.</p>
+            <div class="mt-3 text-sm flex items-center gap-3"><span class="chip bg-gray-100 text-gray-700">v1.2 · live</span><button class="text-gray-700 underline">Edit instructions</button><button class="text-gray-500 underline">History</button></div>
+          </div>
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-900">Cost limit per refresh</h3>
+            <p class="text-sm text-gray-500 mt-1">A refresh stops and keeps its progress if it would go over this.</p>
+            <div class="mt-3 flex items-center gap-2 text-sm"><span class="text-gray-500">$</span><input value="5.00" class="w-24 px-3 py-1.5 rounded-md border border-[#e5e3df]"><span class="text-gray-500">Last refresh used $2.71</span></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ============ REFRESH MODAL ============ -->
+<div id="refresh" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl w-full max-w-2xl shadow-xl fade-in max-h-[92vh] overflow-y-auto">
+    <div class="px-6 pt-5 pb-4 border-b border-[#e5e3df] flex justify-between items-start">
+      <div>
+        <h3 class="font-semibold text-gray-900">Refreshing the worldwide Outlook</h3>
+        <p class="text-xs text-gray-500 mt-1">Keep this page open while it runs (about 10–15 minutes). Closing it pauses the refresh, and opening it again continues.</p>
+      </div>
+      <button onclick="closeRefresh()" class="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+    </div>
+    <div class="px-6 py-5">
+      <ol id="stages" class="space-y-3"></ol>
+      <div class="mt-5">
+        <div class="flex justify-between text-xs text-gray-500 mb-1"><span>Spent so far</span><span id="cost">$0.00 of $5.00 limit</span></div>
+        <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div id="costbar" class="h-full bg-black transition-all" style="width:0%"></div></div>
+      </div>
+      <div class="mt-5">
+        <div class="lbl mb-2">Activity</div>
+        <div id="runlog" class="text-xs font-mono bg-gray-50 border border-[#e5e3df] rounded-md p-3 h-36 overflow-y-auto space-y-1 text-gray-600"></div>
+      </div>
+      <div id="run-done" class="hidden mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm">
+        <div class="font-semibold text-emerald-900">Outlook updated: 13 countries</div>
+        <ul class="mt-2 text-emerald-900/90 space-y-1 text-sm">
+          <li>• <b>Added</b>: Uzbekistan (Worth Investigating), Oman (Emerging)</li>
+          <li>• <b>Moved up</b>: Morocco, Worth Investigating → Strong</li>
+          <li>• <b>Moved down</b>: Kenya, Strong → Worth Investigating</li>
+          <li>• <b>Dropped</b>: Country T. Its 2027 event was postponed. The research is kept.</li>
+          <li>• <b>Kept</b>: Peru. This run found weaker evidence, but its earlier sources still hold.</li>
+        </ul>
+        <button onclick="closeRefresh();showTab('log')" class="mt-3 px-3 py-1.5 text-sm rounded-md bg-black text-white">See what changed</button>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-[#e5e3df] flex justify-end gap-2">
+      <button onclick="closeRefresh()" class="px-3.5 py-2 text-sm rounded-md border border-[#e5e3df]">Close</button>
+      <button id="run-btn" onclick="runRefresh()" class="px-3.5 py-2 text-sm rounded-md bg-black text-white">Start refresh</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ BUSINESS CASE HANDOFF MODAL ============ -->
+<div id="handoff" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl w-full max-w-lg shadow-xl fade-in">
+    <div class="px-6 pt-5 pb-4 border-b border-[#e5e3df]">
+      <h3 class="font-semibold text-gray-900">Send to Business Cases</h3>
+      <p class="text-xs text-gray-500 mt-1">Business Cases runs its full country and media assessment. Whether to open the country is still management's decision.</p>
+    </div>
+    <div class="px-6 py-5 space-y-4 text-sm">
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block"><span class="lbl">Country</span><input id="ho-country" class="mt-1 w-full px-3 py-2 rounded-md border border-[#e5e3df]"></label>
+        <label class="block"><span class="lbl">Publication market</span><input id="ho-market" class="mt-1 w-full px-3 py-2 rounded-md border border-[#e5e3df]"></label>
+      </div>
+      <label class="block"><span class="lbl">Media title</span>
+        <select id="ho-title" class="mt-1 w-full px-3 py-2 rounded-md border border-[#e5e3df] bg-white"></select></label>
+      <div>
+        <span class="lbl">Also send</span>
+        <div class="mt-2 space-y-2">
+          <label class="flex items-center gap-2"><input type="checkbox" checked class="accent-black"> Narrative and why now</label>
+          <label class="flex items-center gap-2"><input type="checkbox" checked class="accent-black"> Advertising evidence (confirmed and inferred, labelled)</label>
+          <label class="flex items-center gap-2"><input type="checkbox" checked class="accent-black"> Risks and counterarguments</label>
+          <label class="flex items-center gap-2"><input type="checkbox" checked class="accent-black"> <span id="ho-sources"></span></label>
+        </div>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-[#e5e3df] flex justify-end gap-2">
+      <button onclick="closeHandoff()" class="px-3.5 py-2 text-sm rounded-md border border-[#e5e3df]">Cancel</button>
+      <button onclick="closeHandoff();toast('In the real tool this opens a new Business Case with these details filled in.')" class="px-3.5 py-2 text-sm rounded-md bg-black text-white">Create Business Case →</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg"></div>
+
+<script>
+const FLAGS = { 'United States':'🇺🇸', 'Germany':'🇩🇪', 'United Kingdom':'🇬🇧', 'UAE':'🇦🇪', 'China':'🇨🇳' };
+const TITLES = { 'United States':['USA Today','Newsweek','Foreign Policy'], 'Germany':['Der Spiegel'], 'United Kingdom':['The Guardian','The Times'], 'UAE':['(choose from the Media Library)'], 'China':['(choose from the Media Library)'] };
+const CATS = [
+  { key:'strong', name:'Strong Opportunities', desc:'Convincing commercial evidence, narrative and publication-market rationale.', dot:'bg-emerald-500', chip:'bg-emerald-50 text-emerald-700' },
+  { key:'investigate', name:'Worth Investigating', desc:'Attractive prospect that needs further validation or evidence.', dot:'bg-amber-500', chip:'bg-amber-50 text-amber-700' },
+  { key:'emerging', name:'Emerging Opportunities', desc:'Potentially important, with more uncertainty or little advertising history.', dot:'bg-sky-500', chip:'bg-sky-50 text-sky-700' },
+];
+const CHANGE = {
+  new:  ['New this refresh','bg-violet-50 text-violet-700'],
+  up:   ['↑ Moved up','bg-emerald-50 text-emerald-700'],
+  down: ['↓ Moved down','bg-rose-50 text-rose-700'],
+  same: ['Unchanged','bg-gray-100 text-gray-500'],
+};
+
+// Sample data only: shapes the layout, not research.
+const S = (t,p,d,k='fact') => ({ t,p,d,k });
+const countries = [
+  { name:'Vietnam', flag:'🇻🇳', region:'Asia', cat:'strong', change:'same',
+    market:'Germany', alt:'United States', title:'Der Spiegel',
+    line:'Repeat advertiser demand plus a major manufacturing-investment story with clear German links.',
+    marketWhy:'Germany is a top EU trading partner and several German manufacturers are expanding plants (sample). The US is the alternative: larger audience, but TRC already ran a US report there recently.',
+    narrative:'From low-cost assembly to a high-tech manufacturing hub: semiconductor and green-energy investment, new rail and port projects (sample).',
+    trc:['TRC report in USA Today, 2021: 14 advertisers (TRC history)'],
+    comp:['Competitor A report, May 2024: 11 advertisers incl. 3 banks (competitor site)','Competitor B report, 2025: listed, advertiser pages unreadable (PDF blocked)'],
+    inferred:['National airline and two port operators look like likely prospects. Not confirmed.'],
+    whyNow:'A verified bilateral trade-forum milestone in Q2 2027 gives a natural anchor for opening in early 2027 (sample).',
+    risks:['Market may be saturated after the 2024–25 competitor reports.','German links rest mostly on 3 large firms. Is that enough for a German audience?'],
+    sources:[S('Investment ministry press release','gov site','12 Nov 2026'), S('Competitor A Vietnam report page','competitor-a.example','May 2024'), S('Trade statistics 2025','trade office','Oct 2026'), S('Radar reading: demand is "repeat" because 2 reports in 3 years both sold','—','24 Nov 2026','inference')],
+    assessed:'24 Nov 2026' },
+  { name:'Morocco', flag:'🇲🇦', region:'Africa', cat:'strong', change:'up',
+    changeWhy:'Moved up from Worth Investigating: competitor advertiser evidence confirmed on refresh.',
+    market:'United Kingdom', alt:'Germany', title:'The Times',
+    line:'Infrastructure build-up before a major sporting event, with confirmed competitor advertisers.',
+    marketWhy:'Strong UK investment and tourism links, with a large UK business audience (sample). Germany is the alternative for automotive and renewables.',
+    narrative:'Stadiums, high-speed rail and green hydrogen ahead of an international tournament (sample).',
+    trc:['No TRC report in the last 10 years (TRC history)'],
+    comp:['Competitor A report, 2025: 9 advertisers (competitor site)','Competitor C report, 2023: 12 advertisers (competitor site)'],
+    inferred:['Renewable-energy developers likely to advertise. Not confirmed.'],
+    whyNow:'A major international event in 2027 (sample anchor). Opening 6–9 months before it fits the lead-up.',
+    risks:['Two competitors active; offer must differ.','No TRC track record, so pricing is untested.'],
+    sources:[S('Event organiser timeline','event site','Sep 2026'), S('Competitor A Morocco report','competitor-a.example','2025'), S('UK–Morocco trade figures','trade office','Jun 2026')],
+    assessed:'24 Nov 2026' },
+  { name:'Kazakhstan', flag:'🇰🇿', region:'Europe & Central Asia', cat:'strong', change:'same',
+    market:'Germany', alt:'United States', title:'Der Spiegel',
+    line:'Critical-minerals and transit-corridor story; German industry is the natural audience.',
+    marketWhy:'German raw-materials partnership and logistics investment (sample).',
+    narrative:'Critical minerals, the Middle Corridor and economic reform (sample).',
+    trc:['TRC report in USA Today, 2025 (TRC history)'],
+    comp:['Competitor B report, 2024: 8 advertisers (competitor site)'],
+    inferred:['Mining and logistics groups. Not confirmed.'],
+    whyNow:'A bilateral anniversary in 2027 plus a planned investment forum (sample). The anniversary alone wouldn\'t be enough.',
+    risks:['TRC was there in 2025. Is it too soon to return?'],
+    sources:[S('Ministry announcement','gov site','Oct 2026'), S('Competitor B Kazakhstan page','competitor-b.example','2024')],
+    assessed:'24 Nov 2026' },
+  { name:'Saudi Arabia', flag:'🇸🇦', region:'Middle East', cat:'strong', change:'same',
+    market:'United States', alt:'UAE', title:'USA Today',
+    line:'Deep advertiser base and a stream of giga-projects; strong US business ties.',
+    marketWhy:'US investment and defence links; large US corporate audience (sample).',
+    narrative:'Economic diversification and giga-projects (sample).',
+    trc:['TRC reports in 2019 and 2022 (TRC history)'],
+    comp:['Competitor A report, 2025: 18 advertisers (competitor site)'],
+    inferred:[],
+    whyNow:'A major global summit hosted in 2027 (sample).',
+    risks:['Crowded: several competitors publish yearly.'],
+    sources:[S('Summit announcement','event site','Aug 2026')],
+    assessed:'24 Nov 2026' },
+  { name:'Philippines', flag:'🇵🇭', region:'Asia', cat:'investigate', change:'same',
+    market:'United States', alt:'United Kingdom', title:'Newsweek',
+    line:'Strong US relationship and a growing infrastructure story; advertiser evidence is thin.',
+    marketWhy:'Historic US alliance, large diaspora and US investment (sample).',
+    narrative:'Infrastructure and digital economy (sample).', trc:['No TRC report found (TRC history)'], comp:['Competitor C report, 2022: 6 advertisers'], inferred:['Conglomerates likely. Not confirmed.'],
+    whyNow:'Regional chairmanship year in 2026–27 (sample).', risks:['Advertiser evidence is 4 years old.'], sources:[S('Competitor C page','competitor-c.example','2022')], assessed:'24 Nov 2026' },
+  { name:'Kenya', flag:'🇰🇪', region:'Africa', cat:'investigate', change:'down',
+    changeWhy:'Moved down from Strong: the 2027 anchor event was moved to another country.',
+    market:'United Kingdom', alt:'United States', title:'The Guardian',
+    line:'Good UK links and a tech story, but the event anchor fell away.',
+    marketWhy:'Long UK trade and investment ties (sample).',
+    narrative:'East Africa\'s tech and finance hub (sample).', trc:['TRC report in 2018 (TRC history)'], comp:['Competitor A report, 2023: 7 advertisers'], inferred:['Telecoms and banks likely. Not confirmed.'],
+    whyNow:'Domestic reform milestones; no international anchor now.', risks:['Without the event, timing is weaker.','Election cycle risk.'], sources:[S('Event relocation notice','news site','15 Nov 2026')], assessed:'24 Nov 2026' },
+  { name:'Uzbekistan', flag:'🇺🇿', region:'Europe & Central Asia', cat:'investigate', change:'new',
+    market:'Germany', alt:'United States', title:'Der Spiegel',
+    line:'Fast reform story and rising German investment; no TRC or competitor history yet.',
+    marketWhy:'Growing German energy and textile investment (sample).',
+    narrative:'Privatisation and opening up (sample).', trc:['No TRC report found'], comp:['None found. 2 competitor sites couldn\'t be fully read'], inferred:['State banks and new private groups. Not confirmed.'],
+    whyNow:'Investment forum in spring 2027 (sample).', risks:['No advertiser track record anywhere.'], sources:[S('Forum website','event site','Nov 2026')], assessed:'24 Nov 2026' },
+  { name:'Peru', flag:'🇵🇪', region:'Americas', cat:'investigate', change:'same',
+    changeWhy:'Kept: this run found weaker evidence, but the earlier sources still hold.',
+    market:'United States', alt:'Germany', title:'USA Today',
+    line:'Mining and agro-export story with a US audience; political risk to watch.',
+    marketWhy:'US is the main trade partner (sample).', narrative:'Mining, agro-exports and a new mega-port (sample).',
+    trc:['TRC report in 2017'], comp:['Competitor B report, 2024: 10 advertisers'], inferred:[], whyNow:'New port opening in 2027 (sample).', risks:['Political instability.'], sources:[S('Port operator release','company site','Jul 2026')], assessed:'10 Nov 2026' },
+  { name:'Indonesia', flag:'🇮🇩', region:'Asia', cat:'investigate', change:'same',
+    market:'UAE', alt:'United States', title:'(choose from the Media Library)',
+    line:'Strong Gulf investment links; needs proof that UAE readers are the right audience.',
+    marketWhy:'Large UAE sovereign-fund investment (sample).', narrative:'New capital city and downstream industry (sample).',
+    trc:['TRC report in 2020'], comp:['Competitor A report, 2024'], inferred:[], whyNow:'Bilateral economic partnership review in 2027 (sample).', risks:['UAE market rationale unproven for this country.'], sources:[S('Partnership agreement page','gov site','2025')], assessed:'24 Nov 2026' },
+  { name:'Rwanda', flag:'🇷🇼', region:'Africa', cat:'emerging', change:'same',
+    market:'United Kingdom', alt:'UAE', title:'The Guardian',
+    line:'Strong conference and services narrative; small advertiser base.',
+    marketWhy:'Commonwealth and UK development links (sample).', narrative:'Conference hub and services economy (sample).',
+    trc:['No TRC report found'], comp:['None found'], inferred:['Few large companies. Uncertain.'], whyNow:'Hosts an international congress in 2027 (sample).', risks:['Advertiser depth may be too small.'], sources:[S('Congress listing','event site','2026')], assessed:'24 Nov 2026' },
+  { name:'Mongolia', flag:'🇲🇳', region:'Asia', cat:'emerging', change:'same',
+    market:'Germany', alt:'United States', title:'Der Spiegel',
+    line:'Raw-materials partnership with Germany; very limited advertising history.',
+    marketWhy:'German raw-materials partnership (sample).', narrative:'Copper, rare earths and a "third neighbour" policy (sample).',
+    trc:['No TRC report found'], comp:['Competitor C report, 2019'], inferred:['Mining firms. Uncertain.'], whyNow:'A bilateral anniversary in 2027 (sample).', risks:['Small market; the anniversary alone isn\'t enough.'], sources:[S('Embassy page','gov site','2026')], assessed:'24 Nov 2026' },
+  { name:'Oman', flag:'🇴🇲', region:'Middle East', cat:'emerging', change:'new',
+    market:'UAE', alt:'United Kingdom', title:'(choose from the Media Library)',
+    line:'Diversification and green-hydrogen story; competitor presence unclear.',
+    marketWhy:'Close UAE business ties and joint rail project (sample).', narrative:'Vision 2040 and green hydrogen (sample).',
+    trc:['No TRC report found'], comp:['Competitor B site unreadable. Unknown'], inferred:['Energy and logistics firms. Not confirmed.'], whyNow:'Cross-border rail opening (sample).', risks:['Evidence mostly inferred.'], sources:[S('Rail project update','company site','Oct 2026')], assessed:'24 Nov 2026' },
+  { name:'Guyana', flag:'🇬🇾', region:'Americas', cat:'emerging', change:'same',
+    market:'United States', alt:'United Kingdom', title:'Newsweek',
+    line:'Fastest-growing oil economy; few local advertisers yet.',
+    marketWhy:'US energy companies lead investment (sample).', narrative:'Oil-led growth and local-content push (sample).',
+    trc:['No TRC report found'], comp:['None found'], inferred:['Oil-service firms. Uncertain.'], whyNow:'New production phase in 2027 (sample).', risks:['Local advertiser base is small.'], sources:[S('Energy ministry update','gov site','2026')], assessed:'24 Nov 2026' },
+];
+
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function list(items, empty){ return items.length ? '<ul class="space-y-1.5">' + items.map(i => `<li class="flex gap-2"><span class="text-gray-400">•</span><span>${esc(i)}</span></li>`).join('') + '</ul>' : `<p class="text-gray-400">${empty}</p>`; }
+
+function cardHtml(c, i){
+  const cat = CATS.find(x => x.key === c.cat);
+  const ch = CHANGE[c.change];
+  return `
+  <details class="card fade-in group" ${i===0 && c.cat==='strong' && c.name==='Vietnam' ? 'open' : ''}>
+    <summary class="p-4 sm:p-5 flex items-start gap-4">
+      <div class="text-3xl leading-none mt-0.5">${c.flag}</div>
+      <div class="flex-1 min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-semibold text-gray-900">${c.name}</span>
+          <span class="chip ${cat.chip}">${cat.name.replace(' Opportunities','')}</span>
+          <span class="chip bg-gray-900 text-white">${FLAGS[c.market]} ${c.market}</span>
+          <span class="text-xs text-gray-500">alt. ${FLAGS[c.alt]} ${c.alt}</span>
+          ${c.change !== 'same' || c.changeWhy ? `<span class="chip ${ch[1]}" title="${esc(c.changeWhy||'')}">${c.changeWhy && c.change==='same' ? 'Kept' : ch[0]}</span>` : ''}
+        </div>
+        <p class="text-sm text-gray-600 mt-1.5">${esc(c.line)}</p>
+        <p class="text-[11px] text-gray-400 mt-1">${c.region} · assessed ${c.assessed}</p>
+      </div>
+      <svg class="chev w-5 h-5 text-gray-400 transition-transform flex-shrink-0 mt-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </summary>
+    <div class="px-4 sm:px-5 pb-5 border-t border-[#efede9] pt-4">
+      ${c.changeWhy ? `<div class="mb-4 text-xs rounded-md bg-gray-50 border border-[#e5e3df] px-3 py-2"><b>Why it changed:</b> ${esc(c.changeWhy)}</div>` : ''}
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 text-sm">
+        <div>
+          <div class="lbl mb-1.5">Why this country</div>
+          <p>${esc(c.narrative)}</p>
+        </div>
+        <div>
+          <div class="lbl mb-1.5">Recommended publication market</div>
+          <p><b>${FLAGS[c.market]} ${c.market}</b> · suggested title <b>${esc(c.title)}</b> <span class="text-gray-400">(availability and price not assumed)</span></p>
+          <p class="text-gray-600 mt-1">${esc(c.marketWhy)}</p>
+        </div>
+        <div class="md:col-span-2">
+          <div class="lbl mb-2">Advertising evidence</div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="rounded-md border border-emerald-200 bg-emerald-50/50 p-3"><div class="text-[11px] font-semibold text-emerald-800 mb-1.5">✓ Confirmed · TRC history</div>${list(c.trc,'None')}</div>
+            <div class="rounded-md border border-emerald-200 bg-emerald-50/50 p-3"><div class="text-[11px] font-semibold text-emerald-800 mb-1.5">✓ Confirmed · competitors</div>${list(c.comp,'None found')}</div>
+            <div class="rounded-md border border-dashed border-amber-300 bg-amber-50/40 p-3"><div class="text-[11px] font-semibold text-amber-800 mb-1.5">? Inferred prospects, not confirmed</div>${list(c.inferred,'None suggested')}</div>
+          </div>
+        </div>
+        <div>
+          <div class="lbl mb-1.5">Why now</div>
+          <p>${esc(c.whyNow)}</p>
+        </div>
+        <div>
+          <div class="lbl mb-1.5">Risks, unknowns and counterarguments</div>
+          ${list(c.risks,'None noted')}
+        </div>
+        <div class="md:col-span-2">
+          <div class="lbl mb-1.5">Sources</div>
+          <ul class="space-y-1">${c.sources.map(s => `<li class="flex flex-wrap items-center gap-2"><span class="chip ${s.k==='fact'?'bg-gray-100 text-gray-700':'bg-amber-50 text-amber-700'}">${s.k==='fact'?'Source fact':'Radar inference'}</span><a class="underline decoration-gray-300 hover:decoration-gray-700">${esc(s.t)}</a><span class="text-xs text-gray-400">${esc(s.p)} · ${esc(s.d)}</span></li>`).join('')}</ul>
+        </div>
+      </div>
+      <div class="mt-5 pt-4 border-t border-[#efede9] flex flex-wrap gap-2">
+        <button onclick="openHandoff('${c.name}')" class="px-3 py-1.5 text-sm rounded-md bg-black text-white">Send to Business Cases →</button>
+        <button onclick="askAbout('Challenge the ${c.name} recommendation')" class="px-3 py-1.5 text-sm rounded-md border border-[#e5e3df]">Challenge this</button>
+        <button onclick="askAbout('Compare the ${c.market} and ${c.alt} publication rationales for ${c.name}')" class="px-3 py-1.5 text-sm rounded-md border border-[#e5e3df]">Compare markets</button>
+        <button onclick="askAbout('Find competitor advertiser evidence for ${c.name}')" class="px-3 py-1.5 text-sm rounded-md border border-[#e5e3df]">Find competitor advertisers</button>
+      </div>
+    </div>
+  </details>`;
+}
+
+function render(){
+  const q = document.getElementById('q').value.toLowerCase();
+  const r = document.getElementById('f-region').value;
+  const m = document.getElementById('f-market').value;
+  const shown = countries.filter(c => (!q || c.name.toLowerCase().includes(q)) && (!r || c.region===r) && (!m || c.market===m || c.alt===m));
+  document.getElementById('groups').innerHTML = CATS.map(cat => {
+    const items = shown.filter(c => c.cat === cat.key);
+    return `<div>
+      <div class="flex items-baseline gap-3 mb-3"><span class="w-2.5 h-2.5 rounded-full ${cat.dot} self-center"></span><h2 class="font-semibold text-gray-900">${cat.name}</h2><span class="text-sm text-gray-400">${items.length}</span><span class="text-xs text-gray-500 hidden md:inline">${cat.desc}</span></div>
+      <div class="space-y-3">${items.length ? items.map(cardHtml).join('') : '<p class="text-sm text-gray-400">None match these filters.</p>'}</div>
+    </div>`;
+  }).join('');
+  for (const k of ['strong','investigate','emerging']) document.getElementById('n-'+k).textContent = countries.filter(c=>c.cat===k).length;
+}
+
+function showTab(t){
+  document.querySelectorAll('.tab-btn').forEach(b => b.setAttribute('aria-selected', b.dataset.tab===t ? 'true':'false'));
+  ['outlook','ask','log','settings'].forEach(x => document.getElementById('tab-'+x).classList.toggle('hidden', x!==t));
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+// ---------- Ask the Radar ----------
+const SUGGEST = ['Refresh the worldwide Outlook','Which African countries look interesting for the first half of 2027?','Why is Vietnam above Kenya?','Compare German and American publication rationales for Kazakhstan','Find competitor advertiser evidence for Morocco','Challenge the Kenya recommendation'];
+const chat = [
+  { who:'me', text:'Why is Vietnam above Kenya?' },
+  { who:'ai', html:`<p>Vietnam has stronger <b>confirmed</b> demand and a firmer anchor. Kenya lost its event.</p>
+    <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
+      <div class="rounded-md border border-[#e5e3df] p-3"><div class="font-semibold mb-1">🇻🇳 Vietnam · Strong</div>• 2 recent reports sold (TRC 2021, Competitor A 2024)<br>• Verified Q2 2027 bilateral forum<br>• Concern: saturation</div>
+      <div class="rounded-md border border-[#e5e3df] p-3"><div class="font-semibold mb-1">🇰🇪 Kenya · Worth Investigating</div>• Last confirmed report 2023<br>• 2027 event moved abroad (15 Nov)<br>• Concern: election cycle</div>
+    </div>
+    <p class="mt-3 text-xs text-gray-500">Sources: Competitor A Vietnam page (May 2024) · Event relocation notice (15 Nov 2026)</p>` },
+  { who:'me', text:'Challenge the Kenya recommendation. We have a strong contact at the investment agency, which should count.' },
+  { who:'ai', html:`<p>A contact helps sales but isn't market evidence, so the category doesn't change on that alone. One new finding does: a regional fintech summit in Nairobi in Q3 2027 (sample), which could replace the lost anchor.</p>
+    <div class="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm">
+      <div class="text-[11px] font-semibold uppercase tracking-wider text-violet-700 mb-1">Proposed change</div>
+      <p><b>Kenya</b>: keep <b>Worth Investigating</b>, update <i>Why now</i> to the Q3 2027 fintech summit, and add one source.</p>
+      <div class="mt-2 flex gap-2"><button onclick="toast('Applied and recorded under What changed (prototype).')" class="px-3 py-1 text-xs rounded-md bg-black text-white">Apply change</button><button onclick="toast('Kept the current assessment (prototype).')" class="px-3 py-1 text-xs rounded-md border border-violet-200 bg-white">Keep as is</button></div>
+    </div>` },
+];
+function renderChat(){
+  document.getElementById('chat').innerHTML = chat.map(m => m.who==='me'
+    ? `<div class="flex justify-end"><div class="max-w-[80%] bg-gray-900 text-white text-sm rounded-2xl rounded-br-sm px-4 py-2.5">${esc(m.text)}</div></div>`
+    : `<div class="flex gap-3"><div class="w-7 h-7 rounded-full bg-[#faf5ea] border border-[#e9dcc3] flex items-center justify-center text-xs flex-shrink-0">◎</div><div class="text-sm text-gray-800 max-w-[85%]">${m.html}</div></div>`).join('');
+  const el = document.getElementById('chat'); el.scrollTop = el.scrollHeight;
+  document.getElementById('suggestions').innerHTML = SUGGEST.map(s => `<button onclick="askAbout(this.textContent)" class="text-left px-3 py-2 rounded-md border border-[#e5e3df] hover:bg-gray-50">${esc(s)}</button>`).join('');
+}
+function askAbout(q){ showTab('ask'); document.getElementById('ask-input').value = q; ask(); }
+function ask(){
+  const input = document.getElementById('ask-input'); const q = input.value.trim(); if (!q) return; input.value='';
+  if (/^refresh/i.test(q)) { chat.push({who:'me',text:q}); chat.push({who:'ai',html:'<p>Starting a worldwide refresh. You can follow it in the progress window.</p>'}); renderChat(); setTimeout(openRefresh, 400); return; }
+  chat.push({ who:'me', text:q });
+  chat.push({ who:'ai', html:`<p class="text-gray-500 italic">In the real tool the Radar answers this from the saved Outlook and its sources, runs new research when needed, and cites what it used. If the answer changes an assessment, it shows a proposed change you can apply or keep.</p>` });
+  renderChat();
+}
+
+// ---------- What changed ----------
+function renderLog(){
+  const runs = [
+    { date:'24 Nov 2026', by:'Management user', cost:'$2.71', stats:'71 screened → 29 assessed → 16 validated → 13 in the Outlook', changes:[
+      ['new','Uzbekistan added as Worth Investigating','Spring 2027 investment forum and rising German investment. No advertiser history yet.'],
+      ['new','Oman added as Emerging','Rail project with the UAE. Evidence mostly inferred.'],
+      ['up','Morocco: Worth Investigating → Strong','Competitor advertiser evidence confirmed on two competitor sites.'],
+      ['down','Kenya: Strong → Worth Investigating','The 2027 anchor event was moved to another country (15 Nov 2026).'],
+      ['drop','Country T dropped','Its 2027 event was postponed indefinitely. The research is kept and can be reused.'],
+      ['keep','Peru kept as Worth Investigating','This run found less, but the earlier sources (Jul 2026) still hold.'],
+    ]},
+    { date:'10 Nov 2026', by:'Management user', cost:'$3.40', stats:'First build: 88 screened → 34 assessed → 18 validated → 14 in the Outlook', changes:[] },
+  ];
+  const tag = { new:['Added','bg-violet-50 text-violet-700'], up:['Moved up','bg-emerald-50 text-emerald-700'], down:['Moved down','bg-rose-50 text-rose-700'], drop:['Dropped','bg-gray-200 text-gray-700'], keep:['Kept','bg-gray-100 text-gray-600'] };
+  document.getElementById('tab-log').innerHTML = runs.map(r => `
+    <div class="card p-5">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="font-semibold text-gray-900">Refresh of ${r.date}</h3>
+        <span class="text-xs text-gray-500">by ${r.by} · cost ${r.cost}</span>
+      </div>
+      <p class="text-xs text-gray-500 mt-1">${r.stats}</p>
+      ${r.changes.length ? `<ul class="mt-4 divide-y divide-[#efede9]">${r.changes.map(c => `<li class="py-3 flex gap-3 text-sm"><span class="chip ${tag[c[0]][1]} self-start mt-0.5">${tag[c[0]][0]}</span><div><div class="font-medium text-gray-900">${c[1]}</div><div class="text-gray-600 text-sm mt-0.5">${c[2]}</div></div></li>`).join('')}</ul>` : '<p class="text-sm text-gray-500 mt-3">The first Outlook was built in this run.</p>'}
+    </div>`).join('') + `
+    <div class="card p-5">
+      <h3 class="font-semibold text-gray-900">Changes from your questions</h3>
+      <ul class="mt-3 text-sm divide-y divide-[#efede9]"><li class="py-3 flex gap-3"><span class="chip bg-sky-50 text-sky-700 self-start">Applied</span><div><b>Kenya</b>: Why now updated to a Q3 2027 fintech summit. <span class="text-gray-500">From "Challenge the Kenya recommendation", 25 Nov 2026.</span></div></li></ul>
+    </div>`;
+}
+
+// ---------- Refresh run ----------
+const STAGES = [
+  ['Stage 1 · Worldwide screening','Reviews the saved Outlook first, then scans every region for candidates. Short hypothesis and source pointers only.','71 countries screened · 29 candidates · 6 excluded (conflict or upheaval)'],
+  ['Stage 2 · Preliminary assessment','Checks each candidate for advertising demand, narrative, publication market, timing and obvious counterarguments.','29 candidates → 16 worth validating'],
+  ['Stage 3 · Validation and comparison','Verifies dates, events and advertiser evidence, looks for contradicting evidence, compares countries and assigns categories.','16 validated → 13 recommendations'],
+  ['Stage 4 · Update the Outlook','Merges findings with the saved Outlook, keeps well-supported earlier findings and explains every change.','2 added · 1 moved up · 1 moved down · 1 dropped · 1 kept'],
+];
+const LOG = [
+  ['Reading the saved Outlook (14 countries, last refreshed 10 Nov)',0.05],
+  ['Reading TRC advertising history: 4,221 rows',0.05],
+  ['Screening Africa… Europe & Central Asia… Asia… Middle East… Americas',0.35],
+  ['Competitor B: 3 report PDFs could not be opened. Reported, not guessed',0.05],
+  ['Assessing Morocco: competitor advertisers found (2 sites)',0.40],
+  ['Assessing Kenya: anchor event moved abroad (source 15 Nov 2026)',0.30],
+  ['Validating Vietnam: bilateral forum date confirmed',0.45],
+  ['Looking for evidence against each recommendation',0.30],
+  ['Comparing 16 countries and assigning categories',0.45],
+  ['Reconciling with the saved Outlook and writing change notes',0.31],
+];
+let running = false;
+function openRefresh(){ document.getElementById('refresh').classList.remove('hidden'); if(!running) resetRun(); }
+function closeRefresh(){ document.getElementById('refresh').classList.add('hidden'); }
+function resetRun(){
+  document.getElementById('stages').innerHTML = STAGES.map((s,i) => `
+    <li id="st-${i}" class="flex gap-3">
+      <span id="st-ic-${i}" class="w-6 h-6 rounded-full border-2 border-gray-200 flex items-center justify-center text-[11px] text-gray-400 flex-shrink-0">${i+1}</span>
+      <div><div class="text-sm font-medium text-gray-900">${s[0]}</div><div class="text-xs text-gray-500">${s[1]}</div><div id="st-res-${i}" class="text-xs font-medium text-gray-800 mt-0.5"></div></div>
+    </li>`).join('');
+  document.getElementById('runlog').innerHTML = '<div class="text-gray-400">Waiting to start…</div>';
+  document.getElementById('run-done').classList.add('hidden');
+  document.getElementById('cost').textContent = '$0.00 of $5.00 limit';
+  document.getElementById('costbar').style.width = '0%';
+  const b = document.getElementById('run-btn'); b.disabled = false; b.textContent = 'Start refresh'; b.classList.remove('opacity-50');
+}
+function setStage(i, state){
+  const ic = document.getElementById('st-ic-'+i);
+  if (state==='run') { ic.className='w-6 h-6 rounded-full border-2 border-black border-t-transparent spin flex-shrink-0'; ic.textContent=''; }
+  if (state==='done') { ic.className='w-6 h-6 rounded-full bg-black text-white flex items-center justify-center text-[11px] flex-shrink-0'; ic.textContent='✓'; document.getElementById('st-res-'+i).textContent = STAGES[i][2]; }
+}
+function runRefresh(){
+  if (running) return; running = true;
+  const b = document.getElementById('run-btn'); b.disabled = true; b.textContent = 'Running…'; b.classList.add('opacity-50');
+  const log = document.getElementById('runlog'); log.innerHTML = '';
+  const stageAt = [0,0,0,1,1,1,2,2,2,3]; let cost = 0, step = 0;
+  setStage(0,'run');
+  const tick = () => {
+    if (step >= LOG.length) { setStage(3,'done'); running = false; document.getElementById('run-done').classList.remove('hidden'); b.textContent = 'Done'; return; }
+    const st = stageAt[step];
+    if (step>0 && stageAt[step-1] !== st) { setStage(stageAt[step-1],'done'); setStage(st,'run'); }
+    cost += LOG[step][1];
+    log.insertAdjacentHTML('beforeend', `<div class="fade-in">› ${LOG[step][0]}</div>`); log.scrollTop = log.scrollHeight;
+    document.getElementById('cost').textContent = `$${cost.toFixed(2)} of $5.00 limit`;
+    document.getElementById('costbar').style.width = (cost/5*100)+'%';
+    step++; setTimeout(tick, 700);
+  };
+  setTimeout(tick, 500);
+}
+
+// ---------- Handoff ----------
+function openHandoff(name){
+  const c = countries.find(x => x.name===name);
+  document.getElementById('ho-country').value = c.name;
+  document.getElementById('ho-market').value = c.market;
+  document.getElementById('ho-title').innerHTML = TITLES[c.market].map(t => `<option ${t===c.title?'selected':''}>${t}</option>`).join('');
+  document.getElementById('ho-sources').textContent = `Sources (${c.sources.length}) as research context`;
+  document.getElementById('handoff').classList.remove('hidden');
+}
+function closeHandoff(){ document.getElementById('handoff').classList.add('hidden'); }
+
+function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(window._tt); window._tt = setTimeout(()=>t.classList.add('hidden'), 3200); }
+
+render(); renderChat(); renderLog();
+</script>
+</body>
+</html>
