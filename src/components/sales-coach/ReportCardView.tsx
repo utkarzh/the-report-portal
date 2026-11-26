@@ -26,8 +26,8 @@ import type {
 // The playbook panel under the Follow-Up section ("TRC Retorno Strategy
 // Playbook" with every ready-to-send message) is hidden (24 Nov 2026, Rafa:
 // "this whole block has to go away, it's too convoluted"). Its templates now
-// open in a pop-up from each recommended action, and "Make your decision by
-// reading the playbook" sits beside "Next possible actions". Set to true to
+// open in a pop-up from each recommended action, and "Make your decisions by
+// reading the Retorno Playbook" sits beside "Next possible actions". Set to true to
 // bring the panel back.
 const SHOW_PLAYBOOK_TEMPLATES_PANEL = false
 

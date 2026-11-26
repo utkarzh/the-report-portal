@@ -16,7 +16,7 @@ import { PlaybookTemplatesDialog } from '@/components/sales-coach/PlaybookTempla
 // its own panel.
 //
 // 24 Nov 2026 (Rafa's Loom): part 2 is headed "Next possible actions", with
-// "Make your decision by reading the playbook" beside it; a WhatsApp action
+// "Make your decisions by reading the Retorno Playbook" beside it; a WhatsApp action
 // gets "See possible WhatsApp templates" and the proposal email "See email
 // proposal template", each opening the playbook's templates in a pop-up (they
 // replaced the playbook panel under the section).
@@ -130,10 +130,10 @@ export default function FollowUpSupportView({ view, templates = [], playbookHref
                 href={playbookHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group inline-flex flex-shrink-0 items-center justify-center gap-2 self-start rounded-xl bg-stone-900 px-5 py-3 touch:py-3.5 text-sm font-semibold text-white shadow-[0_10px_24px_-12px_rgba(28,25,23,0.6)] transition hover:bg-black sm:self-center"
+                className="sc-playbook-btn group inline-flex flex-shrink-0 items-center justify-center gap-2 self-start rounded-xl px-5 py-3 touch:py-3.5 text-sm font-semibold text-white sm:self-center"
               >
-                <BookOpen size={15} /> Make your decision by reading the playbook
-                <ArrowUpRight size={15} className="transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                <BookOpen size={15} className="flex-shrink-0 text-[#e8c27a]" /> Make your decisions by reading the Retorno Playbook
+                <ArrowUpRight size={15} className="flex-shrink-0 text-[#e8c27a] transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
               </Link>
             )}
           </div>
